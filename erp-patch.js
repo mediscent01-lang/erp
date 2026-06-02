@@ -1558,49 +1558,87 @@
 
   /* ── ERP 직접 반영 ── */
   window.acImportDirect = function () {
-    const rows = acBuildRows();
-    if (!rows.length) return;
-    if (!window.db?.master?.M_RAW) { if (typeof window.toast === 'function') window.toast('DB가 준비되지 않았습니다', 'error'); return; }
+    const d = window.__acData;
+    if (!d) {
+      if (typeof window.toast === 'function') window.toast('먼저 파일을 업로드하세요', 'error');
+      return;
+    }
+    if (!window.db || !window.db.master || !window.db.master.M_RAW) {
+      if (typeof window.toast === 'function') window.toast('DB가 준비되지 않았습니다', 'error');
+      return;
+    }
 
+    const mode = document.getElementById('ac-mode') ? document.getElementById('ac-mode').value : 'fragrance';
+    const stdCost = parseFloat(document.getElementById('ac-stdcost') ? document.getElementById('ac-stdcost').value : '0') || 0;
     let created = 0, updated = 0;
-    rows.forEach((r, i) => {
-      const code = (r.code || '').toLowerCase();
-      const name = (r.name || '').toLowerCase();
+
+    function upsertRaw(payload, idx) {
+      const codeLC = (payload.code || '').toLowerCase();
+      const nameLC = (payload.name || '').toLowerCase();
+      const casVal = (payload.cas || '').toLowerCase();
       const existing = window.db.master.M_RAW.find(x =>
-        (code && String(x.code||'').toLowerCase() === code) ||
-        (!code && name && String(x.name||'').toLowerCase() === name)
+        (codeLC && String(x.code||'').toLowerCase() === codeLC) ||
+        (casVal && String(x.cas||'').toLowerCase() === casVal) ||
+        (!codeLC && !casVal && nameLC && String(x.name||'').toLowerCase() === nameLC)
       );
-      const payload = {
-        code:         r.code || '',
-        name:         r.name || '',
-        inci:         r.inci || '',
-        unit:         r.unit || 'kg',
-        supplier:     r.supplier || '',
-        shelfDays:    parseInt(r.shelf_days) || 730,
-        stdCost:      parseFloat(r.std_cost) || 0,
-        storage:      r.storage || '실온',
-        ifraCategory: r.ifra_category || '',
-        ifraLimit:    parseFloat(r.ifra_limit) || 0,
-        isAllergen:   r.is_allergen === '1' || r.is_allergen === true,
-        cas:          r.cas || '',
-        allergenPct:  parseFloat(r.allergen_pct) || 0,
-        note:         r.note || ''
-      };
       if (existing) {
         Object.assign(existing, payload);
         updated++;
       } else {
-        payload.rawId = Date.now() + i;
+        payload.rawId = Date.now() + idx + Math.floor(Math.random() * 1000);
         window.db.master.M_RAW.push(payload);
         created++;
       }
-    });
+    }
+
+    /* 향료 원료 1행 */
+    if (mode === 'fragrance' || mode === 'both') {
+      const fragCode = 'RM-FRG-' + (d.fragName || '').replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,12);
+      upsertRaw({
+        code:         fragCode,
+        name:         d.fragName || 'Unknown Fragrance',
+        inci:         'Fragrance',
+        unit:         'kg',
+        supplier:     d.vendor || '',
+        shelfDays:    730,
+        stdCost:      stdCost,
+        storage:      '실온',
+        ifraCategory: '4',
+        ifraLimit:    25,
+        isAllergen:   d.active.length > 0,
+        cas:          '',
+        allergenPct:  0,
+        note:         'EU26 알레르겐 함유: ' + d.active.map(c => c.name + '(' + c.pct + '%)').join(', ')
+      }, 0);
+    }
+
+    /* 알레르겐 성분 개별 행 */
+    if (mode === 'components' || mode === 'both') {
+      d.active.forEach((c, i) => {
+        upsertRaw({
+          code:         'RM-ALC-' + c.cas.replace(/[^0-9]/g,''),
+          name:         c.name,
+          inci:         c.name,
+          unit:         'kg',
+          supplier:     d.vendor || '',
+          shelfDays:    730,
+          stdCost:      0,
+          storage:      '실온',
+          ifraCategory: '',
+          ifraLimit:    0,
+          isAllergen:   true,
+          cas:          c.cas,
+          allergenPct:  c.pct,
+          note:         '알레르겐 / 향료: ' + d.fragName + ' 내 ' + c.pct + '%'
+        }, i + 10);
+      });
+    }
 
     if (typeof window.logEvent === 'function') window.logEvent('알레르겐 변환 반영: 신규 ' + created + ' / 수정 ' + updated);
     if (typeof window.saveDB   === 'function') window.saveDB();
     if (typeof window.renderRaw === 'function') window.renderRaw();
     if (typeof window.toast    === 'function') window.toast('✓ ERP 반영 완료 — 신규 ' + created + '건 / 수정 ' + updated + '건', 'success');
-    acReset();
+    window.acReset();
   };
 
   /* ── 초기화 ── */
