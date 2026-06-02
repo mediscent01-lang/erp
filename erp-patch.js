@@ -1284,6 +1284,354 @@
     }, 300);
   });
 
-  console.log('[SHIFTI ERP Patch v3.2-fixed] 로드 완료 — 데이터 초기화 버그, saveDB 복원, 매출 업로드 모듈 통합');
+  /* ═══════════════════════════════════════════════════════
+   * ALLERGEN → ERP 원료 업로드 CSV 변환기
+   * 원료마스터 페이지에 변환 도구 패널 삽입
+   * ═══════════════════════════════════════════════════════ */
+
+  function buildAllergenConverter () {
+    /* 이미 삽입됐으면 스킵 */
+    if (document.getElementById('allergen-converter-panel')) return;
+
+    const sec = document.getElementById('page-master-raw');
+    if (!sec) return;
+
+    const panel = document.createElement('div');
+    panel.id = 'allergen-converter-panel';
+    panel.className = 'card p-4 space-y-3';
+    panel.style.borderLeft = '4px solid #0d9488';
+    panel.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-slate-700 text-sm">알레르겐 성분표 → 원료 CSV 변환기</h3>
+          <p class="text-[10.5px] text-slate-400 mt-0.5">㈜한빛향료 등 공급사의 ALLERGEN 26 엑셀 파일을 ERP 원료 업로드 양식으로 자동 변환합니다</p>
+        </div>
+        <span class="badge-teal text-[10px]">XLS → CSV</span>
+      </div>
+
+      <!-- 드롭존 -->
+      <div id="ac-drop"
+        class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition"
+        onclick="document.getElementById('ac-file').click()"
+        ondragover="event.preventDefault();this.classList.add('border-teal-400','bg-teal-50')"
+        ondragleave="this.classList.remove('border-teal-400','bg-teal-50')"
+        ondrop="acHandleDrop(event)">
+        <div class="text-3xl mb-2">🧪</div>
+        <div class="font-black text-sm text-slate-700">알레르겐 파일을 드래그하거나 클릭</div>
+        <div class="text-xs text-slate-400 mt-1">ALLERGEN_26_*.xls / *.xlsx 형식</div>
+        <div class="flex justify-center gap-2 mt-2">
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.xls</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.xlsx</span>
+        </div>
+      </div>
+      <input type="file" id="ac-file" accept=".xls,.xlsx" class="hidden" onchange="acHandleFile(this)">
+
+      <!-- 변환 결과 -->
+      <div id="ac-result" class="hidden space-y-3">
+        <!-- 향료 정보 요약 -->
+        <div id="ac-info" class="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs space-y-1"></div>
+
+        <!-- 변환 옵션 -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[10.5px] font-bold text-slate-500 mb-1">변환 모드</label>
+            <select id="ac-mode" class="input-field text-xs" onchange="acRenderPreview()">
+              <option value="fragrance">향료 원료 1개로 등록 (추천)</option>
+              <option value="components">알레르겐 성분 개별 등록</option>
+              <option value="both">향료 + 성분 모두 등록</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10.5px] font-bold text-slate-500 mb-1">표준단가 (원/kg)</label>
+            <input type="number" id="ac-stdcost" class="input-field text-xs" placeholder="0" value="0" oninput="acRenderPreview()">
+          </div>
+        </div>
+
+        <!-- 미리보기 테이블 -->
+        <div class="border rounded-lg overflow-hidden">
+          <div class="bg-slate-50 px-3 py-2 text-[10.5px] font-bold text-slate-500 flex justify-between items-center">
+            <span>변환 미리보기</span>
+            <span id="ac-row-count" class="badge-soft">0행</span>
+          </div>
+          <div class="overflow-x-auto max-h-56">
+            <table id="ac-preview-tbl" class="w-full text-xs"></table>
+          </div>
+        </div>
+
+        <!-- 알레르겐 플래그 요약 -->
+        <div id="ac-allergen-summary" class="text-[10.5px] text-slate-500 bg-amber-50 border border-amber-200 rounded p-2"></div>
+
+        <!-- 버튼 -->
+        <div class="flex gap-2 justify-end">
+          <button onclick="acReset()" class="btn btn-secondary btn-sm">초기화</button>
+          <button onclick="acDownloadCSV()" class="btn btn-secondary btn-sm">📥 CSV 다운로드</button>
+          <button onclick="acImportDirect()" class="btn btn-primary btn-sm">⚡ ERP 직접 반영</button>
+        </div>
+      </div>
+    `;
+
+    /* 페이지 상단 h2 다음에 삽입 */
+    const h2 = sec.querySelector('h2');
+    if (h2 && h2.nextSibling) {
+      sec.insertBefore(panel, h2.nextSibling);
+    } else {
+      sec.prepend(panel);
+    }
+  }
+
+  /* ── 드롭/파일 핸들러 ── */
+  window.acHandleDrop = function (e) {
+    e.preventDefault();
+    document.getElementById('ac-drop')?.classList.remove('border-teal-400','bg-teal-50');
+    const f = e.dataTransfer.files[0];
+    if (f) acProcessFile(f);
+  };
+  window.acHandleFile = function (inp) {
+    if (inp.files[0]) acProcessFile(inp.files[0]);
+  };
+
+  /* ── 파일 파싱 ── */
+  function acProcessFile (file) {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        if (!window.XLSX) throw new Error('SheetJS 미로드');
+        const wb   = XLSX.read(e.target.result, { type: 'binary' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+        /* 메타 추출 */
+        let fragName = '', vendor = '', customer = '';
+        data.forEach(row => {
+          const r = row.map(c => String(c).trim());
+          if (r[0] === 'Fragrance Name:') fragName  = r[1] || '';
+          if (r[0] === 'Vendor:')          vendor    = r[1] || '';
+          if (r[0] === 'Customer Name:')   customer  = r[1] || '';
+        });
+
+        /* 헤더 행 찾기 */
+        let headerIdx = -1;
+        data.forEach((row, i) => {
+          if (String(row[0]).trim() === 'INGREDIENT NAME') headerIdx = i;
+        });
+        if (headerIdx < 0) throw new Error('INGREDIENT NAME 헤더를 찾을 수 없습니다');
+
+        /* 성분 파싱 */
+        const components = [];
+        for (let i = headerIdx + 1; i < data.length; i++) {
+          const row  = data[i];
+          const name = String(row[0] || '').trim().replace(/\n/g, ' ');
+          const cas  = String(row[1] || '').trim();
+          const pct  = parseFloat(row[2]) || 0;
+          if (!name || !cas || name.startsWith('Title') || name.startsWith('Name') || name.startsWith('Signature')) continue;
+          components.push({ name, cas, pct, isAllergen: true });
+        }
+
+        /* EU 26 알레르겐 중 함량 > 0 인 것 */
+        const active = components.filter(c => c.pct > 0);
+
+        window.__acData = { fragName, vendor, customer, components, active, fileName: file.name };
+        acRenderInfo();
+        acRenderPreview();
+        document.getElementById('ac-result').classList.remove('hidden');
+        document.getElementById('ac-drop').classList.add('hidden');
+
+      } catch (err) {
+        if (typeof window.toast === 'function') window.toast('파일 파싱 실패: ' + err.message, 'error');
+        console.error(err);
+      }
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  /* ── 정보 요약 ── */
+  function acRenderInfo () {
+    const d = window.__acData; if (!d) return;
+    const el = document.getElementById('ac-info'); if (!el) return;
+    el.innerHTML = `
+      <div class="grid grid-cols-2 gap-x-6 gap-y-0.5">
+        <div><span class="text-slate-400">향료명</span> <strong>${d.fragName || '-'}</strong></div>
+        <div><span class="text-slate-400">공급사</span> <strong>${d.vendor || '-'}</strong></div>
+        <div><span class="text-slate-400">고객사</span> <strong>${d.customer || '-'}</strong></div>
+        <div><span class="text-slate-400">전체 성분</span> <strong>${d.components.length}종</strong>
+          · 함량 있음 <strong class="text-amber-600">${d.active.length}종</strong></div>
+      </div>`;
+  }
+
+  /* ── 변환 로우 생성 ── */
+  function acBuildRows () {
+    const d    = window.__acData; if (!d) return [];
+    const mode = document.getElementById('ac-mode')?.value || 'fragrance';
+    const cost = document.getElementById('ac-stdcost')?.value || '0';
+    const rows = [];
+
+    /* 향료 원료 1행 */
+    const fragranceRow = {
+      code:        'RM-FRG-' + (d.fragName.replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,12) || 'UNKNOWN'),
+      name:        d.fragName,
+      inci:        'Fragrance',
+      unit:        'kg',
+      supplier:    d.vendor,
+      shelf_days:  '730',
+      std_cost:    cost,
+      storage:     '실온',
+      ifra_category: '4',
+      ifra_limit:  '25',
+      is_allergen: d.active.length > 0 ? '1' : '0',
+      cas:         '',
+      allergen_pct:'',
+      note:        'EU26 알레르겐 함유: ' + d.active.map(c => c.name + '(' + c.pct + '%)').join(', ')
+    };
+
+    /* 알레르겐 개별 성분 행 */
+    const componentRows = d.active.map((c, i) => ({
+      code:         'RM-ALC-' + c.cas.replace(/[^0-9]/g,''),
+      name:         c.name,
+      inci:         c.name,
+      unit:         'kg',
+      supplier:     d.vendor,
+      shelf_days:   '730',
+      std_cost:     '0',
+      storage:      '실온',
+      ifra_category:'',
+      ifra_limit:   '',
+      is_allergen:  '1',
+      cas:          c.cas,
+      allergen_pct: String(c.pct),
+      note:         '알레르겐 / 향료: ' + d.fragName + ' 내 ' + c.pct + '%'
+    }));
+
+    if (mode === 'fragrance') rows.push(fragranceRow);
+    else if (mode === 'components') rows.push(...componentRows);
+    else { rows.push(fragranceRow); rows.push(...componentRows); }
+
+    return rows;
+  }
+
+  /* ── 미리보기 ── */
+  window.acRenderPreview = function () {
+    const rows = acBuildRows();
+    const tbl  = document.getElementById('ac-preview-tbl'); if (!tbl) return;
+    const cntEl = document.getElementById('ac-row-count');
+    if (cntEl) cntEl.textContent = rows.length + '행';
+
+    const COLS = ['code','name','inci','unit','supplier','std_cost','is_allergen','cas','allergen_pct'];
+    const HEAD = ['코드','원료명','INCI명','단위','공급사','표준단가','알레르겐','CAS #','알레르겐 함량(%)'];
+
+    tbl.innerHTML =
+      '<thead><tr>' + HEAD.map(h => `<th>${h}</th>`).join('') + '</tr></thead>' +
+      '<tbody>' + rows.map(r =>
+        '<tr>' + COLS.map(c => `<td>${r[c] || '-'}</td>`).join('') + '</tr>'
+      ).join('') + '</tbody>';
+
+    /* 알레르겐 요약 */
+    const d = window.__acData;
+    const sumEl = document.getElementById('ac-allergen-summary');
+    if (sumEl && d) {
+      sumEl.innerHTML = `⚠️ 함량 있는 EU26 알레르겐 ${d.active.length}종: `
+        + d.active.map(c => `<strong>${c.name}</strong> ${c.pct}%`).join(' · ');
+    }
+  };
+
+  /* ── CSV 다운로드 ── */
+  window.acDownloadCSV = function () {
+    const rows = acBuildRows();
+    if (!rows.length) return;
+    const COLS = ['code','name','inci','unit','supplier','shelf_days','std_cost','storage',
+                  'ifra_category','ifra_limit','is_allergen','cas','allergen_pct','note'];
+    const HEAD = ['code','name','inci','unit','supplier','shelf_days','std_cost','storage',
+                  'ifra_category','ifra_limit','is_allergen','cas','allergen_pct','note'];
+    const csv  = [HEAD.join(','), ...rows.map(r =>
+      COLS.map(c => '"' + String(r[c] || '').replace(/"/g,'""') + '"').join(',')
+    )].join('\n');
+
+    const d    = window.__acData;
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'raw_upload_' + (d?.fragName || 'allergen').replace(/\s/g,'_') + '.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    if (typeof window.toast === 'function') window.toast('CSV 다운로드 완료', 'success');
+  };
+
+  /* ── ERP 직접 반영 ── */
+  window.acImportDirect = function () {
+    const rows = acBuildRows();
+    if (!rows.length) return;
+    if (!window.db?.master?.M_RAW) { if (typeof window.toast === 'function') window.toast('DB가 준비되지 않았습니다', 'error'); return; }
+
+    let created = 0, updated = 0;
+    rows.forEach((r, i) => {
+      const code = (r.code || '').toLowerCase();
+      const name = (r.name || '').toLowerCase();
+      const existing = window.db.master.M_RAW.find(x =>
+        (code && String(x.code||'').toLowerCase() === code) ||
+        (!code && name && String(x.name||'').toLowerCase() === name)
+      );
+      const payload = {
+        code:         r.code || '',
+        name:         r.name || '',
+        inci:         r.inci || '',
+        unit:         r.unit || 'kg',
+        supplier:     r.supplier || '',
+        shelfDays:    parseInt(r.shelf_days) || 730,
+        stdCost:      parseFloat(r.std_cost) || 0,
+        storage:      r.storage || '실온',
+        ifraCategory: r.ifra_category || '',
+        ifraLimit:    parseFloat(r.ifra_limit) || 0,
+        isAllergen:   r.is_allergen === '1' || r.is_allergen === true,
+        cas:          r.cas || '',
+        allergenPct:  parseFloat(r.allergen_pct) || 0,
+        note:         r.note || ''
+      };
+      if (existing) {
+        Object.assign(existing, payload);
+        updated++;
+      } else {
+        payload.rawId = Date.now() + i;
+        window.db.master.M_RAW.push(payload);
+        created++;
+      }
+    });
+
+    if (typeof window.logEvent === 'function') window.logEvent('알레르겐 변환 반영: 신규 ' + created + ' / 수정 ' + updated);
+    if (typeof window.saveDB   === 'function') window.saveDB();
+    if (typeof window.renderRaw === 'function') window.renderRaw();
+    if (typeof window.toast    === 'function') window.toast('✓ ERP 반영 완료 — 신규 ' + created + '건 / 수정 ' + updated + '건', 'success');
+    acReset();
+  };
+
+  /* ── 초기화 ── */
+  window.acReset = function () {
+    window.__acData = null;
+    document.getElementById('ac-file').value  = '';
+    document.getElementById('ac-result')?.classList.add('hidden');
+    document.getElementById('ac-drop')?.classList.remove('hidden');
+  };
+
+  /* ── 원료 마스터 페이지 진입 시 변환기 삽입 ── */
+  const __acInitNewPage = window.initNewPage;
+  window.initNewPage = function (pageId) {
+    try { if (typeof __acInitNewPage === 'function') __acInitNewPage(pageId); } catch (e) {}
+    if (pageId === 'master-raw') {
+      setTimeout(buildAllergenConverter, 80);
+    }
+  };
+  const __acGoPage = window.goPage;
+  window.goPage = function (id) {
+    const r = typeof __acGoPage === 'function' ? __acGoPage.apply(this, arguments) : undefined;
+    if (id === 'master-raw') setTimeout(buildAllergenConverter, 80);
+    return r;
+  };
+  window.addEventListener('load', function () {
+    setTimeout(() => {
+      const active = document.querySelector('.page-section.active');
+      if (active && active.id === 'page-master-raw') buildAllergenConverter();
+    }, 350);
+  });
+
+  console.log('[SHIFTI ERP Patch v3.2-fixed] 로드 완료 — 데이터 초기화 버그, saveDB 복원, 매출 업로드 모듈 통합, 알레르겐 변환기 추가');
 
 })();
