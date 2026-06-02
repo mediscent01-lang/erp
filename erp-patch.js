@@ -1612,40 +1612,40 @@
   };
 
   /* ── 원료 마스터 페이지 진입 시 변환기 삽입 ── */
-  /* nav 버튼 직접 클릭 감지 */
-  function bindAllergenNav () {
-    const navBtn = document.getElementById('nav-master-raw');
-    if (navBtn && !navBtn.__acBound) {
-      navBtn.__acBound = true;
-      navBtn.addEventListener('click', function () {
-        setTimeout(buildAllergenConverter, 150);
-      });
+  /* document 전체 클릭 델리게이션 — goPage 래핑 불필요 */
+  document.addEventListener('click', function (e) {
+    const navBtn = e.target.closest('#nav-master-raw');
+    if (navBtn) {
+      setTimeout(buildAllergenConverter, 200);
     }
-  }
+  }, true);  /* capture phase — goPage보다 먼저 실행 */
 
   /* page-master-raw 가 active 클래스 얻는 순간 MutationObserver 감지 */
-  function watchRawPage () {
-    const target = document.getElementById('page-master-raw');
-    if (!target) return;
-    const obs = new MutationObserver(function (mutations) {
-      mutations.forEach(function (m) {
-        if (m.type === 'attributes' && m.attributeName === 'class') {
-          if (target.classList.contains('active')) {
-            setTimeout(buildAllergenConverter, 100);
+  (function watchRawPage () {
+    function attach () {
+      const target = document.getElementById('page-master-raw');
+      if (!target) return;
+      new MutationObserver(function (mutations) {
+        mutations.forEach(function (m) {
+          if (m.attributeName === 'class' && target.classList.contains('active')) {
+            setTimeout(buildAllergenConverter, 80);
           }
-        }
-      });
-    });
-    obs.observe(target, { attributes: true, attributeFilter: ['class'] });
-  }
+        });
+      }).observe(target, { attributes: true, attributeFilter: ['class'] });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', attach);
+    } else {
+      attach();
+    }
+  })();
 
   window.addEventListener('load', function () {
     setTimeout(function () {
-      bindAllergenNav();
-      watchRawPage();
+      /* 현재 원료 페이지가 활성화돼 있으면 바로 삽입 */
       const active = document.querySelector('.page-section.active');
       if (active && active.id === 'page-master-raw') buildAllergenConverter();
-    }, 500);
+    }, 600);
   });
 
   console.log('[SHIFTI ERP Patch v3.2-fixed] 로드 완료 — 데이터 초기화 버그, saveDB 복원, 매출 업로드 모듈 통합, 알레르겐 변환기 추가');
