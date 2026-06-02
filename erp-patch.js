@@ -1612,24 +1612,40 @@
   };
 
   /* ── 원료 마스터 페이지 진입 시 변환기 삽입 ── */
-  const __acInitNewPage = window.initNewPage;
-  window.initNewPage = function (pageId) {
-    try { if (typeof __acInitNewPage === 'function') __acInitNewPage(pageId); } catch (e) {}
-    if (pageId === 'master-raw') {
-      setTimeout(buildAllergenConverter, 80);
+  /* nav 버튼 직접 클릭 감지 */
+  function bindAllergenNav () {
+    const navBtn = document.getElementById('nav-master-raw');
+    if (navBtn && !navBtn.__acBound) {
+      navBtn.__acBound = true;
+      navBtn.addEventListener('click', function () {
+        setTimeout(buildAllergenConverter, 150);
+      });
     }
-  };
-  const __acGoPage = window.goPage;
-  window.goPage = function (id) {
-    const r = typeof __acGoPage === 'function' ? __acGoPage.apply(this, arguments) : undefined;
-    if (id === 'master-raw') setTimeout(buildAllergenConverter, 80);
-    return r;
-  };
+  }
+
+  /* page-master-raw 가 active 클래스 얻는 순간 MutationObserver 감지 */
+  function watchRawPage () {
+    const target = document.getElementById('page-master-raw');
+    if (!target) return;
+    const obs = new MutationObserver(function (mutations) {
+      mutations.forEach(function (m) {
+        if (m.type === 'attributes' && m.attributeName === 'class') {
+          if (target.classList.contains('active')) {
+            setTimeout(buildAllergenConverter, 100);
+          }
+        }
+      });
+    });
+    obs.observe(target, { attributes: true, attributeFilter: ['class'] });
+  }
+
   window.addEventListener('load', function () {
-    setTimeout(() => {
+    setTimeout(function () {
+      bindAllergenNav();
+      watchRawPage();
       const active = document.querySelector('.page-section.active');
       if (active && active.id === 'page-master-raw') buildAllergenConverter();
-    }, 350);
+    }, 500);
   });
 
   console.log('[SHIFTI ERP Patch v3.2-fixed] 로드 완료 — 데이터 초기화 버그, saveDB 복원, 매출 업로드 모듈 통합, 알레르겐 변환기 추가');
