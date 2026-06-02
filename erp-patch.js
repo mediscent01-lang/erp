@@ -16,75 +16,140 @@
   'use strict';
 
   /* ─────────────────────────────────────────────
-   * PATCH 1: loadDB - 빈 Supabase 응답으로 인한
-   *          데이터 초기화 버그 수정
+   * PATCH 1: loadDB — 완전 재작성
+   *   · 로컬 데이터 먼저 적용 → 즉시 UI 사용 가능
+   *   · Supabase는 8초 타임아웃 적용
+   *   · 빈 응답·실패·타임아웃 어떤 경우에도
+   *     _hideLoader() 반드시 호출 (finally 보장)
+   *   · window.db 가 null/undefined 일 때 방어
    * ───────────────────────────────────────────── */
   window.loadDB = async function () {
-    const _showLoader = window._showLoader || function (m) {};
-    const _hideLoader = window._hideLoader || function () {};
-    const _setCS     = window._setCS     || function () {};
+    /* 헬퍼 — 원본 함수 없어도 안전하게 동작 */
+    const _show = function (m) {
+      try { (window._showLoader || function(){})(m); } catch(e) {}
+    };
+    const _hide = function () {
+      try {
+        /* 원본 _hideLoader 우선, 없으면 직접 DOM 제거 */
+        if (typeof window._hideLoader === 'function') {
+          window._hideLoader();
+        } else {
+          const el = document.getElementById('_sbL');
+          if (el) el.remove();
+        }
+      } catch(e) {
+        try { const el = document.getElementById('_sbL'); if(el) el.remove(); } catch(_) {}
+      }
+    };
+    const _cs = function (icon, txt) {
+      try { (window._setCS || function(){})(icon, txt); } catch(e) {}
+    };
+
     const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
     const SB_URL = window.SB_URL;
     const SB_KEY = window.SB_KEY;
     const SB_ROW = window.SB_ROW || 'shifti_erp_main';
 
-    _showLoader('☁️ 클라우드에서 불러오는 중…');
+    _show('☁️ 클라우드에서 불러오는 중…');
 
-    /* 로컬 먼저 */
+    /* ── Step 1: 로컬 데이터 먼저 적용 (즉시) ── */
     const local = localStorage.getItem(STORAGE_KEY);
     if (local) {
-      try { window.db = JSON.parse(local); } catch (e) {}
+      try { window.db = JSON.parse(local); } catch(e) { window.db = null; }
+    }
+    /* db 가 null/undefined 이면 빈 구조로 초기화 */
+    if (!window.db || typeof window.db !== 'object') {
+      window.db = { meta: { version: '3.2-fixed' } };
     }
 
-    /* Supabase 조회 */
+    /* ── Step 2: Supabase 조회 (8초 타임아웃) ── */
     try {
-      const r = await fetch(SB_URL + '/rest/v1/erp_data?id=eq.' + SB_ROW + '&select=data', {
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SB_KEY,
-          'Authorization': 'Bearer ' + SB_KEY
-        }
-      });
-      if (!r.ok) throw new Error('GET ' + r.status);
-      const d = await r.json();
-      const rem = d.length ? d[0].data : null;
+      if (!SB_URL || !SB_KEY) throw new Error('Supabase 설정 없음');
 
-      /* ★ 핵심 수정: 빈 데이터(마스터 없음)는 무시 */
+      /* AbortController 로 타임아웃 구현 */
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+
+      const r = await fetch(
+        SB_URL + '/rest/v1/erp_data?id=eq.' + SB_ROW + '&select=data',
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SB_KEY,
+            'Authorization': 'Bearer ' + SB_KEY
+          },
+          signal: controller.signal
+        }
+      );
+      clearTimeout(timer);
+
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      const rem = d && d.length ? d[0].data : null;
+
+      /* ★ 핵심: 실제 마스터 데이터가 있을 때만 덮어씀 */
       const remHasData = rem && rem.master && (
-        (rem.master.M_RAW     || []).length > 0 ||
-        (rem.master.M_PACK    || []).length > 0 ||
-        (rem.master.M_PRODUCT || []).length > 0 ||
+        (rem.master.M_RAW      || []).length > 0 ||
+        (rem.master.M_PACK     || []).length > 0 ||
+        (rem.master.M_PRODUCT  || []).length > 0 ||
         (rem.master.M_CUSTOMER || []).length > 0
       );
 
       if (remHasData) {
         const rAt = new Date(rem.meta?.updatedAt || 0);
-        const lAt = window.db?.meta?.updatedAt ? new Date(window.db.meta.updatedAt) : new Date(0);
+        const lAt = window.db?.meta?.updatedAt
+          ? new Date(window.db.meta.updatedAt) : new Date(0);
         if (rAt >= lAt) {
           window.db = rem;
           localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
         }
       }
-      _setCS('☁️', '연결됨');
+      _cs('☁️', '연결됨');
+
     } catch (e) {
-      console.warn('[SB] load fail:', e.message);
-      _setCS('⚠️', '오프라인 (로컬 데이터)');
+      const msg = e.name === 'AbortError' ? '응답 시간 초과 (로컬 데이터 사용)' : e.message;
+      console.warn('[SB] load:', msg);
+      _cs('⚠️', '오프라인 (로컬 데이터)');
+      /* 로컬도 없으면 여기서 빈 구조 재보장 */
+      if (!window.db || typeof window.db !== 'object') {
+        window.db = { meta: { version: '3.2-fixed' } };
+      }
+    } finally {
+      /* ★ 어떤 경우에도 반드시 로더 숨김 */
+      _hide();
     }
 
-    /* DB 구조 보정 */
+    /* ── Step 3: DB 구조 보정 ── */
     const db = window.db;
-    if (!db.master)      db.master = { M_RAW: [], M_PACK: [], M_PRODUCT: [], M_CUSTOMER: [] };
-    if (!db.stock)       db.stock  = { RAW_LOT: [], PACK_LOT: [], BULK_LOT: [], FGT_LOT: [] };
-    if (!db.txn)         db.txn    = { T_GOODS_IN: [], T_BULK: [], T_BATCH: [], T_FILL: [], T_SALE: [], T_QC: [], T_ADJ: [] };
+    if (!db.master)      db.master = {};
+    if (!db.stock)       db.stock  = {};
+    if (!db.txn)         db.txn    = {};
     if (!db.logs)        db.logs   = [];
     if (!db.costHistory) db.costHistory = [];
-    ['M_FORMULA','M_MATURATION','M_SAFETY_STOCK'].forEach(k => { if (!db.master[k]) db.master[k] = []; });
-    if (!db.master.M_CHANNEL_TAGS) db.master.M_CHANNEL_TAGS = {};
-    ['T_BULK','T_FILL','T_QC','T_ADJ'].forEach(k => { if (!db.txn[k]) db.txn[k] = []; });
-    try { if (typeof window.autoExpireLots === 'function') window.autoExpireLots(); } catch (e) {}
-    try { if (typeof window.ensureNewTables === 'function') window.ensureNewTables(); } catch (e) {}
 
-    _hideLoader();
+    /* master 하위 */
+    ['M_RAW','M_PACK','M_PRODUCT','M_CUSTOMER',
+     'M_FORMULA','M_MATURATION','M_SAFETY_STOCK','M_SUPPLIER'].forEach(k => {
+      if (!Array.isArray(db.master[k])) db.master[k] = [];
+    });
+    if (!db.master.M_CHANNEL_TAGS || typeof db.master.M_CHANNEL_TAGS !== 'object') {
+      db.master.M_CHANNEL_TAGS = {};
+    }
+
+    /* stock 하위 */
+    ['RAW_LOT','PACK_LOT','BULK_LOT','FGT_LOT'].forEach(k => {
+      if (!Array.isArray(db.stock[k])) db.stock[k] = [];
+    });
+
+    /* txn 하위 */
+    ['T_GOODS_IN','T_BULK','T_BATCH','T_FILL','T_SALE','T_QC','T_ADJ',
+     'T_PO','T_SO','T_RETURN','T_CLAIM','T_NCR','T_CAPA',
+     'T_PROD_PLAN','T_WORK_ORDER','T_QC_PROD','T_DEV_NOTE'].forEach(k => {
+      if (!Array.isArray(db.txn[k])) db.txn[k] = [];
+    });
+
+    try { if (typeof window.autoExpireLots  === 'function') window.autoExpireLots(); }  catch(e) {}
+    try { if (typeof window.ensureNewTables === 'function') window.ensureNewTables(); } catch(e) {}
   };
 
   /* ─────────────────────────────────────────────
@@ -327,19 +392,67 @@
       <h3 class="font-bold text-slate-700 text-sm">채널별 매출 분석</h3>
       <button onclick="suRenderChannelAnalysis()" class="btn btn-secondary btn-sm">🔄 새로고침</button>
     </div>
-    <div id="su-channel-table-wrap">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4" id="su-channel-kpis"></div>
-      <div class="overflow-x-auto">
+
+    <!-- 기간 필터 -->
+    <div class="px-4 pt-3 pb-2 border-b border-slate-100 flex flex-wrap items-center gap-2">
+      <span class="text-[10.5px] font-bold text-slate-500">기간</span>
+      <input type="date" id="su-filter-from" class="input-field w-36 text-xs">
+      <span class="text-slate-300 text-xs">~</span>
+      <input type="date" id="su-filter-to" class="input-field w-36 text-xs">
+      <div class="flex gap-1 ml-1">
+        <button onclick="suSetPeriod(7)"   class="btn btn-secondary btn-sm text-[10.5px]">7일</button>
+        <button onclick="suSetPeriod(30)"  class="btn btn-secondary btn-sm text-[10.5px]">30일</button>
+        <button onclick="suSetPeriod(90)"  class="btn btn-secondary btn-sm text-[10.5px]">90일</button>
+        <button onclick="suSetPeriod(365)" class="btn btn-secondary btn-sm text-[10.5px]">1년</button>
+        <button onclick="suSetPeriod(0)"   class="btn btn-secondary btn-sm text-[10.5px]">전체</button>
+      </div>
+      <button onclick="suRenderChannelAnalysis()" class="btn btn-primary btn-sm ml-auto">조회</button>
+    </div>
+
+    <!-- KPI -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4" id="su-channel-kpis"></div>
+
+    <!-- 분석 탭 -->
+    <div class="flex gap-0 border-b border-slate-200 px-4">
+      <button id="su-atab-ch"  class="tab-btn active text-xs" onclick="suAnalysisTab('ch')">채널별</button>
+      <button id="su-atab-prd" class="tab-btn text-xs"        onclick="suAnalysisTab('prd')">제품별</button>
+      <button id="su-atab-mon" class="tab-btn text-xs"        onclick="suAnalysisTab('mon')">월별 추이</button>
+    </div>
+
+    <!-- 채널별 테이블 -->
+    <div id="su-apanel-ch" class="overflow-x-auto">
+      <table><thead><tr>
+        <th class="pl-4">채널</th><th>고객수</th>
+        <th class="text-right">출고건수</th><th class="text-right">출고수량</th>
+        <th class="text-right">매출합계</th><th class="text-right">평균단가</th>
+        <th class="text-right pr-4">비중</th>
+      </tr></thead><tbody id="tbl-channel-sales2"></tbody></table>
+    </div>
+
+    <!-- 제품별 테이블 -->
+    <div id="su-apanel-prd" class="hidden overflow-x-auto">
+      <table><thead><tr>
+        <th class="pl-4">제품</th>
+        <th class="text-right">출고건수</th><th class="text-right">출고수량</th>
+        <th class="text-right">매출합계</th><th class="text-right">평균단가</th>
+        <th class="text-right pr-4">비중</th>
+      </tr></thead><tbody id="tbl-product-sales2"></tbody></table>
+    </div>
+
+    <!-- 월별 추이 -->
+    <div id="su-apanel-mon" class="hidden p-4">
+      <div style="height:240px;position:relative"><canvas id="su-monthly-chart"></canvas></div>
+      <div class="mt-4 overflow-x-auto">
         <table><thead><tr>
-          <th class="pl-4">채널</th><th>고객</th>
+          <th class="pl-4">월</th>
           <th class="text-right">출고건수</th><th class="text-right">출고수량</th>
-          <th class="text-right">매출합계</th><th class="text-right pr-4">비중</th>
-        </tr></thead><tbody id="tbl-channel-sales2"></tbody></table>
+          <th class="text-right pr-4">매출합계</th>
+        </tr></thead><tbody id="tbl-monthly-sales2"></tbody></table>
       </div>
     </div>
   </div>
 
-  <!-- 최근 매출 등록 이력 -->
+  <!-- 매출 등록 이력 -->
   <div class="card">
     <div class="card-header">
       <h3 class="font-bold text-slate-700 text-sm">매출 등록 이력 (전체)</h3>
@@ -348,8 +461,51 @@
     <div class="scroll-card-lg">
       <table><thead><tr>
         <th class="pl-4">일자</th><th>채널</th><th>고객</th><th>제품</th><th>LOT</th>
-        <th class="text-right">수량</th><th class="text-right pr-4">매출</th>
+        <th class="text-right">수량</th><th class="text-right">매출</th>
+        <th class="text-center pr-4">관리</th>
       </tr></thead><tbody id="tbl-all-sales"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- 매출 수정 모달 -->
+<div id="su-edit-modal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(15,23,42,.55);align-items:center;justify-content:center;">
+  <div class="card p-5 space-y-3" style="width:420px;max-width:95vw;">
+    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+      <h3 class="font-bold text-slate-800 text-sm">매출 수정</h3>
+      <button onclick="suCloseEditModal()" class="text-slate-400 hover:text-slate-700 text-lg leading-none">×</button>
+    </div>
+    <input type="hidden" id="su-edit-id">
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">판매일자</label>
+        <input type="date" id="su-edit-date" class="input-field"></div>
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">채널</label>
+        <select id="su-edit-ch" class="input-field">
+          <option>D2C</option><option>리테일</option><option>POPUP</option><option>B2B</option>
+          <option>스마트스토어</option><option>쿠팡</option><option>자사몰</option>
+          <option>팝업스토어</option><option>현대백화점</option><option>스타필드</option>
+          <option>도매/B2B</option><option>기타</option>
+        </select></div>
+    </div>
+    <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">제품</label>
+      <select id="su-edit-product" class="input-field"></select></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">수량</label>
+        <input type="number" id="su-edit-qty" class="input-field" oninput="suCalcEditTotal()"></div>
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">단가 (원)</label>
+        <input type="number" id="su-edit-price" class="input-field" oninput="suCalcEditTotal()"></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">LOT</label>
+        <input id="su-edit-lot" class="input-field font-mono" placeholder="LOT번호 (선택)"></div>
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">총액 (원)</label>
+        <input type="number" id="su-edit-amount" class="input-field"></div>
+    </div>
+    <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label>
+      <input id="su-edit-note" class="input-field" placeholder="메모"></div>
+    <div class="flex justify-end gap-2 pt-1">
+      <button onclick="suCloseEditModal()" class="btn btn-secondary">취소</button>
+      <button onclick="suSaveEdit()" class="btn btn-primary">저장</button>
     </div>
   </div>
 </div>`;
@@ -360,6 +516,15 @@
       const el = document.getElementById(id);
       if (el) el.value = today;
     });
+
+    /* 기간 필터 기본값 — 최근 30일 */
+    const fromEl = document.getElementById('su-filter-from');
+    const toEl   = document.getElementById('su-filter-to');
+    if (fromEl && !fromEl.value) {
+      const d = new Date(today); d.setDate(d.getDate() - 30);
+      fromEl.value = d.toISOString().split('T')[0];
+    }
+    if (toEl && !toEl.value) toEl.value = today;
 
     /* 제품 선택 채우기 */
     suFillProductSelect();
@@ -698,66 +863,222 @@
   };
 
   /* ─────────────────────────────────────────────
-   * 채널별 분석
+   * 채널별 분석 — 기간 필터 + 탭(채널/제품/월별)
    * ───────────────────────────────────────────── */
-  window.suRenderChannelAnalysis = function () {
-    const sales = window.db?.txn?.T_SALE || [];
-    const map = {};
-    const totalRevenue = sales.reduce((s,r) => s + (Number(r.amount) || 0), 0);
 
-    sales.forEach(r => {
-      /* 채널 추출: 고객 채널 → note → 기타 */
-      let ch = '기타';
-      const cust = (window.db.master.M_CUSTOMER || []).find(c => String(c.customerId) === String(r.customerId));
-      if (cust?.channel) ch = cust.channel;
-      else if (r.note) {
-        const m = r.note.match(/채널:\s*([^\s/]+)/);
-        if (m) ch = m[1];
+  /* 현재 활성 분석 탭 상태 */
+  let _suActiveTab = 'ch';
+  let _suMonthlyChart = null;
+
+  /* 기간 단축 버튼 */
+  window.suSetPeriod = function (days) {
+    const today = (typeof window.todayISO === 'function') ? window.todayISO() : new Date().toISOString().split('T')[0];
+    const toEl   = document.getElementById('su-filter-to');
+    const fromEl = document.getElementById('su-filter-from');
+    if (toEl)   toEl.value = today;
+    if (fromEl) {
+      if (days === 0) { fromEl.value = '2000-01-01'; }
+      else {
+        const d = new Date(today); d.setDate(d.getDate() - days);
+        fromEl.value = d.toISOString().split('T')[0];
       }
-      if (!map[ch]) map[ch] = { ch, custSet: new Set(), cnt: 0, qty: 0, amount: 0 };
-      if (r.customerId) map[ch].custSet.add(r.customerId);
-      map[ch].cnt++;
-      map[ch].qty    += Number(r.qty)    || 0;
-      map[ch].amount += Number(r.amount) || 0;
+    }
+    suRenderChannelAnalysis();
+  };
+
+  /* 분석 탭 전환 */
+  window.suAnalysisTab = function (t) {
+    _suActiveTab = t;
+    ['ch','prd','mon'].forEach(k => {
+      document.getElementById('su-apanel-' + k)?.classList.toggle('hidden', k !== t);
+      document.getElementById('su-atab-'   + k)?.classList.toggle('active', k === t);
     });
+    if (t === 'mon') suRenderMonthlyChart();
+  };
+
+  /* 필터링된 매출 배열 반환 */
+  function suFilteredSales () {
+    const from = document.getElementById('su-filter-from')?.value || '';
+    const to   = document.getElementById('su-filter-to')?.value   || '9999-12-31';
+    return (window.db?.txn?.T_SALE || []).filter(r => {
+      const d = r.date || '';
+      return (!from || d >= from) && d <= to;
+    });
+  }
+
+  /* 채널 추출 헬퍼 */
+  function suGetChannel (r) {
+    const cust = (window.db?.master?.M_CUSTOMER || []).find(c => String(c.customerId) === String(r.customerId));
+    if (cust?.channel) return cust.channel;
+    if (r.note) { const m = r.note.match(/채널:\s*([^\s/,]+)/); if (m) return m[1]; }
+    return '기타';
+  }
+
+  window.suRenderChannelAnalysis = function () {
+    const sales = suFilteredSales();
+    const totalRevenue = sales.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const totalQty     = sales.reduce((s, r) => s + (Number(r.qty)    || 0), 0);
 
     /* KPI */
     const kpiEl = document.getElementById('su-channel-kpis');
     if (kpiEl) {
-      const totalQty = sales.reduce((s,r) => s + (Number(r.qty)||0), 0);
-      const channels = Object.keys(map).length;
       const avgOrder = sales.length ? Math.round(totalRevenue / sales.length) : 0;
+      const chSet = new Set(sales.map(r => suGetChannel(r)));
       kpiEl.innerHTML = `
-        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">총 매출</div><div class="text-lg font-black mt-1">${(Math.round(totalRevenue/10000)).toLocaleString()}만원</div></div>
-        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">출고건수</div><div class="text-lg font-black mt-1">${sales.length}건</div></div>
-        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">총 출고수량</div><div class="text-lg font-black mt-1">${totalQty.toLocaleString()}ea</div></div>
-        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">활성 채널</div><div class="text-lg font-black mt-1">${channels}개</div></div>`;
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">총 매출</div>
+          <div class="text-xl font-black mt-1">${Math.round(totalRevenue/10000).toLocaleString()}<span class="text-xs font-normal text-slate-400 ml-1">만원</span></div></div>
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">출고건수</div>
+          <div class="text-xl font-black mt-1">${sales.length}<span class="text-xs font-normal text-slate-400 ml-1">건</span></div></div>
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">총 출고수량</div>
+          <div class="text-xl font-black mt-1">${totalQty.toLocaleString()}<span class="text-xs font-normal text-slate-400 ml-1">ea</span></div></div>
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">평균 주문금액</div>
+          <div class="text-xl font-black mt-1">${avgOrder.toLocaleString()}<span class="text-xs font-normal text-slate-400 ml-1">원</span></div></div>`;
     }
 
-    /* 테이블 */
+    /* ── 채널별 테이블 ── */
+    const chMap = {};
+    sales.forEach(r => {
+      const ch = suGetChannel(r);
+      if (!chMap[ch]) chMap[ch] = { ch, custSet: new Set(), cnt: 0, qty: 0, amount: 0 };
+      if (r.customerId) chMap[ch].custSet.add(r.customerId);
+      chMap[ch].cnt++;
+      chMap[ch].qty    += Number(r.qty)    || 0;
+      chMap[ch].amount += Number(r.amount) || 0;
+    });
     const tbody = document.getElementById('tbl-channel-sales2');
-    if (!tbody) return;
-    const rows = Object.values(map).sort((a,b) => b.amount - a.amount);
-    tbody.innerHTML = rows.map(r => {
-      const pct = totalRevenue > 0 ? (r.amount / totalRevenue * 100).toFixed(1) : '0';
-      return `<tr>
-        <td class="pl-4 font-bold">${r.ch}</td>
-        <td class="text-xs">${r.custSet.size}명</td>
-        <td class="text-right">${r.cnt}건</td>
-        <td class="text-right">${r.qty.toLocaleString()}</td>
-        <td class="text-right font-bold">${Math.round(r.amount).toLocaleString()}원</td>
-        <td class="text-right pr-4">
-          <div class="flex items-center justify-end gap-2">
-            <div class="bg-teal-100 rounded-full h-1.5 w-16 overflow-hidden">
-              <div class="bg-teal-500 h-full rounded-full" style="width:${pct}%"></div>
+    if (tbody) {
+      tbody.innerHTML = Object.values(chMap).sort((a,b) => b.amount - a.amount).map(r => {
+        const pct = totalRevenue > 0 ? (r.amount / totalRevenue * 100).toFixed(1) : '0';
+        const avg = r.cnt > 0 ? Math.round(r.amount / r.cnt) : 0;
+        return `<tr>
+          <td class="pl-4 font-bold">${r.ch}</td>
+          <td class="text-xs">${r.custSet.size}명</td>
+          <td class="text-right">${r.cnt}건</td>
+          <td class="text-right">${r.qty.toLocaleString()}</td>
+          <td class="text-right font-bold">${Math.round(r.amount).toLocaleString()}원</td>
+          <td class="text-right text-slate-500">${avg.toLocaleString()}원</td>
+          <td class="text-right pr-4">
+            <div class="flex items-center justify-end gap-2">
+              <div class="bg-teal-100 rounded-full h-1.5 w-16 overflow-hidden">
+                <div class="bg-teal-500 h-full rounded-full" style="width:${pct}%"></div>
+              </div>
+              <span class="text-xs font-bold text-slate-600">${pct}%</span>
             </div>
-            <span class="text-xs font-bold text-slate-600">${pct}%</span>
-          </div>
-        </td>
-      </tr>`;
-    }).join('') || '<tr><td colspan="6" class="text-center py-5 text-slate-400">출고 데이터가 없습니다</td></tr>';
+          </td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="7" class="text-center py-5 text-slate-400">출고 데이터가 없습니다</td></tr>';
+    }
+
+    /* ── 제품별 테이블 ── */
+    const prdMap = {};
+    sales.forEach(r => {
+      const prd = (window.db?.master?.M_PRODUCT || []).find(p => String(p.productId) === String(r.productId));
+      const key = prd?.name || (r.note?.match(/\/\s*(.+)/)?.[1]?.trim() || '기타');
+      if (!prdMap[key]) prdMap[key] = { name: key, cnt: 0, qty: 0, amount: 0 };
+      prdMap[key].cnt++;
+      prdMap[key].qty    += Number(r.qty)    || 0;
+      prdMap[key].amount += Number(r.amount) || 0;
+    });
+    const prdBody = document.getElementById('tbl-product-sales2');
+    if (prdBody) {
+      prdBody.innerHTML = Object.values(prdMap).sort((a,b) => b.amount - a.amount).map(r => {
+        const pct = totalRevenue > 0 ? (r.amount / totalRevenue * 100).toFixed(1) : '0';
+        const avg = r.qty > 0 ? Math.round(r.amount / r.qty) : 0;
+        return `<tr>
+          <td class="pl-4 font-bold text-xs">${r.name}</td>
+          <td class="text-right">${r.cnt}건</td>
+          <td class="text-right">${r.qty.toLocaleString()}</td>
+          <td class="text-right font-bold">${Math.round(r.amount).toLocaleString()}원</td>
+          <td class="text-right text-slate-500">${avg.toLocaleString()}원</td>
+          <td class="text-right pr-4">
+            <div class="flex items-center justify-end gap-2">
+              <div class="bg-violet-100 rounded-full h-1.5 w-16 overflow-hidden">
+                <div class="bg-violet-400 h-full rounded-full" style="width:${pct}%"></div>
+              </div>
+              <span class="text-xs font-bold text-slate-600">${pct}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="6" class="text-center py-5 text-slate-400">출고 데이터가 없습니다</td></tr>';
+    }
+
+    /* 현재 탭이 월별이면 차트도 갱신 */
+    if (_suActiveTab === 'mon') suRenderMonthlyChart();
   };
 
+  /* ── 월별 추이 차트 + 테이블 ── */
+  function suRenderMonthlyChart () {
+    const sales = suFilteredSales();
+
+    /* 월별 집계 */
+    const monMap = {};
+    sales.forEach(r => {
+      const ym = (r.date || '').slice(0, 7);
+      if (!ym) return;
+      if (!monMap[ym]) monMap[ym] = { ym, cnt: 0, qty: 0, amount: 0 };
+      monMap[ym].cnt++;
+      monMap[ym].qty    += Number(r.qty)    || 0;
+      monMap[ym].amount += Number(r.amount) || 0;
+    });
+    const rows = Object.values(monMap).sort((a, b) => a.ym.localeCompare(b.ym));
+
+    /* 테이블 */
+    const tbody = document.getElementById('tbl-monthly-sales2');
+    if (tbody) {
+      tbody.innerHTML = rows.map(r =>
+        `<tr>
+          <td class="pl-4 font-bold mono text-xs">${r.ym}</td>
+          <td class="text-right">${r.cnt}건</td>
+          <td class="text-right">${r.qty.toLocaleString()}</td>
+          <td class="text-right font-bold pr-4">${Math.round(r.amount).toLocaleString()}원</td>
+        </tr>`
+      ).join('') || '<tr><td colspan="4" class="text-center py-5 text-slate-400">데이터 없음</td></tr>';
+    }
+
+    /* 차트 */
+    const canvas = document.getElementById('su-monthly-chart');
+    if (!canvas || !window.Chart) return;
+    if (_suMonthlyChart) { try { _suMonthlyChart.destroy(); } catch(e) {} }
+    try {
+      _suMonthlyChart = new window.Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: rows.map(r => r.ym),
+          datasets: [
+            {
+              label: '매출 (원)',
+              data: rows.map(r => r.amount),
+              backgroundColor: 'rgba(13,148,136,.75)',
+              borderRadius: 4,
+              yAxisID: 'yAmt'
+            },
+            {
+              label: '수량',
+              data: rows.map(r => r.qty),
+              type: 'line',
+              borderColor: '#f59e0b',
+              backgroundColor: 'transparent',
+              tension: 0.3,
+              pointRadius: 4,
+              yAxisID: 'yQty'
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } },
+          scales: {
+            yAmt: { position: 'left',  beginAtZero: true, ticks: { callback: v => (v/10000).toFixed(0)+'만', font: { size: 10 } } },
+            yQty: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+    } catch(e) { console.warn('chart error', e); }
+  }
+
+  /* ─────────────────────────────────────────────
+   * 매출 등록 이력 — 수정/삭제 버튼 포함
+   * ───────────────────────────────────────────── */
   window.suRenderAllSales = function () {
     const tbody = document.getElementById('tbl-all-sales');
     const cntEl = document.getElementById('su-sale-count');
@@ -765,21 +1086,132 @@
     const sales = [...(window.db?.txn?.T_SALE || [])].reverse();
     if (cntEl) cntEl.textContent = sales.length;
     tbody.innerHTML = sales.map(r => {
-      const prd  = window.db.master.M_PRODUCT?.find(p => String(p.productId) === String(r.productId));
-      const cust = window.db.master.M_CUSTOMER?.find(c => String(c.customerId) === String(r.customerId));
-      let ch = cust?.channel || '';
-      if (!ch && r.note) { const m = r.note.match(/채널:\s*([^\s/]+)/); if (m) ch = m[1]; }
+      const prd  = (window.db?.master?.M_PRODUCT || []).find(p => String(p.productId) === String(r.productId));
+      const cust = (window.db?.master?.M_CUSTOMER || []).find(c => String(c.customerId) === String(r.customerId));
+      const ch   = suGetChannel(r);
+      const safeId = String(r.id).replace(/'/g, "\\'");
       return `<tr>
         <td class="pl-4 text-xs">${r.date || '-'}</td>
-        <td class="text-xs">${ch || '-'}</td>
+        <td class="text-xs"><span class="badge-soft">${ch}</span></td>
         <td class="text-xs">${cust?.name || '-'}</td>
         <td class="text-xs font-bold">${prd?.name || (r.note?.split('/')[1]?.trim() || '-')}</td>
         <td><span class="lot-badge fgt text-[9px]">${r.lotNo || '-'}</span></td>
         <td class="text-right">${r.qty || 0}</td>
-        <td class="text-right pr-4 font-bold">${Math.round(r.amount || 0).toLocaleString()}원</td>
+        <td class="text-right font-bold">${Math.round(r.amount || 0).toLocaleString()}원</td>
+        <td class="text-center pr-4">
+          <div class="flex justify-center gap-1">
+            <button onclick="suOpenEditModal('${safeId}')"
+              class="btn btn-secondary btn-sm">수정</button>
+            <button onclick="suDeleteSale('${safeId}')"
+              class="btn btn-danger btn-sm">삭제</button>
+          </div>
+        </td>
       </tr>`;
-    }).join('') || '<tr><td colspan="7" class="text-center py-5 text-slate-400">매출 이력이 없습니다</td></tr>';
+    }).join('') || '<tr><td colspan="8" class="text-center py-5 text-slate-400">매출 이력이 없습니다</td></tr>';
   };
+
+  /* ─────────────────────────────────────────────
+   * 수정 모달
+   * ───────────────────────────────────────────── */
+  window.suOpenEditModal = function (saleId) {
+    const r = (window.db?.txn?.T_SALE || []).find(x => String(x.id) === String(saleId));
+    if (!r) return;
+
+    /* 제품 셀렉트 채우기 */
+    const prdSel = document.getElementById('su-edit-product');
+    if (prdSel) {
+      prdSel.innerHTML = '<option value="">제품 선택</option>' +
+        (window.db?.master?.M_PRODUCT || []).map(p =>
+          `<option value="${p.productId}">${p.name}</option>`
+        ).join('');
+    }
+
+    /* 값 세팅 */
+    document.getElementById('su-edit-id').value      = r.id;
+    document.getElementById('su-edit-date').value    = r.date  || '';
+    document.getElementById('su-edit-qty').value     = r.qty   || '';
+    document.getElementById('su-edit-price').value   = r.unitPrice || '';
+    document.getElementById('su-edit-amount').value  = r.amount || '';
+    document.getElementById('su-edit-lot').value     = r.lotNo || '';
+    document.getElementById('su-edit-note').value    = r.note  || '';
+    if (prdSel) prdSel.value = r.productId || '';
+
+    /* 채널 세팅 */
+    const chSel = document.getElementById('su-edit-ch');
+    if (chSel) chSel.value = suGetChannel(r);
+
+    /* 모달 표시 */
+    const modal = document.getElementById('su-edit-modal');
+    if (modal) modal.style.display = 'flex';
+  };
+
+  window.suCloseEditModal = function () {
+    const modal = document.getElementById('su-edit-modal');
+    if (modal) modal.style.display = 'none';
+  };
+
+  window.suCalcEditTotal = function () {
+    const q = parseFloat(document.getElementById('su-edit-qty')?.value) || 0;
+    const p = parseFloat(document.getElementById('su-edit-price')?.value) || 0;
+    if (q && p) document.getElementById('su-edit-amount').value = q * p;
+  };
+
+  window.suSaveEdit = function () {
+    const saleId = document.getElementById('su-edit-id')?.value;
+    const idx = (window.db?.txn?.T_SALE || []).findIndex(x => String(x.id) === String(saleId));
+    if (idx < 0) { if (typeof window.toast === 'function') window.toast('데이터를 찾을 수 없습니다', 'error'); return; }
+
+    const r = window.db.txn.T_SALE[idx];
+    const ch      = document.getElementById('su-edit-ch')?.value      || '';
+    const prodId  = document.getElementById('su-edit-product')?.value || null;
+    const qty     = parseFloat(document.getElementById('su-edit-qty')?.value)    || r.qty;
+    const price   = parseFloat(document.getElementById('su-edit-price')?.value)  || r.unitPrice;
+    const amount  = parseFloat(document.getElementById('su-edit-amount')?.value) || (qty * price);
+
+    /* note에서 채널 부분 업데이트 */
+    let note = document.getElementById('su-edit-note')?.value || r.note || '';
+    note = note.replace(/채널:\s*[^\s/,]+/, '채널: ' + ch);
+    if (!note.includes('채널:')) note = '[수정] 채널: ' + ch + (note ? ' / ' + note : '');
+
+    window.db.txn.T_SALE[idx] = {
+      ...r,
+      date:       document.getElementById('su-edit-date')?.value || r.date,
+      productId:  prodId ? Number(prodId) : r.productId,
+      qty, unitPrice: price, amount,
+      lotNo:      document.getElementById('su-edit-lot')?.value  || r.lotNo,
+      note
+    };
+
+    if (typeof window.logEvent === 'function') window.logEvent('매출 수정: ' + saleId);
+    if (typeof window.saveDB   === 'function') window.saveDB();
+    if (typeof window.toast    === 'function') window.toast('✓ 수정 완료', 'success');
+    window.suCloseEditModal();
+    suRenderChannelAnalysis();
+    suRenderAllSales();
+  };
+
+  /* ── 삭제 ── */
+  window.suDeleteSale = function (saleId) {
+    const r = (window.db?.txn?.T_SALE || []).find(x => String(x.id) === String(saleId));
+    if (!r) return;
+    const prd  = (window.db?.master?.M_PRODUCT || []).find(p => String(p.productId) === String(r.productId));
+    const label = (prd?.name || '') + ' ' + (r.qty || '') + 'ea ' + (r.date || '');
+    if (!confirm(`매출 [${label.trim()}] 을 삭제하시겠습니까?`)) return;
+    window.db.txn.T_SALE = window.db.txn.T_SALE.filter(x => String(x.id) !== String(saleId));
+    if (typeof window.logEvent === 'function') window.logEvent('매출 삭제: ' + saleId);
+    if (typeof window.saveDB   === 'function') window.saveDB();
+    if (typeof window.toast    === 'function') window.toast('삭제 완료', 'success');
+    suRenderChannelAnalysis();
+    suRenderAllSales();
+  };
+
+  /* 모달 바깥 클릭 시 닫기 */
+  document.addEventListener('click', function (e) {
+    const modal = document.getElementById('su-edit-modal');
+    if (modal && modal.style.display === 'flex' && e.target === modal) {
+      window.suCloseEditModal();
+    }
+  });
 
   /* ─────────────────────────────────────────────
    * PATCH 5: initNewPage 확장 - channel-sales 라우팅
