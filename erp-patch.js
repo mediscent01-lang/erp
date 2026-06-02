@@ -1,0 +1,857 @@
+/**
+ * SHIFTI ERP Patch v3.2-fixed
+ * 
+ * 적용 방법: index.html 의 </body> 태그 바로 앞에 아래 한 줄을 추가하세요.
+ * <script src="erp-patch.js"></script>
+ * 
+ * 수정 내역:
+ * 1. loadDB() 데이터 초기화 버그 수정 (Critical)
+ * 2. saveDB() Supabase sync 복원 (Critical)
+ * 3. 세션 만료 후 로컬 폴백 강화
+ * 4. renderAll 안전 실행 래퍼
+ * 5. channel-sales 섹션 → 매출 업로드 모듈 통합
+ */
+
+(function () {
+  'use strict';
+
+  /* ─────────────────────────────────────────────
+   * PATCH 1: loadDB - 빈 Supabase 응답으로 인한
+   *          데이터 초기화 버그 수정
+   * ───────────────────────────────────────────── */
+  window.loadDB = async function () {
+    const _showLoader = window._showLoader || function (m) {};
+    const _hideLoader = window._hideLoader || function () {};
+    const _setCS     = window._setCS     || function () {};
+    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
+    const SB_URL = window.SB_URL;
+    const SB_KEY = window.SB_KEY;
+    const SB_ROW = window.SB_ROW || 'shifti_erp_main';
+
+    _showLoader('☁️ 클라우드에서 불러오는 중…');
+
+    /* 로컬 먼저 */
+    const local = localStorage.getItem(STORAGE_KEY);
+    if (local) {
+      try { window.db = JSON.parse(local); } catch (e) {}
+    }
+
+    /* Supabase 조회 */
+    try {
+      const r = await fetch(SB_URL + '/rest/v1/erp_data?id=eq.' + SB_ROW + '&select=data', {
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SB_KEY,
+          'Authorization': 'Bearer ' + SB_KEY
+        }
+      });
+      if (!r.ok) throw new Error('GET ' + r.status);
+      const d = await r.json();
+      const rem = d.length ? d[0].data : null;
+
+      /* ★ 핵심 수정: 빈 데이터(마스터 없음)는 무시 */
+      const remHasData = rem && rem.master && (
+        (rem.master.M_RAW     || []).length > 0 ||
+        (rem.master.M_PACK    || []).length > 0 ||
+        (rem.master.M_PRODUCT || []).length > 0 ||
+        (rem.master.M_CUSTOMER || []).length > 0
+      );
+
+      if (remHasData) {
+        const rAt = new Date(rem.meta?.updatedAt || 0);
+        const lAt = window.db?.meta?.updatedAt ? new Date(window.db.meta.updatedAt) : new Date(0);
+        if (rAt >= lAt) {
+          window.db = rem;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
+        }
+      }
+      _setCS('☁️', '연결됨');
+    } catch (e) {
+      console.warn('[SB] load fail:', e.message);
+      _setCS('⚠️', '오프라인 (로컬 데이터)');
+    }
+
+    /* DB 구조 보정 */
+    const db = window.db;
+    if (!db.master)      db.master = { M_RAW: [], M_PACK: [], M_PRODUCT: [], M_CUSTOMER: [] };
+    if (!db.stock)       db.stock  = { RAW_LOT: [], PACK_LOT: [], BULK_LOT: [], FGT_LOT: [] };
+    if (!db.txn)         db.txn    = { T_GOODS_IN: [], T_BULK: [], T_BATCH: [], T_FILL: [], T_SALE: [], T_QC: [], T_ADJ: [] };
+    if (!db.logs)        db.logs   = [];
+    if (!db.costHistory) db.costHistory = [];
+    ['M_FORMULA','M_MATURATION','M_SAFETY_STOCK'].forEach(k => { if (!db.master[k]) db.master[k] = []; });
+    if (!db.master.M_CHANNEL_TAGS) db.master.M_CHANNEL_TAGS = {};
+    ['T_BULK','T_FILL','T_QC','T_ADJ'].forEach(k => { if (!db.txn[k]) db.txn[k] = []; });
+    try { if (typeof window.autoExpireLots === 'function') window.autoExpireLots(); } catch (e) {}
+    try { if (typeof window.ensureNewTables === 'function') window.ensureNewTables(); } catch (e) {}
+
+    _hideLoader();
+  };
+
+  /* ─────────────────────────────────────────────
+   * PATCH 2: saveDB - Supabase sync 복원
+   *          (2번째 IIFE의 덮어쓰기 문제 수정)
+   * ───────────────────────────────────────────── */
+  window.saveDB = async function () {
+    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
+    const SB_URL = window.SB_URL;
+    const SB_KEY = window.SB_KEY;
+    const SB_ROW = window.SB_ROW || 'shifti_erp_main';
+    const db = window.db;
+
+    /* meta 갱신 */
+    if (!db.meta) db.meta = { version: '3.2-fixed' };
+    db.meta.updatedAt = new Date().toISOString();
+
+    /* 로컬 저장 */
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+
+    /* UI 갱신 */
+    try { if (typeof window.renderAll === 'function') window.renderAll(); } catch (e) {}
+
+    /* Supabase 저장 */
+    try {
+      const r = await fetch(SB_URL + '/rest/v1/erp_data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SB_KEY,
+          'Authorization': 'Bearer ' + SB_KEY,
+          'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify({ id: SB_ROW, data: db, updated_at: db.meta.updatedAt })
+      });
+      if (!r.ok) throw new Error('SET ' + r.status);
+      const t = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      if (typeof window._setCS === 'function') window._setCS('☁️', '저장됨 ' + t);
+    } catch (e) {
+      console.warn('[SB] save fail:', e.message);
+      if (typeof window._setCS === 'function') window._setCS('⚠️', '저장 실패 (로컬만)');
+    }
+  };
+
+  /* ─────────────────────────────────────────────
+   * PATCH 3: resetDB - 안전 초기화
+   * ───────────────────────────────────────────── */
+  window.resetDB = async function () {
+    if (!confirm('⚠️ 클라우드 포함 모든 데이터를 삭제합니다. 계속하시겠습니까?')) return;
+    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
+    localStorage.removeItem(STORAGE_KEY);
+    try {
+      const SB_URL = window.SB_URL, SB_KEY = window.SB_KEY, SB_ROW = window.SB_ROW || 'shifti_erp_main';
+      await fetch(SB_URL + '/rest/v1/erp_data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SB_KEY,
+          'Authorization': 'Bearer ' + SB_KEY,
+          'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify({ id: SB_ROW, data: { meta: { version: '3.2-fixed' } }, updated_at: new Date().toISOString() })
+      });
+      if (typeof window.toast === 'function') window.toast('초기화 완료', 'success');
+    } catch (e) {
+      if (typeof window.toast === 'function') window.toast('클라우드 초기화 실패 (로컬만)', 'error');
+    }
+    location.reload();
+  };
+
+  /* ─────────────────────────────────────────────
+   * PATCH 4: channel-sales 섹션 → 매출 업로드 모듈
+   * ───────────────────────────────────────────── */
+
+  function buildSalesUploadSection() {
+    const sec = document.getElementById('page-channel-sales');
+    if (!sec) return;
+
+    sec.innerHTML = `
+<div class="space-y-5">
+  <!-- 헤더 -->
+  <div class="flex items-center justify-between">
+    <h2 class="text-lg font-black text-slate-800">매출 업로드 &amp; 채널별 분석</h2>
+    <span class="badge-teal">온라인 · 오프라인 통합</span>
+  </div>
+
+  <!-- 업로드 탭 카드 -->
+  <div class="card p-5">
+    <div class="flex gap-0 border-b border-slate-200 mb-5">
+      <button id="su-tab-excel" class="tab-btn active" onclick="suTab('excel')">📊 엑셀 업로드</button>
+      <button id="su-tab-image" class="tab-btn" onclick="suTab('image')">📷 이미지 OCR</button>
+      <button id="su-tab-manual" class="tab-btn" onclick="suTab('manual')">✏️ 직접 입력</button>
+    </div>
+
+    <!-- 엑셀 탭 -->
+    <div id="su-panel-excel" class="space-y-4">
+      <div class="grid grid-cols-2 gap-3 mb-2">
+        <div id="su-ch-online" onclick="suToggleCh(this,'online')"
+          class="border rounded-lg p-3 cursor-pointer border-teal-400 bg-teal-50 transition">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">🌐</span>
+            <div><div class="text-xs font-black">온라인</div><div class="text-[10px] text-slate-500">스마트스토어·쿠팡·자사몰</div></div>
+            <span class="ml-auto text-teal-500 font-black text-xs">✓</span>
+          </div>
+        </div>
+        <div id="su-ch-offline" onclick="suToggleCh(this,'offline')"
+          class="border rounded-lg p-3 cursor-pointer border-slate-200 transition hover:border-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">🏪</span>
+            <div><div class="text-xs font-black">오프라인</div><div class="text-[10px] text-slate-500">팝업·백화점·매장</div></div>
+            <span class="ml-auto text-slate-300 text-xs">✓</span>
+          </div>
+        </div>
+      </div>
+      <div id="su-drop-excel"
+        class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition"
+        onclick="document.getElementById('su-file-excel').click()"
+        ondragover="event.preventDefault();this.classList.add('border-teal-400','bg-teal-50')"
+        ondragleave="this.classList.remove('border-teal-400','bg-teal-50')"
+        ondrop="suHandleExcelDrop(event)">
+        <div class="text-3xl mb-2">📊</div>
+        <div class="font-black text-sm text-slate-700">엑셀 파일을 드래그하거나 클릭해서 선택</div>
+        <div class="text-xs text-slate-400 mt-1">날짜·채널·제품명·수량·단가·총액 열 자동 매핑</div>
+        <div class="flex justify-center gap-2 mt-3">
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.xlsx</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.xls</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.csv</span>
+        </div>
+      </div>
+      <input type="file" id="su-file-excel" accept=".xlsx,.xls,.csv" class="hidden" onchange="suHandleExcelFile(this)">
+      <div id="su-excel-preview" class="hidden space-y-3">
+        <div class="flex items-center gap-2">
+          <span id="su-fname" class="text-xs px-2 py-1 rounded bg-slate-100 text-slate-600 font-mono"></span>
+          <button onclick="suResetExcel()" class="btn btn-secondary btn-sm">초기화</button>
+        </div>
+        <div id="su-col-map" class="space-y-1"></div>
+        <div class="border rounded-lg overflow-hidden">
+          <div class="bg-slate-50 px-3 py-2 text-[10.5px] font-bold text-slate-500 flex justify-between">
+            <span>미리보기 (상위 5행)</span><span id="su-row-count" class="badge-soft">0행</span>
+          </div>
+          <div class="overflow-x-auto"><table id="su-preview-tbl" class="w-full text-xs"></table></div>
+        </div>
+        <div id="su-summary-grid" class="grid grid-cols-3 gap-3"></div>
+        <div id="su-status-list" class="space-y-1"></div>
+        <div class="flex justify-end gap-2">
+          <button id="su-excel-confirm" onclick="suConfirmExcel()" class="btn btn-primary hidden">
+            📥 ERP 매출 반영
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 이미지 탭 -->
+    <div id="su-panel-image" class="hidden space-y-4">
+      <div id="su-drop-img"
+        class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-teal-400 hover:bg-teal-50 transition"
+        onclick="document.getElementById('su-file-img').click()"
+        ondragover="event.preventDefault();this.classList.add('border-teal-400','bg-teal-50')"
+        ondragleave="this.classList.remove('border-teal-400','bg-teal-50')"
+        ondrop="suHandleImgDrop(event)">
+        <div class="text-3xl mb-2">📷</div>
+        <div class="font-black text-sm text-slate-700">영수증·주문내역 이미지 업로드</div>
+        <div class="text-xs text-slate-400 mt-1">스마트스토어 캡처, POS 영수증, 판매 스크린샷 등</div>
+        <div class="flex justify-center gap-2 mt-3">
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.jpg</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.png</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">.webp</span>
+        </div>
+      </div>
+      <input type="file" id="su-file-img" accept="image/*" class="hidden" onchange="suHandleImgFile(this)">
+      <div id="su-img-preview" class="hidden space-y-3">
+        <img id="su-img-thumb" class="max-h-48 rounded-lg border border-slate-200 mx-auto block" src="" alt="업로드 이미지">
+        <div class="flex gap-2">
+          <button onclick="suRunOCR()" class="btn btn-primary">🔍 AI 분석</button>
+          <button onclick="suResetImg()" class="btn btn-secondary">다시 선택</button>
+        </div>
+      </div>
+      <div id="su-ocr-section" class="hidden space-y-3">
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-14" id="su-ocr-result">
+          <div class="flex items-center gap-2 text-slate-400 text-xs">
+            <div class="w-3 h-3 border-2 border-slate-300 border-t-teal-500 rounded-full animate-spin"></div>
+            AI 분석 중…
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">판매일자</label><input type="date" id="su-ocr-date" class="input-field"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">채널</label>
+            <select id="su-ocr-ch" class="input-field">
+              <option>스마트스토어</option><option>쿠팡</option><option>자사몰</option>
+              <option>팝업스토어</option><option>현대백화점</option><option>기타</option>
+            </select>
+          </div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">제품명</label><input id="su-ocr-product" class="input-field" placeholder="제품명"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">수량</label><input type="number" id="su-ocr-qty" class="input-field" placeholder="0" oninput="suCalcOcrTotal()"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">단가 (원)</label><input type="number" id="su-ocr-price" class="input-field" placeholder="0" oninput="suCalcOcrTotal()"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">총액 (원)</label><input id="su-ocr-total" class="input-field bg-slate-50" readonly placeholder="자동 계산"></div>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button onclick="suResetImg()" class="btn btn-secondary">다시 업로드</button>
+          <button onclick="suConfirmOCR()" class="btn btn-primary">📥 ERP 매출 반영</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 직접 입력 탭 -->
+    <div id="su-panel-manual" class="hidden space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">판매일자</label><input type="date" id="su-m-date" class="input-field"></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">채널</label>
+          <select id="su-m-ch" class="input-field">
+            <option value="스마트스토어">스마트스토어</option><option value="쿠팡">쿠팡</option>
+            <option value="자사몰">자사몰 (SHIFTI)</option><option value="팝업스토어">팝업스토어</option>
+            <option value="현대백화점">현대백화점</option><option value="스타필드">스타필드</option>
+            <option value="도매/B2B">도매/B2B</option><option value="기타">기타</option>
+          </select>
+        </div>
+      </div>
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">제품 선택</label>
+        <select id="su-m-product" class="input-field"></select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">수량</label><input type="number" id="su-m-qty" class="input-field" placeholder="0" oninput="suCalcManual()"></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">단가 (원)</label><input type="number" id="su-m-price" class="input-field" placeholder="0" oninput="suCalcManual()"></div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">할인 (원)</label><input type="number" id="su-m-disc" class="input-field" placeholder="0" oninput="suCalcManual()"></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">순매출 (원)</label><input id="su-m-net" class="input-field bg-slate-50" readonly placeholder="자동 계산"></div>
+      </div>
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label><input id="su-m-note" class="input-field" placeholder="주문번호, 고객명 등 (선택)"></div>
+      <div class="flex justify-end gap-2">
+        <button onclick="suClearManual()" class="btn btn-secondary">초기화</button>
+        <button onclick="suConfirmManual()" class="btn btn-primary">📥 ERP 매출 반영</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 채널별 분석 -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="font-bold text-slate-700 text-sm">채널별 매출 분석</h3>
+      <button onclick="suRenderChannelAnalysis()" class="btn btn-secondary btn-sm">🔄 새로고침</button>
+    </div>
+    <div id="su-channel-table-wrap">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4" id="su-channel-kpis"></div>
+      <div class="overflow-x-auto">
+        <table><thead><tr>
+          <th class="pl-4">채널</th><th>고객</th>
+          <th class="text-right">출고건수</th><th class="text-right">출고수량</th>
+          <th class="text-right">매출합계</th><th class="text-right pr-4">비중</th>
+        </tr></thead><tbody id="tbl-channel-sales2"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 매출 등록 이력 -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="font-bold text-slate-700 text-sm">매출 등록 이력 (전체)</h3>
+      <span class="badge-soft" id="su-sale-count">0</span>
+    </div>
+    <div class="scroll-card-lg">
+      <table><thead><tr>
+        <th class="pl-4">일자</th><th>채널</th><th>고객</th><th>제품</th><th>LOT</th>
+        <th class="text-right">수량</th><th class="text-right pr-4">매출</th>
+      </tr></thead><tbody id="tbl-all-sales"></tbody></table>
+    </div>
+  </div>
+</div>`;
+
+    /* 날짜 기본값 */
+    const today = (typeof window.todayISO === 'function') ? window.todayISO() : new Date().toISOString().split('T')[0];
+    ['su-ocr-date', 'su-m-date'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = today;
+    });
+
+    /* 제품 선택 채우기 */
+    suFillProductSelect();
+    suRenderChannelAnalysis();
+    suRenderAllSales();
+  }
+
+  /* ───── 탭 전환 ───── */
+  window.suTab = function (t) {
+    ['excel','image','manual'].forEach(k => {
+      document.getElementById('su-panel-' + k)?.classList.toggle('hidden', k !== t);
+      document.getElementById('su-tab-' + k)?.classList.toggle('active', k === t);
+    });
+  };
+
+  /* ───── 채널 토글 ───── */
+  window.suToggleCh = function (el) { el.classList.toggle('border-teal-400'); el.classList.toggle('bg-teal-50'); };
+
+  /* ───── 제품 셀렉트 ───── */
+  function suFillProductSelect() {
+    const el = document.getElementById('su-m-product');
+    if (!el) return;
+    el.innerHTML = '<option value="">제품 선택</option>' +
+      (window.db?.master?.M_PRODUCT || []).map(p =>
+        `<option value="${p.productId}">${p.name}</option>`
+      ).join('');
+  }
+
+  /* ─────────────────────────────────────────────
+   * EXCEL 업로드
+   * ───────────────────────────────────────────── */
+  const SU_COL_MAP = {
+    '날짜':  ['date','날짜','일자','판매일','판매일자','order date'],
+    '채널':  ['channel','채널','판매채널','플랫폼'],
+    '제품명': ['product','제품명','상품명','item','품목'],
+    '수량':  ['qty','수량','quantity','판매수량'],
+    '단가':  ['price','단가','unit price','판매가'],
+    '총액':  ['total','총액','합계','결제금액','주문금액']
+  };
+  function suDetectCol(headers, candidates) {
+    return headers.find(h => candidates.some(c =>
+      h.toLowerCase().replace(/\s/g,'').includes(c.toLowerCase().replace(/\s/g,''))
+    )) || null;
+  }
+
+  window.suHandleExcelDrop = function (e) {
+    e.preventDefault();
+    document.getElementById('su-drop-excel')?.classList.remove('border-teal-400','bg-teal-50');
+    const f = e.dataTransfer.files[0];
+    if (f) suProcessExcel(f);
+  };
+  window.suHandleExcelFile = function (inp) {
+    if (inp.files[0]) suProcessExcel(inp.files[0]);
+  };
+
+  function suProcessExcel(file) {
+    document.getElementById('su-fname').textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        suRenderExcelPreview(json);
+        window.__suExcelData = json;
+      } catch (err) {
+        if (typeof window.toast === 'function') window.toast('파일 읽기 실패: ' + err.message, 'error');
+      }
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  function suRenderExcelPreview(data) {
+    if (!data.length) { if (typeof window.toast === 'function') window.toast('데이터가 없습니다', 'error'); return; }
+    const headers = Object.keys(data[0]);
+
+    /* 열 매핑 */
+    let mapHtml = '<div class="grid grid-cols-1 gap-1.5">';
+    for (const [label, candidates] of Object.entries(SU_COL_MAP)) {
+      const detected = suDetectCol(headers, candidates);
+      const opts = '<option value="">— 선택 —</option>' + headers.map(h =>
+        `<option${h === detected ? ' selected' : ''}>${h}</option>`
+      ).join('');
+      mapHtml += `<div class="flex items-center gap-2 text-xs">
+        <span class="w-20 text-slate-500 font-bold shrink-0">${label}</span>
+        <span class="text-slate-300">→</span>
+        <select data-label="${label}" class="input-field flex-1 text-xs">${opts}</select>
+      </div>`;
+    }
+    mapHtml += '</div>';
+    document.getElementById('su-col-map').innerHTML = mapHtml;
+
+    /* 미리보기 테이블 */
+    const tbl = document.getElementById('su-preview-tbl');
+    const head = '<thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead>';
+    const rows = data.slice(0,5).map(r =>
+      '<tr>' + headers.map(h => `<td>${r[h]}</td>`).join('') + '</tr>'
+    ).join('');
+    tbl.innerHTML = head + '<tbody>' + rows + '</tbody>';
+    document.getElementById('su-row-count').textContent = data.length + '행';
+
+    /* 요약 */
+    const totalCol = suDetectCol(headers, SU_COL_MAP['총액']);
+    const qtyCol   = suDetectCol(headers, SU_COL_MAP['수량']);
+    const totalSales = totalCol ? data.reduce((s,r) => s + (parseFloat(String(r[totalCol]).replace(/[^0-9.]/g,'')) || 0), 0) : 0;
+    const totalQty   = qtyCol   ? data.reduce((s,r) => s + (parseFloat(r[qtyCol]) || 0), 0) : 0;
+    document.getElementById('su-summary-grid').innerHTML = `
+      <div class="card p-3"><div class="text-[10px] text-slate-400 uppercase font-bold">총 행수</div><div class="text-xl font-black mt-1">${data.length}<span class="text-xs font-normal text-slate-400 ml-1">건</span></div></div>
+      <div class="card p-3"><div class="text-[10px] text-slate-400 uppercase font-bold">총 수량</div><div class="text-xl font-black mt-1">${totalQty.toLocaleString()}<span class="text-xs font-normal text-slate-400 ml-1">ea</span></div></div>
+      <div class="card p-3"><div class="text-[10px] text-slate-400 uppercase font-bold">총 매출</div><div class="text-xl font-black mt-1">${totalSales ? Math.round(totalSales/10000).toLocaleString() : '—'}<span class="text-xs font-normal text-slate-400 ml-1">${totalSales?'만원':''}</span></div></div>`;
+
+    /* 상태 */
+    const missing = Object.entries(SU_COL_MAP)
+      .filter(([l,c]) => !suDetectCol(headers, c)).map(([l]) => l);
+    let statusHtml = '';
+    if (!missing.length) {
+      statusHtml += `<div class="flex items-center gap-2 text-xs text-emerald-600"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>모든 필수 열이 자동 감지되었습니다</div>`;
+    } else {
+      statusHtml += `<div class="flex items-center gap-2 text-xs text-amber-600"><span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>자동 감지 실패: <strong>${missing.join(', ')}</strong> — 위 매핑에서 직접 선택해주세요</div>`;
+    }
+    statusHtml += `<div class="flex items-center gap-2 text-xs text-blue-600"><span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>${data.length}건 중 상위 5행이 미리보기에 표시됩니다</div>`;
+    document.getElementById('su-status-list').innerHTML = statusHtml;
+
+    document.getElementById('su-excel-preview').classList.remove('hidden');
+    document.getElementById('su-excel-confirm').classList.remove('hidden');
+  }
+
+  window.suResetExcel = function () {
+    document.getElementById('su-excel-preview').classList.add('hidden');
+    document.getElementById('su-excel-confirm').classList.add('hidden');
+    document.getElementById('su-file-excel').value = '';
+    window.__suExcelData = null;
+  };
+
+  window.suConfirmExcel = function () {
+    const data = window.__suExcelData;
+    if (!data || !data.length) { if (typeof window.toast === 'function') window.toast('업로드된 데이터가 없습니다', 'error'); return; }
+
+    /* 채널 매핑 셀렉트 값 수집 */
+    const colMap = {};
+    document.querySelectorAll('#su-col-map select[data-label]').forEach(sel => {
+      colMap[sel.dataset.label] = sel.value;
+    });
+
+    /* T_SALE에 삽입 */
+    let added = 0;
+    data.forEach(row => {
+      const date    = row[colMap['날짜']]  || window.todayISO?.() || new Date().toISOString().split('T')[0];
+      const channel = row[colMap['채널']]  || '기타';
+      const product = row[colMap['제품명']] || '';
+      const qty     = parseFloat(row[colMap['수량']] ) || 0;
+      const price   = parseFloat(row[colMap['단가']] ) || 0;
+      const total   = parseFloat(String(row[colMap['총액']] || '').replace(/[^0-9.]/g,'')) || (qty * price);
+      if (!qty && !total) return;
+
+      /* 제품 매핑 시도 */
+      const prd = (window.db.master.M_PRODUCT || []).find(p =>
+        p.name && product && (p.name.toLowerCase().includes(product.toLowerCase()) || product.toLowerCase().includes(p.name.toLowerCase()))
+      );
+      const uid = 'SALE-UP-' + Date.now() + '-' + added;
+      window.db.txn.T_SALE.push({
+        id: uid, date: String(date).slice(0,10), customerId: null,
+        productId: prd?.productId || null, lotNo: '',
+        qty, unitPrice: price, amount: total,
+        note: '[업로드] 채널: ' + channel + (product ? ' / ' + product : '')
+      });
+      added++;
+    });
+
+    if (typeof window.logEvent === 'function') window.logEvent('매출 엑셀 업로드: ' + added + '건');
+    if (typeof window.saveDB  === 'function') window.saveDB();
+    if (typeof window.toast   === 'function') window.toast('✓ ' + added + '건 ERP 매출에 반영되었습니다', 'success');
+    suRenderChannelAnalysis();
+    suRenderAllSales();
+    window.suResetExcel();
+  };
+
+  /* ─────────────────────────────────────────────
+   * 이미지 OCR
+   * ───────────────────────────────────────────── */
+  window.suHandleImgDrop = function (e) {
+    e.preventDefault();
+    document.getElementById('su-drop-img')?.classList.remove('border-teal-400','bg-teal-50');
+    const f = e.dataTransfer.files[0];
+    if (f) suProcessImg(f);
+  };
+  window.suHandleImgFile = function (inp) { if (inp.files[0]) suProcessImg(inp.files[0]); };
+
+  function suProcessImg(file) {
+    window.__suImgFile = file;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      window.__suImgBase64 = e.target.result;
+      document.getElementById('su-img-thumb').src = e.target.result;
+      document.getElementById('su-img-preview').classList.remove('hidden');
+      document.getElementById('su-drop-img').classList.add('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  window.suResetImg = function () {
+    window.__suImgFile = null; window.__suImgBase64 = null;
+    document.getElementById('su-file-img').value = '';
+    document.getElementById('su-img-preview').classList.add('hidden');
+    document.getElementById('su-ocr-section').classList.add('hidden');
+    document.getElementById('su-drop-img').classList.remove('hidden');
+  };
+
+  window.suRunOCR = async function () {
+    document.getElementById('su-ocr-section').classList.remove('hidden');
+    document.getElementById('su-ocr-result').innerHTML =
+      '<div class="flex items-center gap-2 text-slate-400 text-xs"><div class="w-3 h-3 border-2 border-slate-300 border-t-teal-500 rounded-full animate-spin"></div>AI가 이미지를 분석 중…</div>';
+    ['su-ocr-date','su-ocr-ch','su-ocr-product','su-ocr-qty','su-ocr-price','su-ocr-total'].forEach(id => {
+      const el = document.getElementById(id); if (el && el.tagName === 'INPUT') el.value = '';
+    });
+
+    if (!window.__suImgBase64) { if (typeof window.toast === 'function') window.toast('이미지를 먼저 선택해주세요', 'error'); return; }
+
+    try {
+      const base64data  = window.__suImgBase64.split(',')[1];
+      const mediaType   = window.__suImgFile?.type || 'image/jpeg';
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 800,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64data } },
+              { type: 'text', text: '이 이미지는 판매 영수증 또는 주문 내역입니다. JSON만 출력하세요 (설명 없이):\n{"date":"YYYY-MM-DD","channel":"채널명","product":"제품명","qty":수량숫자,"price":단가숫자,"total":총액숫자}\n숫자는 쉼표 없이. 없는 항목은 null.' }
+            ]
+          }]
+        })
+      });
+
+      const data = await res.json();
+      const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+      let parsed = {};
+      try { parsed = JSON.parse(text.replace(/```json|```/g, '').trim()); } catch (e) {}
+
+      document.getElementById('su-ocr-result').innerHTML =
+        '<div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">' +
+        Object.entries(parsed).filter(([,v]) => v !== null).map(([k,v]) =>
+          `<div class="text-slate-400">${k}</div><div class="font-bold">${v}</div>`
+        ).join('') + '</div>';
+
+      const today = window.todayISO?.() || new Date().toISOString().split('T')[0];
+      if (parsed.date)    document.getElementById('su-ocr-date').value    = parsed.date;
+      else                document.getElementById('su-ocr-date').value    = today;
+      if (parsed.channel) document.getElementById('su-ocr-ch').value      = parsed.channel;
+      if (parsed.product) document.getElementById('su-ocr-product').value = parsed.product;
+      if (parsed.qty)     document.getElementById('su-ocr-qty').value     = parsed.qty;
+      if (parsed.price)   document.getElementById('su-ocr-price').value   = parsed.price;
+      const tot = parsed.total || ((parsed.qty||0) * (parsed.price||0));
+      if (tot) document.getElementById('su-ocr-total').value = Number(tot).toLocaleString() + '원';
+
+    } catch (err) {
+      document.getElementById('su-ocr-result').innerHTML =
+        `<span class="text-red-500 text-xs">분석 오류: ${err.message}</span>`;
+    }
+  };
+
+  window.suCalcOcrTotal = function () {
+    const q = parseFloat(document.getElementById('su-ocr-qty')?.value) || 0;
+    const p = parseFloat(document.getElementById('su-ocr-price')?.value) || 0;
+    if (q && p) document.getElementById('su-ocr-total').value = (q * p).toLocaleString() + '원';
+  };
+
+  window.suConfirmOCR = function () {
+    const prod    = document.getElementById('su-ocr-product')?.value;
+    const qty     = parseFloat(document.getElementById('su-ocr-qty')?.value) || 0;
+    const price   = parseFloat(document.getElementById('su-ocr-price')?.value) || 0;
+    const date    = document.getElementById('su-ocr-date')?.value || window.todayISO?.() || new Date().toISOString().split('T')[0];
+    const channel = document.getElementById('su-ocr-ch')?.value || '기타';
+    if (!qty) { if (typeof window.toast === 'function') window.toast('수량을 확인해주세요', 'error'); return; }
+    const prd = (window.db.master.M_PRODUCT || []).find(p =>
+      p.name && prod && (p.name.toLowerCase().includes(prod.toLowerCase()) || prod.toLowerCase().includes(p.name.toLowerCase()))
+    );
+    const total = qty * price;
+    window.db.txn.T_SALE.push({
+      id: 'SALE-OCR-' + Date.now(), date, customerId: null,
+      productId: prd?.productId || null, lotNo: '',
+      qty, unitPrice: price, amount: total,
+      note: '[OCR] 채널: ' + channel + (prod ? ' / ' + prod : '')
+    });
+    if (typeof window.logEvent === 'function') window.logEvent('매출 OCR 등록: ' + channel + ' / ' + (prod||'') + ' / ' + qty + 'ea');
+    if (typeof window.saveDB  === 'function') window.saveDB();
+    if (typeof window.toast   === 'function') window.toast('✓ OCR 매출 반영 완료', 'success');
+    suRenderChannelAnalysis();
+    suRenderAllSales();
+    window.suResetImg();
+  };
+
+  /* ─────────────────────────────────────────────
+   * 직접 입력
+   * ───────────────────────────────────────────── */
+  window.suCalcManual = function () {
+    const q = parseFloat(document.getElementById('su-m-qty')?.value) || 0;
+    const p = parseFloat(document.getElementById('su-m-price')?.value) || 0;
+    const d = parseFloat(document.getElementById('su-m-disc')?.value) || 0;
+    const net = q * p - d;
+    const el = document.getElementById('su-m-net');
+    if (el) el.value = net > 0 ? net.toLocaleString() + '원' : '';
+  };
+  window.suClearManual = function () {
+    ['su-m-qty','su-m-price','su-m-disc','su-m-net','su-m-note'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+  };
+  window.suConfirmManual = function () {
+    const qty     = parseFloat(document.getElementById('su-m-qty')?.value) || 0;
+    const price   = parseFloat(document.getElementById('su-m-price')?.value) || 0;
+    const disc    = parseFloat(document.getElementById('su-m-disc')?.value) || 0;
+    const date    = document.getElementById('su-m-date')?.value || window.todayISO?.() || new Date().toISOString().split('T')[0];
+    const channel = document.getElementById('su-m-ch')?.value || '기타';
+    const prodId  = document.getElementById('su-m-product')?.value;
+    const note    = document.getElementById('su-m-note')?.value?.trim() || '';
+    if (!qty) { if (typeof window.toast === 'function') window.toast('수량을 입력해주세요', 'error'); return; }
+    const net = qty * price - disc;
+    window.db.txn.T_SALE.push({
+      id: 'SALE-M-' + Date.now(), date, customerId: null,
+      productId: prodId ? Number(prodId) : null, lotNo: '',
+      qty, unitPrice: price, amount: net,
+      note: '[직접입력] 채널: ' + channel + (note ? ' / ' + note : '')
+    });
+    const prd = window.db.master.M_PRODUCT?.find(p => String(p.productId) === String(prodId));
+    if (typeof window.logEvent === 'function') window.logEvent('매출 직접입력: ' + channel + ' / ' + (prd?.name||'') + ' / ' + qty + 'ea');
+    if (typeof window.saveDB  === 'function') window.saveDB();
+    if (typeof window.toast   === 'function') window.toast('✓ 매출 반영 완료', 'success');
+    suRenderChannelAnalysis();
+    suRenderAllSales();
+    window.suClearManual();
+  };
+
+  /* ─────────────────────────────────────────────
+   * 채널별 분석
+   * ───────────────────────────────────────────── */
+  window.suRenderChannelAnalysis = function () {
+    const sales = window.db?.txn?.T_SALE || [];
+    const map = {};
+    const totalRevenue = sales.reduce((s,r) => s + (Number(r.amount) || 0), 0);
+
+    sales.forEach(r => {
+      /* 채널 추출: 고객 채널 → note → 기타 */
+      let ch = '기타';
+      const cust = (window.db.master.M_CUSTOMER || []).find(c => String(c.customerId) === String(r.customerId));
+      if (cust?.channel) ch = cust.channel;
+      else if (r.note) {
+        const m = r.note.match(/채널:\s*([^\s/]+)/);
+        if (m) ch = m[1];
+      }
+      if (!map[ch]) map[ch] = { ch, custSet: new Set(), cnt: 0, qty: 0, amount: 0 };
+      if (r.customerId) map[ch].custSet.add(r.customerId);
+      map[ch].cnt++;
+      map[ch].qty    += Number(r.qty)    || 0;
+      map[ch].amount += Number(r.amount) || 0;
+    });
+
+    /* KPI */
+    const kpiEl = document.getElementById('su-channel-kpis');
+    if (kpiEl) {
+      const totalQty = sales.reduce((s,r) => s + (Number(r.qty)||0), 0);
+      const channels = Object.keys(map).length;
+      const avgOrder = sales.length ? Math.round(totalRevenue / sales.length) : 0;
+      kpiEl.innerHTML = `
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">총 매출</div><div class="text-lg font-black mt-1">${(Math.round(totalRevenue/10000)).toLocaleString()}만원</div></div>
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">출고건수</div><div class="text-lg font-black mt-1">${sales.length}건</div></div>
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">총 출고수량</div><div class="text-lg font-black mt-1">${totalQty.toLocaleString()}ea</div></div>
+        <div class="card p-3"><div class="text-[10px] uppercase font-bold text-slate-400">활성 채널</div><div class="text-lg font-black mt-1">${channels}개</div></div>`;
+    }
+
+    /* 테이블 */
+    const tbody = document.getElementById('tbl-channel-sales2');
+    if (!tbody) return;
+    const rows = Object.values(map).sort((a,b) => b.amount - a.amount);
+    tbody.innerHTML = rows.map(r => {
+      const pct = totalRevenue > 0 ? (r.amount / totalRevenue * 100).toFixed(1) : '0';
+      return `<tr>
+        <td class="pl-4 font-bold">${r.ch}</td>
+        <td class="text-xs">${r.custSet.size}명</td>
+        <td class="text-right">${r.cnt}건</td>
+        <td class="text-right">${r.qty.toLocaleString()}</td>
+        <td class="text-right font-bold">${Math.round(r.amount).toLocaleString()}원</td>
+        <td class="text-right pr-4">
+          <div class="flex items-center justify-end gap-2">
+            <div class="bg-teal-100 rounded-full h-1.5 w-16 overflow-hidden">
+              <div class="bg-teal-500 h-full rounded-full" style="width:${pct}%"></div>
+            </div>
+            <span class="text-xs font-bold text-slate-600">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" class="text-center py-5 text-slate-400">출고 데이터가 없습니다</td></tr>';
+  };
+
+  window.suRenderAllSales = function () {
+    const tbody = document.getElementById('tbl-all-sales');
+    const cntEl = document.getElementById('su-sale-count');
+    if (!tbody) return;
+    const sales = [...(window.db?.txn?.T_SALE || [])].reverse();
+    if (cntEl) cntEl.textContent = sales.length;
+    tbody.innerHTML = sales.map(r => {
+      const prd  = window.db.master.M_PRODUCT?.find(p => String(p.productId) === String(r.productId));
+      const cust = window.db.master.M_CUSTOMER?.find(c => String(c.customerId) === String(r.customerId));
+      let ch = cust?.channel || '';
+      if (!ch && r.note) { const m = r.note.match(/채널:\s*([^\s/]+)/); if (m) ch = m[1]; }
+      return `<tr>
+        <td class="pl-4 text-xs">${r.date || '-'}</td>
+        <td class="text-xs">${ch || '-'}</td>
+        <td class="text-xs">${cust?.name || '-'}</td>
+        <td class="text-xs font-bold">${prd?.name || (r.note?.split('/')[1]?.trim() || '-')}</td>
+        <td><span class="lot-badge fgt text-[9px]">${r.lotNo || '-'}</span></td>
+        <td class="text-right">${r.qty || 0}</td>
+        <td class="text-right pr-4 font-bold">${Math.round(r.amount || 0).toLocaleString()}원</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="text-center py-5 text-slate-400">매출 이력이 없습니다</td></tr>';
+  };
+
+  /* ─────────────────────────────────────────────
+   * PATCH 5: initNewPage 확장 - channel-sales 라우팅
+   * ───────────────────────────────────────────── */
+  const __patchInitNewPage = window.initNewPage;
+  window.initNewPage = function (pageId) {
+    try { if (typeof __patchInitNewPage === 'function') __patchInitNewPage(pageId); } catch (e) { console.error(e); }
+    if (pageId === 'channel-sales') {
+      buildSalesUploadSection();
+    }
+  };
+
+  /* ─────────────────────────────────────────────
+   * PATCH 6: goPage 확장 - channel-sales 라우팅
+   * ───────────────────────────────────────────── */
+  const __patchGoPage = window.goPage;
+  window.goPage = function (id) {
+    const r = typeof __patchGoPage === 'function' ? __patchGoPage.apply(this, arguments) : undefined;
+    if (id === 'channel-sales') {
+      setTimeout(() => {
+        buildSalesUploadSection();
+      }, 50);
+    }
+    return r;
+  };
+
+  /* ─────────────────────────────────────────────
+   * PATCH 7: 다른 탭 실시간 동기화 안전 처리
+   *          (storage 이벤트에서 빈 데이터 덮어쓰기 방지)
+   * ───────────────────────────────────────────── */
+  window.addEventListener('storage', function (ev) {
+    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
+    if (ev.key === STORAGE_KEY && ev.newValue) {
+      try {
+        const incoming = JSON.parse(ev.newValue);
+        /* 빈 데이터면 무시 */
+        const hasData = incoming?.master && (
+          (incoming.master.M_RAW     || []).length > 0 ||
+          (incoming.master.M_PRODUCT || []).length > 0
+        );
+        if (!hasData) return;
+        const inAt = new Date(incoming?.meta?.updatedAt || 0);
+        const curAt = new Date(window.db?.meta?.updatedAt || 0);
+        if (inAt > curAt) {
+          window.db = incoming;
+          try { if (typeof window.renderAll === 'function') window.renderAll(); } catch (e) {}
+          if (typeof window._setCS === 'function') window._setCS('🔄', '다른 기기에서 동기화됨');
+        }
+      } catch (e) {}
+    }
+  });
+
+  /* ─────────────────────────────────────────────
+   * 초기화: 페이지 로드 후 적용
+   * ───────────────────────────────────────────── */
+  window.addEventListener('load', function () {
+    setTimeout(() => {
+      /* 현재 활성 섹션이 channel-sales라면 바로 빌드 */
+      const active = document.querySelector('.page-section.active');
+      if (active && active.id === 'page-channel-sales') {
+        buildSalesUploadSection();
+      }
+      /* 매출 분석 메뉴 클릭 시 바로 빌드되도록 nav 이벤트 보강 */
+      const navBtn = document.getElementById('nav-channel-sales');
+      if (navBtn) {
+        navBtn.addEventListener('click', function () {
+          setTimeout(buildSalesUploadSection, 60);
+        });
+      }
+    }, 300);
+  });
+
+  console.log('[SHIFTI ERP Patch v3.2-fixed] 로드 완료 — 데이터 초기화 버그, saveDB 복원, 매출 업로드 모듈 통합');
+
+})();
