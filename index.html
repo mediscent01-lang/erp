@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -1012,10 +1013,15 @@ function goPage(id){document.querySelectorAll('.page-section').forEach(s=>s.clas
 // ══════════════════════════════════════════════════
 // ⚙️  Supabase 설정 — 이 두 줄만 교체하세요
 // ══════════════════════════════════════════════════
-const SB_URL = 'https://wgkolsgpwxnacersyktd.supabase.co';
-const SB_KEY = 'sb_publishable_sTu7rfeuuALFgQAz6uSKcw_NFkEW63R';
+const SB_URL = 'https://foctzlqkspneznevbkmp.supabase.co';
+const SB_KEY = 'sb_publishable_YdP5oJCJJoT6XYLSZqw5oA_J_7ATKwP';
 const SB_ROW = 'shifti_erp_main';
 const SB_CFG = 'doc_config';
+// 패치(erp-patch.js)가 window에서 설정을 읽으므로 전역으로도 노출
+window.SB_URL = SB_URL;
+window.SB_KEY = SB_KEY;
+window.SB_ROW = SB_ROW;
+window.SB_CFG = SB_CFG;
 // ──────────────────────────────────────────────────
 
 function _sbH(){return{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}}
