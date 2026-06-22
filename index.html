@@ -997,7 +997,7 @@
 <div id="toast-container" class="fixed bottom-5 right-5 flex flex-col gap-2 z-50"></div>
 <script>
 const STORAGE_KEY = 'shifti_erp_v2';
-let db = { meta:{version:'3.0'}, master:{M_RAW:[],M_PACK:[],M_PRODUCT:[],M_CUSTOMER:[]}, stock:{RAW_LOT:[],PACK_LOT:[],BULK_LOT:[],FGT_LOT:[]}, txn:{T_GOODS_IN:[],T_BULK:[],T_BATCH:[],T_FILL:[],T_SALE:[],T_QC:[],T_ADJ:[]}, logs:[], costHistory:[] };
+var db = { meta:{version:'3.0'}, master:{M_RAW:[],M_PACK:[],M_PRODUCT:[],M_CUSTOMER:[]}, stock:{RAW_LOT:[],PACK_LOT:[],BULK_LOT:[],FGT_LOT:[]}, txn:{T_GOODS_IN:[],T_BULK:[],T_BATCH:[],T_FILL:[],T_SALE:[],T_QC:[],T_ADJ:[]}, logs:[], costHistory:[] }; window.db = db;
 function todayISO(){return new Date().toISOString().split('T')[0]}
 function generateId(p){return p+'-'+Date.now().toString(36)}
 function logEvent(m){db.logs.unshift('['+new Date().toLocaleString('ko-KR',{hour12:false})+'] '+m);if(db.logs.length>300)db.logs.pop()}
