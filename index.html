@@ -1662,6 +1662,16 @@ function startProdFromPlan(ppId) {
   }, 100);
 }
 
+// === BOM 소요량 공용 계산 (원료=배합비% × 충진중량, 포장재=수량) ===
+function bomNeed(product, bomRow, batchQty){
+  const fw = Number(product && product.fillWeight) || 0;
+  const q = Number(bomRow && bomRow.qty) || 0;
+  const bq = Number(batchQty) || 0;
+  if(bomRow && bomRow.type === 'RAW' && fw > 0) return (q/100) * fw * bq;
+  return q * bq;
+}
+window.bomNeed = bomNeed;
+
 // === MRP 자재소요량 계산 ===
 function calcMRP() {
   const prodId = Number(document.getElementById('mrp-product')?.value);
@@ -1676,7 +1686,7 @@ function calcMRP() {
 
   let rawHtml = '', packHtml = '';
   product.bom.forEach(b => {
-    const needed = b.qty * qty * lossFactor;
+    const needed = bomNeed(product, b, qty) * lossFactor;
     let avail = 0, name = '', unit = '';
     if (b.type === 'RAW') {
       const r = findRaw(b.itemId);
@@ -3906,7 +3916,7 @@ function initNewPage(pageId) {
     const note = document.getElementById('bulk-note2')?.value?.trim() || '';
     const product = findProduct(productId);
     if(!product || qty<=0){ toast('제품과 수량을 확인하세요','error'); return; }
-    const rawReqs = (product.bom||[]).filter(r => r.type==='RAW').map(r => ({...r, need:n(r.qty)*qty}));
+    const rawReqs = (product.bom||[]).filter(r => r.type==='RAW').map(r => ({...r, need:(window.bomNeed?window.bomNeed(product,r,qty):n(r.qty)*qty)}));
     for(const req of rawReqs){ if(totalStock('RAW', req.itemId) < req.need){ toast(`원료 부족: ${findRaw(req.itemId)?.name||req.itemId}`,'error'); return; } }
     const uses = [];
     for(const req of rawReqs){
@@ -3943,7 +3953,7 @@ function initNewPage(pageId) {
     if(!bulk || qty<=0){ toast('벌크 LOT와 수량을 확인하세요','error'); return; }
     if(n(bulk.remaining) < qty){ toast('벌크 잔량이 부족합니다','error'); return; }
     const product = findProduct(bulk.productId);
-    const packReqs = (product?.bom||[]).filter(r => r.type==='PACK').map(r => ({...r, need:n(r.qty)*qty}));
+    const packReqs = (product?.bom||[]).filter(r => r.type==='PACK').map(r => ({...r, need:(window.bomNeed?window.bomNeed(product,r,qty):n(r.qty)*qty)}));
     for(const req of packReqs){ if(totalStock('PACK', req.itemId) < req.need){ toast(`포장재 부족: ${findPack(req.itemId)?.name||req.itemId}`,'error'); return; } }
     for(const req of packReqs){ const res = allocateLots('PACK', req.itemId, req.need); if(!res.ok){ toast(res.message,'error'); return; } }
     bulk.remaining = n(bulk.remaining) - qty;
@@ -3994,6 +4004,7 @@ function initNewPage(pageId) {
     const lot = (db.stock.FGT_LOT||[]).find(l => String(l.id)===lotId);
     if(!customerId || !lot || qty<=0){ toast('고객, LOT, 수량을 확인하세요','error'); return; }
     if(n(lot.remaining) < qty){ toast('출고 가능 수량이 부족합니다','error'); return; }
+    if(lot.status && lot.status !== 'OK'){ toast('검사 미통과(' + lot.status + ') 완제품은 출고할 수 없습니다. 생산품검사에서 합격(OK) 처리 후 출고하세요.','error'); return; }
     const product = findProduct(lot.productId);
     const unitPrice = n(document.getElementById('sale-price2')?.value, n(product?.salePrice));
     lot.remaining = n(lot.remaining) - qty;
