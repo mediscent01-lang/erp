@@ -5683,6 +5683,21 @@ function initNewPage(pageId) {
   } catch (e) { console.warn('[CFG] cloud load fail:', e && e.message); }
 })();
 </script>
+<script>
+/* ── 신규 모듈 리스트 자동 갱신 보완 (저장 후 즉시 표시) — 노즈 추가 ── */
+(function () {
+  var _origRenderAll = window.renderAll;
+  var EXTRA = ['renderSuppliers', 'renderPO', 'renderSO', 'renderReturn', 'renderClaim',
+    'renderProdPlan', 'renderWorkOrder', 'renderProdResult', 'renderQcProd',
+    'renderNCR', 'renderCAPA', 'renderDevNote'];
+  window.renderAll = function () {
+    try { if (typeof _origRenderAll === 'function') _origRenderAll(); } catch (e) {}
+    EXTRA.forEach(function (fn) {
+      try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
+    });
+  };
+})();
+</script>
 </body>
  
 </html>
