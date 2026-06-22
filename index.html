@@ -413,7 +413,7 @@
     </div>
   </div>
   <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">재고 현황</h3><span class="badge-soft" id="stock-count">0</span></div>
-    <div class="scroll-card-lg"><table><thead><tr><th class="pl-4">구분</th><th>품목명</th><th>LOT</th><th class="text-right">잔량</th><th class="text-right">단가</th><th class="text-right">평가금액</th><th>입고일</th><th>유통기한</th><th class="text-right pr-4">상태</th></tr></thead><tbody id="tbl-stock-main"></tbody></table></div>
+    <div class="scroll-card-lg"><table><thead><tr><th class="pl-4">구분</th><th>품목명</th><th>LOT</th><th class="text-right">잔량</th><th class="text-right">단가</th><th class="text-right">평가금액</th><th>입고일</th><th>유통기한</th><th class="text-right">상태</th><th class="text-center pr-4">관리</th></tr></thead><tbody id="tbl-stock-main"></tbody></table></div>
   </div>
 </section>
     <section id="page-stock-adj" class="page-section space-y-4"><h2 class="text-lg font-black text-slate-800">재고 실사 / 조정</h2><div class="text-xs text-slate-400">원본 v2와 동일</div></section>
@@ -2533,6 +2533,46 @@ function delTxn(table,id,label){
   saveDB(); renderRecordsAdmin();
 }
 
+// === 재고 LOT 수정·삭제 ===
+function _lotKey(type){ return {RAW:'RAW_LOT',PACK:'PACK_LOT',BULK:'BULK_LOT',FGT:'FGT_LOT'}[type]; }
+function _lotFind(type, lotNo){
+  const key=_lotKey(type); if(!key||!db.stock||!db.stock[key]) return null;
+  return db.stock[key].find(l=>String(l.lotNo)===String(lotNo))||null;
+}
+function deleteLot(type, lotNo){
+  const key=_lotKey(type); const lot=_lotFind(type, lotNo);
+  if(!lot) return;
+  if(!confirm('LOT ['+(lot.lotNo||'')+'] 재고를 삭제할까요?\n되돌릴 수 없습니다.')) return;
+  db.stock[key]=db.stock[key].filter(l=>String(l.lotNo)!==String(lotNo));
+  logEvent('재고LOT 삭제: '+(lot.lotNo||''));
+  toast('재고 LOT 삭제 완료','success');
+  saveDB();
+}
+function editLot(type, lotNo){
+  const lot=_lotFind(type, lotNo); if(!lot) return;
+  let root=document.getElementById('lot-modal-root');
+  if(!root){ root=document.createElement('div'); root.id='lot-modal-root'; document.body.appendChild(root); }
+  const statusOpts=['OK','HOLD','FAIL','EXPIRED'].map(o=>'<option '+(lot.status===o?'selected':'')+'>'+o+'</option>').join('');
+  root.innerHTML='<div onclick="if(event.target===this)lotCloseModal()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto"><div style="background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)"><div style="border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:16px;font-weight:800;color:#1e293b">재고 LOT 수정</div><div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(lot.lotNo||'')+' · '+_dnEsc(type)+'</div></div><button onclick="lotCloseModal()" style="font-size:24px;color:#94a3b8;padding:2px 8px">×</button></div><div style="padding:18px 20px;display:grid;gap:12px">'+
+    '<div><label style="font-size:11px;font-weight:700;color:#64748b">잔량</label><input id="lot-ed-remaining" type="number" value="'+_dnEsc(lot.remaining||0)+'" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px"></div>'+
+    '<div><label style="font-size:11px;font-weight:700;color:#64748b">단가(원)</label><input id="lot-ed-cost" type="number" value="'+_dnEsc(lot.unitCost||0)+'" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px"></div>'+
+    '<div><label style="font-size:11px;font-weight:700;color:#64748b">유통기한</label><input id="lot-ed-exp" type="date" value="'+_dnEsc(lot.expDate||'')+'" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px"></div>'+
+    '<div><label style="font-size:11px;font-weight:700;color:#64748b">상태</label><select id="lot-ed-status" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px">'+statusOpts+'</select></div>'+
+    '<div style="display:flex;gap:8px;margin-top:4px"><button onclick="lotSaveEdit(\''+type+'\',\''+_dnEsc(lotNo)+'\')" style="flex:1;background:#0d9488;color:#fff;border-radius:8px;padding:10px;font-size:14px;font-weight:700">저장</button><button onclick="lotCloseModal()" style="background:#f1f5f9;color:#475569;border-radius:8px;padding:10px 16px;font-size:14px">취소</button></div>'+
+    '</div></div></div>';
+}
+function lotCloseModal(){ const r=document.getElementById('lot-modal-root'); if(r) r.innerHTML=''; }
+function lotSaveEdit(type, lotNo){
+  const lot=_lotFind(type, lotNo); if(!lot) return;
+  lot.remaining=Number(document.getElementById('lot-ed-remaining')?.value)||0;
+  lot.unitCost=Number(document.getElementById('lot-ed-cost')?.value)||0;
+  lot.expDate=document.getElementById('lot-ed-exp')?.value||'';
+  lot.status=document.getElementById('lot-ed-status')?.value||'OK';
+  logEvent('재고LOT 수정: '+(lot.lotNo||''));
+  toast('재고 LOT 수정 완료','success');
+  lotCloseModal(); saveDB();
+}
+
 // === 수불부 조회 ===
 function renderStockLedger() {
   const type = document.getElementById('sl-type')?.value||'RAW';
@@ -3195,9 +3235,10 @@ function initNewPage(pageId) {
       '<td class="text-right">' + fmt(evalAmt) + '</td>' +
       '<td class="text-xs">' + esc(l.dateIn || l.date || '-') + '</td>' +
       '<td class="text-xs ' + expClass + '">' + esc(l.expDate || '-') + '</td>' +
-      '<td class="text-right pr-4">' + statusBadge(l.status || 'OK') + '</td>' +
+      '<td class="text-right">' + statusBadge(l.status || 'OK') + '</td>' +
+      '<td class="text-center pr-4"><button onclick="editLot(\'' + l.type + '\',\'' + esc(l.lotNo||'') + '\')" class="btn btn-secondary btn-sm">수정</button> <button onclick="deleteLot(\'' + l.type + '\',\'' + esc(l.lotNo||'') + '\')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button></td>' +
       '</tr>';
-    }).join('') || '<tr><td colspan="9" class="text-center py-5 text-slate-400">조건에 맞는 재고가 없습니다</td></tr>';
+    }).join('') || '<tr><td colspan="10" class="text-center py-5 text-slate-400">조건에 맞는 재고가 없습니다</td></tr>';
     const cnt = document.getElementById('stock-count'); if(cnt) cnt.innerText = rows.length;
   }
 
