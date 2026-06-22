@@ -194,6 +194,9 @@
     <div onclick="goPage('purchase-order')" id="nav-purchase-order" class="nav-item">
       <i data-lucide="shopping-cart" class="w-4 h-4 shrink-0"></i> 구매발주관리
     </div>
+    <div onclick="goPage('purchase-log')" id="nav-purchase-log" class="nav-item">
+      <i data-lucide="receipt-text" class="w-4 h-4 shrink-0"></i> 품목별 발주내역
+    </div>
     <div onclick="goPage('t-goods-in')" id="nav-t-goods-in" class="nav-item">
       <i data-lucide="archive-restore" class="w-4 h-4 shrink-0"></i> 입고관리
     </div>
@@ -991,6 +994,56 @@
       </div>
     </section>
 
+    <!-- ========== 품목별 발주내역 ========== -->
+    <section id="page-purchase-log" class="page-section space-y-4">
+      <h2 class="text-lg font-black text-slate-800">품목별 발주내역 (구매이력)</h2>
+      <div class="card p-4 space-y-3 border-l-4 border-l-amber-500">
+        <h3 class="font-bold text-slate-700 text-sm">발주 입력</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">발주일자</label>
+            <input id="pl-date" type="date" class="input-field"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">발주업체</label>
+            <input id="pl-supplier" class="input-field" placeholder="예: ○○향료"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">품목구분</label>
+            <select id="pl-category" class="input-field"><option>원료</option><option>포장재</option><option>기타</option></select></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">품목명</label>
+            <input id="pl-item" class="input-field" placeholder="예: 로즈 앱솔루트"></div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">수량</label>
+            <input id="pl-qty" type="number" class="input-field text-right" value="0" oninput="plCalc()"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">단위</label>
+            <input id="pl-unit" class="input-field" value="kg"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">단가(원)</label>
+            <input id="pl-price" type="number" class="input-field text-right" value="0" oninput="plCalc()"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">금액(원)</label>
+            <input id="pl-amount" type="number" class="input-field text-right" value="0"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label>
+            <input id="pl-note" class="input-field" placeholder="LOT/규격 등"></div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="savePurchaseLog()" class="btn btn-primary px-6">발주 저장</button>
+          <button onclick="plUpload()" class="btn btn-secondary">📤 엑셀/CSV 업로드</button>
+          <button onclick="plTemplate()" class="btn btn-secondary">📄 양식 다운로드</button>
+        </div>
+      </div>
+      <div class="card p-3">
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <select id="pl-filter-cat" class="input-field" style="max-width:140px" onchange="renderPurchaseLog()"><option value="">전체 구분</option><option>원료</option><option>포장재</option><option>기타</option></select>
+          <input id="pl-search" class="input-field" style="max-width:220px" placeholder="품목명·업체 검색" oninput="renderPurchaseLog()">
+          <span id="pl-summary" class="text-xs font-bold text-slate-600 ml-auto"></span>
+        </div>
+        <div class="scroll-card-lg"><table><thead><tr>
+          <th class="pl-3">일자</th><th>업체</th><th>구분</th><th>품목명</th><th class="text-right">수량</th><th class="text-right">단가</th><th class="text-right">금액</th><th class="text-center pr-3">관리</th>
+        </tr></thead><tbody id="tbl-purchase-log"></tbody></table></div>
+      </div>
+      <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">📊 품목별 집계 (총 발주량·금액)</h3></div>
+        <div class="scroll-card-lg"><table><thead><tr>
+          <th class="pl-3">품목명</th><th>구분</th><th class="text-right">총 수량</th><th class="text-right">총 금액</th><th class="text-right">발주횟수</th><th class="text-right pr-3">최근발주일</th>
+        </tr></thead><tbody id="tbl-purchase-summary"></tbody></table></div>
+      </div>
+    </section>
+
     <!-- ========== 수불부조회 ========== -->
     <section id="page-stock-ledger" class="page-section space-y-4">
       <h2 class="text-lg font-black text-slate-800">수불부 조회 (재고 원장)</h2>
@@ -1176,6 +1229,7 @@ function ensureNewTables() {
   if (!db.txn.T_QC_PROD) db.txn.T_QC_PROD = [];
   if (!db.txn.T_DEV_NOTE) db.txn.T_DEV_NOTE = [];
   if (!db.txn.T_SAMPLE) db.txn.T_SAMPLE = [];
+  if (!db.txn.T_PURCHASE_LOG) db.txn.T_PURCHASE_LOG = [];
 }
 
 // === 회사정보 ===
@@ -2112,6 +2166,138 @@ function smpDeleteFile(id,idx){ const s=_smpFind(id); if(!s) return; s.files.spl
 function smpAddLink(id){ const s=_smpFind(id); if(!s) return; s.links=s.links||[]; const u=document.getElementById('smp-link-url'); let url=(u?.value||'').trim(); if(!url){ toast('링크 URL을 입력하세요','error'); return; } if(!/^https?:\/\//i.test(url)) url='https://'+url; s.links.push({label:url,url:url}); saveDB(); showSampleDetail(id); }
 function smpDeleteLink(id,idx){ const s=_smpFind(id); if(!s) return; s.links.splice(idx,1); saveDB(); showSampleDetail(id); }
 
+// === 품목별 발주내역 (구매이력) ===
+function _plNum(v){ const x=parseFloat(String(v==null?'':v).replace(/[, ₩]/g,'')); return isNaN(x)?0:x; }
+function _plFmt(n){ return Math.round(n||0).toLocaleString('ko-KR'); }
+function plEnsure(){ if(!db.txn) db.txn={}; if(!db.txn.T_PURCHASE_LOG) db.txn.T_PURCHASE_LOG=[]; }
+function plCalc(){
+  const q=_plNum(document.getElementById('pl-qty')?.value);
+  const p=_plNum(document.getElementById('pl-price')?.value);
+  const a=document.getElementById('pl-amount'); if(a) a.value=Math.round(q*p);
+}
+function savePurchaseLog(){
+  plEnsure();
+  const item=document.getElementById('pl-item')?.value.trim();
+  if(!item){ toast('품목명을 입력하세요','error'); return; }
+  const q=_plNum(document.getElementById('pl-qty')?.value);
+  const p=_plNum(document.getElementById('pl-price')?.value);
+  let amt=_plNum(document.getElementById('pl-amount')?.value); if(!amt) amt=q*p;
+  db.txn.T_PURCHASE_LOG.push({
+    id:Date.now(),
+    date:document.getElementById('pl-date')?.value||todayISO(),
+    supplier:document.getElementById('pl-supplier')?.value.trim()||'',
+    category:document.getElementById('pl-category')?.value||'원료',
+    item, qty:q, unit:document.getElementById('pl-unit')?.value.trim()||'',
+    unitPrice:p, amount:amt,
+    note:document.getElementById('pl-note')?.value.trim()||''
+  });
+  logEvent('발주입력: '+item+' '+_plFmt(amt)+'원');
+  toast('발주내역 저장 완료','success');
+  ['pl-item','pl-note'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  ['pl-qty','pl-price','pl-amount'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value='0'; });
+  saveDB();
+}
+function deletePurchaseLog(id){
+  plEnsure();
+  if(!confirm('이 발주내역을 삭제할까요?')) return;
+  db.txn.T_PURCHASE_LOG=db.txn.T_PURCHASE_LOG.filter(r=>String(r.id)!==String(id));
+  saveDB(); renderPurchaseLog();
+}
+function renderPurchaseLog(){
+  plEnsure();
+  const tbody=document.getElementById('tbl-purchase-log'); if(!tbody) return;
+  const cat=document.getElementById('pl-filter-cat')?.value||'';
+  const qs=(document.getElementById('pl-search')?.value||'').toLowerCase();
+  let rows=[...db.txn.T_PURCHASE_LOG];
+  if(cat) rows=rows.filter(r=>r.category===cat);
+  if(qs) rows=rows.filter(r=>(r.item||'').toLowerCase().includes(qs)||(r.supplier||'').toLowerCase().includes(qs));
+  const sorted=[...rows].sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  tbody.innerHTML=sorted.map(r=>{
+    const cc=r.category==='원료'?'#0891b2':r.category==='포장재'?'#8b5cf6':'#64748b';
+    return '<tr><td class="pl-3 text-xs">'+_dnEsc(r.date)+
+      '</td><td class="text-xs">'+_dnEsc(r.supplier||'-')+
+      '</td><td class="text-xs"><span style="font-size:11px;color:'+cc+';font-weight:700">'+_dnEsc(r.category||'')+'</span>'+
+      '</td><td class="font-bold text-xs">'+_dnEsc(r.item)+
+      '</td><td class="text-right text-xs">'+_plFmt(r.qty)+' '+_dnEsc(r.unit||'')+
+      '</td><td class="text-right text-xs">'+_plFmt(r.unitPrice)+
+      '</td><td class="text-right text-xs font-bold">'+_plFmt(r.amount)+
+      '</td><td class="text-center pr-3"><button onclick="deletePurchaseLog(\''+r.id+'\')" class="text-red-400 text-xs">삭제</button></td></tr>';
+  }).join('') || '<tr><td colspan="8" class="text-center py-4 text-slate-400">발주내역 없음</td></tr>';
+  const totAmt=rows.reduce((s,r)=>s+_plNum(r.amount),0);
+  const totQty=rows.reduce((s,r)=>s+_plNum(r.qty),0);
+  const sm=document.getElementById('pl-summary'); if(sm) sm.innerHTML='총 '+rows.length+'건 · 수량 '+_plFmt(totQty)+' · 합계 <span style="color:#d97706">'+_plFmt(totAmt)+'원</span>';
+  const map={};
+  rows.forEach(r=>{ const k=(r.item||'')+'||'+(r.category||''); if(!map[k]) map[k]={item:r.item,category:r.category,qty:0,amt:0,cnt:0,last:''}; map[k].qty+=_plNum(r.qty); map[k].amt+=_plNum(r.amount); map[k].cnt++; if(String(r.date)>String(map[k].last)) map[k].last=r.date; });
+  const agg=Object.values(map).sort((a,b)=>b.amt-a.amt);
+  const stb=document.getElementById('tbl-purchase-summary');
+  if(stb) stb.innerHTML=agg.map(a=>'<tr><td class="pl-3 font-bold text-xs">'+_dnEsc(a.item)+
+    '</td><td class="text-xs text-slate-500">'+_dnEsc(a.category||'')+
+    '</td><td class="text-right text-xs">'+_plFmt(a.qty)+
+    '</td><td class="text-right text-xs font-bold" style="color:#d97706">'+_plFmt(a.amt)+'원'+
+    '</td><td class="text-right text-xs">'+a.cnt+'회'+
+    '</td><td class="text-right text-xs pr-3">'+_dnEsc(a.last||'')+'</td></tr>'
+  ).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">집계 없음</td></tr>';
+}
+function plTemplate(){
+  const csv='발주일자,발주업체,품목구분,품목명,수량,단위,단가,금액,비고\n2026-06-22,○○향료,원료,로즈 앱솔루트,10,kg,50000,500000,예시행(지우고 입력하세요)\n';
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='발주내역_양식.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+function plUpload(){
+  let input=document.getElementById('pl-upload-input');
+  if(!input){
+    input=document.createElement('input'); input.type='file'; input.id='pl-upload-input'; input.accept='.xlsx,.xls,.csv'; input.style.display='none'; document.body.appendChild(input);
+    input.addEventListener('change', async e=>{ const f=e.target.files&&e.target.files[0]; if(f) await plParseFile(f); input.value=''; });
+  }
+  input.click();
+}
+function _plParseCsv(text){
+  const lines=String(text).replace(/\r/g,'').split('\n').filter(l=>l.trim().length);
+  if(!lines.length) return [];
+  const split=l=>{ const out=[]; let cur='',q=false; for(let i=0;i<l.length;i++){ const c=l[i]; if(c==='"'){ if(q&&l[i+1]==='"'){cur+='"';i++;} else q=!q; } else if(c===','&&!q){ out.push(cur); cur=''; } else cur+=c; } out.push(cur); return out; };
+  const headers=split(lines[0]).map(h=>h.trim().replace(/^\ufeff/,''));
+  return lines.slice(1).map(l=>{ const cols=split(l); const o={}; headers.forEach((h,i)=>o[h||('col'+i)]=cols[i]??''); return o; });
+}
+async function plParseFile(file){
+  plEnsure();
+  try{
+    let rows=[];
+    const name=(file.name||'').toLowerCase();
+    if(name.endsWith('.xlsx')||name.endsWith('.xls')){
+      if(!window.XLSX){ toast('엑셀 파서 로드 실패 — 새로고침 후 다시 시도하거나 CSV를 사용하세요','error'); return; }
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(buf,{type:'array'});
+      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:false});
+    } else {
+      rows=_plParseCsv(await file.text());
+    }
+    if(!rows.length){ toast('업로드할 데이터가 없습니다','error'); return; }
+    let added=0;
+    rows.forEach(row=>{
+      const norm={}; Object.keys(row).forEach(k=>{ norm[String(k).replace(/\s/g,'').toLowerCase().replace(/^\ufeff/,'')]=row[k]; });
+      const g=(...keys)=>{ for(const x of keys){ if(norm[x]!==undefined && String(norm[x]).trim()!=='') return norm[x]; } return ''; };
+      const item=String(g('품목명','품목','item','자재명','원료명')||'').trim();
+      if(!item) return;
+      const qty=_plNum(g('수량','qty'));
+      const price=_plNum(g('단가','단가(원)','unitprice','price'));
+      let amount=_plNum(g('금액','금액(원)','amount','합계')); if(!amount) amount=qty*price;
+      db.txn.T_PURCHASE_LOG.push({
+        id:Date.now()+Math.floor(Math.random()*100000),
+        date:String(g('발주일자','일자','date','발주일')||todayISO()).trim()||todayISO(),
+        supplier:String(g('발주업체','업체','공급처','거래처','supplier','vendor')||'').trim(),
+        category:String(g('품목구분','구분','category','분류')||'원료').trim()||'원료',
+        item, qty, unit:String(g('단위','unit')||'').trim(),
+        unitPrice:price, amount,
+        note:String(g('비고','note','메모')||'').trim()
+      });
+      added++;
+    });
+    logEvent('발주내역 업로드: '+added+'건');
+    toast(added+'건 업로드 완료','success');
+    saveDB(); renderPurchaseLog();
+  }catch(err){ toast('업로드 오류: '+((err&&err.message)||err),'error'); }
+}
+
 // === 수불부 조회 ===
 function renderStockLedger() {
   const type = document.getElementById('sl-type')?.value||'RAW';
@@ -2268,6 +2454,10 @@ function initNewPage(pageId) {
     case 'sample':
       renderSample();
       { const sd = document.getElementById('sm-date'); if (sd && !sd.value) sd.value = todayISO(); }
+      break;
+    case 'purchase-log':
+      renderPurchaseLog();
+      { const pd = document.getElementById('pl-date'); if (pd && !pd.value) pd.value = todayISO(); }
       break;
     case 'stock-ledger':
       document.getElementById('sl-from').value = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -5951,7 +6141,7 @@ function initNewPage(pageId) {
   var _origRenderAll = window.renderAll;
   var EXTRA = ['renderSuppliers', 'renderPO', 'renderSO', 'renderReturn', 'renderClaim',
     'renderProdPlan', 'renderWorkOrder', 'renderProdResult', 'renderQcProd',
-    'renderNCR', 'renderCAPA', 'renderDevNote', 'renderSample'];
+    'renderNCR', 'renderCAPA', 'renderDevNote', 'renderSample', 'renderPurchaseLog'];
   window.renderAll = function () {
     try { if (typeof _origRenderAll === 'function') _origRenderAll(); } catch (e) {}
     EXTRA.forEach(function (fn) {
