@@ -163,6 +163,9 @@
     <div onclick="goPage('dev-note')" id="nav-dev-note" class="nav-item">
       <i data-lucide="notebook-pen" class="w-4 h-4 shrink-0"></i> 연구개발노트
     </div>
+    <div onclick="goPage('sample')" id="nav-sample" class="nav-item">
+      <i data-lucide="flask-round" class="w-4 h-4 shrink-0"></i> 샘플수불대장
+    </div>
     <div onclick="goPage('allergen-report')" id="nav-allergen-report" class="nav-item">
       <i data-lucide="shield-alert" class="w-4 h-4 shrink-0"></i> 알레르겐 계산
     </div>
@@ -937,12 +940,54 @@
           <textarea id="dn-content" class="input-field" rows="6" placeholder="실험 목적, 방법, 결과, 관찰 사항..."></textarea></div>
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">결론/다음단계</label>
           <textarea id="dn-conclusion" class="input-field" rows="2" placeholder="결론 및 후속 실험 계획"></textarea></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">파일 첨부 (사진·소형 PDF · 1개당 3MB 이하)</label>
+          <input type="file" id="dn-files" multiple onchange="dnPickFiles(this)" class="text-xs">
+          <span id="dn-files-label" class="text-[11px] text-emerald-600 ml-2"></span></div>
         <button onclick="saveDevNote()" class="btn btn-primary px-6">노트 저장</button>
       </div>
       <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">연구노트 목록</h3></div>
         <div class="scroll-card-lg"><table><thead><tr>
-          <th class="pl-3">일자</th><th>제목</th><th>포뮬러</th><th class="text-right pr-3">관리</th>
+          <th class="pl-3">일자</th><th>제목</th><th>포뮬러</th><th>진행</th><th class="text-right pr-3">관리</th>
         </tr></thead><tbody id="tbl-devnote"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ========== 샘플 수불처리대장 ========== -->
+    <section id="page-sample" class="page-section space-y-4">
+      <h2 class="text-lg font-black text-slate-800">샘플 수불처리대장</h2>
+      <div class="card p-4 space-y-3 border-l-4 border-l-cyan-500">
+        <h3 class="font-bold text-slate-700 text-sm">샘플 등록</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">수불일자</label>
+            <input id="sm-date" type="date" class="input-field"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">구분</label>
+            <select id="sm-dir" class="input-field"><option value="수령">수령</option><option value="발송">발송</option></select></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">상태</label>
+            <select id="sm-status" class="input-field"><option>검토중</option><option>승인</option><option>보류</option><option>반려</option><option>재요청</option></select></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">담당자</label>
+            <input id="sm-manager" class="input-field" placeholder="담당자"></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">샘플명 / 향명</label>
+            <input id="sm-name" class="input-field" placeholder="예: Rose Accord A-3"></div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">공급처 / 거래처</label>
+            <input id="sm-supplier" class="input-field" placeholder="예: ○○향료"></div>
+        </div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">요청사항</label>
+          <textarea id="sm-request" class="input-field" rows="2" placeholder="우리가 요청한 내용 (예: 톱노트 시트러스 강화, 잔향 6시간 이상)"></textarea></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">샘플내용</label>
+          <textarea id="sm-content" class="input-field" rows="3" placeholder="받은 샘플 설명 (향 구성, 농도, 특징, 평가)"></textarea></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">개선방향</label>
+          <textarea id="sm-improve" class="input-field" rows="2" placeholder="개선 요청·다음 방향 (예: 머스크 줄이고 우디 보강)"></textarea></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">파일 첨부 (사진·소형 PDF · 1개당 3MB 이하)</label>
+          <input type="file" id="sm-files" multiple onchange="smpPickFiles(this)" class="text-xs">
+          <span id="sm-files-label" class="text-[11px] text-emerald-600 ml-2"></span></div>
+        <button onclick="saveSample()" class="btn btn-primary px-6">샘플 저장</button>
+      </div>
+      <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">샘플 수불 목록</h3></div>
+        <div class="scroll-card-lg"><table><thead><tr>
+          <th class="pl-3">일자</th><th>구분</th><th>샘플명</th><th>공급처</th><th>상태</th><th>진행</th><th class="text-right pr-3">관리</th>
+        </tr></thead><tbody id="tbl-sample"></tbody></table></div>
       </div>
     </section>
 
@@ -1130,6 +1175,7 @@ function ensureNewTables() {
   if (!db.txn.T_WORK_ORDER) db.txn.T_WORK_ORDER = [];
   if (!db.txn.T_QC_PROD) db.txn.T_QC_PROD = [];
   if (!db.txn.T_DEV_NOTE) db.txn.T_DEV_NOTE = [];
+  if (!db.txn.T_SAMPLE) db.txn.T_SAMPLE = [];
 }
 
 // === 회사정보 ===
@@ -1843,9 +1889,13 @@ function saveDevNote() {
     id: Date.now(), title, date: document.getElementById('dn-date')?.value||todayISO(),
     formulaId: document.getElementById('dn-formula')?.value||null,
     content: document.getElementById('dn-content')?.value.trim()||'',
-    conclusion: document.getElementById('dn-conclusion')?.value.trim()||''
+    conclusion: document.getElementById('dn-conclusion')?.value.trim()||'',
+    progress: [], files: (window._dnPendingFiles||[]).slice(), links: []
   };
   db.txn.T_DEV_NOTE.push(note);
+  window._dnPendingFiles = [];
+  const fi = document.getElementById('dn-files'); if (fi) fi.value = '';
+  const fl = document.getElementById('dn-files-label'); if (fl) fl.textContent = '';
   logEvent('연구노트: '+title);
   toast('연구노트 저장 완료','success');
   document.getElementById('dn-title').value = '';
@@ -1854,23 +1904,213 @@ function saveDevNote() {
   saveDB();
 }
 
+// 작성 폼에서 파일 미리 선택
+function dnPickFiles(input){
+  window._dnPendingFiles = window._dnPendingFiles || [];
+  const files = Array.from(input.files||[]);
+  files.forEach(file => {
+    if (file.size > 3*1024*1024){ toast(file.name+': 3MB 초과로 제외','error'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      window._dnPendingFiles.push({name:file.name,type:file.type,size:file.size,dataUrl:e.target.result});
+      const fl=document.getElementById('dn-files-label'); if(fl) fl.textContent = window._dnPendingFiles.length+'개 첨부 예정';
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function renderDevNote() {
   ensureNewTables();
   const tbody = document.getElementById('tbl-devnote');
   if (!tbody) return;
   tbody.innerHTML = [...db.txn.T_DEV_NOTE].reverse().map(n => {
     const f = (db.master.M_FORMULA||[]).find(x => x.id === Number(n.formulaId));
+    const prog = n.progress||[]; const files = n.files||[]; const links = n.links||[];
+    const last = prog.length ? prog[prog.length-1] : null;
+    const progCell = prog.length
+      ? '<span style="color:#0ea5e9;font-weight:700">'+prog.length+'건</span><span style="color:#94a3b8;font-size:10.5px"> · '+(last?last.date:'')+'</span>'
+      : '<span style="color:#cbd5e1">-</span>';
+    const att = (files.length+links.length) ? ' <span style="color:#16a34a;font-size:10.5px">📎'+(files.length+links.length)+'</span>' : '';
     return '<tr class="cursor-pointer" onclick="showDevNoteDetail('+n.id+')"><td class="pl-3 text-xs">'+n.date+
-      '</td><td class="font-bold">'+n.title+'</td><td class="text-xs text-slate-500">'+(f?.name||'-')+
-      '</td><td class="text-right pr-3"><button class="btn btn-secondary btn-sm">보기</button></td></tr>';
-  }).join('') || '<tr><td colspan="4" class="text-center py-4 text-slate-400">연구노트 없음</td></tr>';
+      '</td><td class="font-bold">'+_dnEsc(n.title)+att+'</td><td class="text-xs text-slate-500">'+_dnEsc(f?.name||'-')+
+      '</td><td class="text-xs">'+progCell+'</td><td class="text-right pr-3"><button class="btn btn-secondary btn-sm">보기</button></td></tr>';
+  }).join('') || '<tr><td colspan="5" class="text-center py-4 text-slate-400">연구노트 없음</td></tr>';
 }
 
+function _dnEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function _dnFindNote(id){return (db.txn.T_DEV_NOTE||[]).find(x=>String(x.id)===String(id));}
+
 function showDevNoteDetail(noteId) {
-  const n = db.txn.T_DEV_NOTE?.find(x => x.id === noteId);
-  if (!n) return;
-  alert('📝 ' + n.title + '\n\n' + n.content + '\n\n결론: ' + (n.conclusion||'-'));
+  const n = _dnFindNote(noteId); if (!n) return;
+  n.progress = n.progress||[]; n.files = n.files||[]; n.links = n.links||[];
+  let root = document.getElementById('dn-modal-root');
+  if (!root){ root = document.createElement('div'); root.id='dn-modal-root'; document.body.appendChild(root); }
+  const f = (db.master.M_FORMULA||[]).find(x => x.id === Number(n.formulaId));
+  const progressHtml = n.progress.length
+    ? n.progress.map((p,i)=>'<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9">'+
+        '<div style="min-width:84px;font-size:11px;color:#64748b;font-weight:700">'+_dnEsc(p.date)+'</div>'+
+        '<div style="flex:1;font-size:13px;white-space:pre-wrap;word-break:break-word">'+_dnEsc(p.text)+'</div>'+
+        '<button onclick="dnDeleteProgress(\''+n.id+'\','+i+')" style="color:#ef4444;font-size:11px">삭제</button></div>').join('')
+    : '<div style="color:#94a3b8;font-size:12px;padding:6px 0">아직 진행사항이 없습니다.</div>';
+  const filesHtml = n.files.map((file,i)=>{
+      const isImg = (file.type||'').indexOf('image/')===0;
+      const thumb = isImg ? '<img src="'+file.dataUrl+'" style="max-width:140px;max-height:100px;border-radius:6px;border:1px solid #e2e8f0;display:block;margin-top:4px">' : '';
+      return '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><div style="display:flex;align-items:center;gap:8px">'+
+        '<span style="font-size:13px;flex:1;word-break:break-all">📎 '+_dnEsc(file.name)+' <span style="color:#94a3b8;font-size:11px">('+Math.round((file.size||0)/1024)+'KB)</span></span>'+
+        '<a href="'+file.dataUrl+'" download="'+_dnEsc(file.name)+'" style="color:#0ea5e9;font-size:12px;font-weight:700">다운로드</a>'+
+        '<button onclick="dnDeleteFile(\''+n.id+'\','+i+')" style="color:#ef4444;font-size:11px">삭제</button></div>'+thumb+'</div>';
+    }).join('');
+  const linksHtml = n.links.map((l,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9">'+
+      '<a href="'+_dnEsc(l.url)+'" target="_blank" style="color:#0ea5e9;font-size:13px;flex:1;word-break:break-all">🔗 '+_dnEsc(l.label||l.url)+'</a>'+
+      '<button onclick="dnDeleteLink(\''+n.id+'\','+i+')" style="color:#ef4444;font-size:11px">삭제</button></div>').join('');
+  const noAtt = (!n.files.length && !n.links.length) ? '<div style="color:#94a3b8;font-size:12px;padding:4px 0">첨부 없음</div>' : '';
+  root.innerHTML =
+  '<div onclick="if(event.target===this)dnCloseDetail()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto">'+
+    '<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)">'+
+      '<div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px;z-index:1">'+
+        '<div style="flex:1"><div style="font-size:17px;font-weight:800;color:#1e293b">📝 '+_dnEsc(n.title)+'</div>'+
+        '<div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(n.date)+' · 포뮬러: '+_dnEsc(f?.name||'-')+'</div></div>'+
+        '<button onclick="dnCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div>'+
+      '<div style="padding:18px 20px">'+
+        '<div style="font-size:11px;font-weight:800;color:#ec4899;letter-spacing:.5px;margin-bottom:6px">내용</div>'+
+        '<div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:12px 14px;color:#334155">'+(_dnEsc(n.content)||'<span style=color:#94a3b8>(내용 없음)</span>')+'</div>'+
+        '<div style="font-size:11px;font-weight:800;color:#ec4899;letter-spacing:.5px;margin:18px 0 6px">결론 / 다음단계</div>'+
+        '<div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:#fff7fb;border:1px solid #fce7f3;border-radius:8px;padding:12px 14px;color:#334155">'+(_dnEsc(n.conclusion)||'<span style=color:#94a3b8>-</span>')+'</div>'+
+        '<div style="font-size:11px;font-weight:800;color:#0ea5e9;letter-spacing:.5px;margin:20px 0 6px">📈 진행사항 (현재까지)</div>'+
+        '<div style="background:#f8fafc;border-radius:8px;padding:6px 14px">'+progressHtml+'</div>'+
+        '<div style="display:flex;gap:6px;margin-top:8px">'+
+          '<input id="dn-prog-input" placeholder="새 진행사항 입력 후 추가" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px">'+
+          '<button onclick="dnAddProgress(\''+n.id+'\')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700">추가</button></div>'+
+        '<div style="font-size:11px;font-weight:800;color:#16a34a;letter-spacing:.5px;margin:20px 0 6px">📎 첨부파일 / 링크</div>'+
+        '<div>'+filesHtml+linksHtml+noAtt+'</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">'+
+          '<label style="background:#16a34a;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer">파일 첨부<input type="file" multiple style="display:none" onchange="dnAttachFiles(\''+n.id+'\',this)"></label>'+
+          '<input id="dn-link-url" placeholder="링크 URL (예: 구글드라이브)" style="flex:1;min-width:160px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px">'+
+          '<button onclick="dnAddLink(\''+n.id+'\')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700">링크추가</button></div>'+
+        '<div style="font-size:11px;color:#94a3b8;margin-top:6px">※ 파일은 1개당 3MB 이하 권장(사진·소형 PDF). 큰 파일은 링크로 첨부하세요.</div>'+
+      '</div></div></div>';
 }
+function dnCloseDetail(){ const r=document.getElementById('dn-modal-root'); if(r) r.innerHTML=''; }
+function dnAddProgress(noteId){
+  const n=_dnFindNote(noteId); if(!n) return; n.progress=n.progress||[];
+  const inp=document.getElementById('dn-prog-input'); const t=(inp?.value||'').trim();
+  if(!t){ toast('진행사항을 입력하세요','error'); return; }
+  n.progress.push({date:todayISO(),text:t}); logEvent('진행사항 추가: '+n.title);
+  saveDB(); showDevNoteDetail(noteId);
+}
+function dnDeleteProgress(noteId,idx){ const n=_dnFindNote(noteId); if(!n) return; n.progress.splice(idx,1); saveDB(); showDevNoteDetail(noteId); }
+function dnAttachFiles(noteId,input){
+  const n=_dnFindNote(noteId); if(!n) return; n.files=n.files||[];
+  const files=Array.from(input.files||[]); let pending=files.length; if(!pending) return;
+  const done=()=>{ pending--; if(pending<=0){ saveDB(); showDevNoteDetail(noteId); } };
+  files.forEach(file=>{
+    if(file.size>3*1024*1024){ toast(file.name+': 3MB 초과로 첨부 불가(링크 이용)','error'); done(); return; }
+    const reader=new FileReader();
+    reader.onload=e=>{ n.files.push({name:file.name,type:file.type,size:file.size,dataUrl:e.target.result}); done(); };
+    reader.onerror=done;
+    reader.readAsDataURL(file);
+  });
+}
+function dnDeleteFile(noteId,idx){ const n=_dnFindNote(noteId); if(!n) return; n.files.splice(idx,1); saveDB(); showDevNoteDetail(noteId); }
+function dnAddLink(noteId){
+  const n=_dnFindNote(noteId); if(!n) return; n.links=n.links||[];
+  const u=document.getElementById('dn-link-url'); let url=(u?.value||'').trim();
+  if(!url){ toast('링크 URL을 입력하세요','error'); return; }
+  if(!/^https?:\/\//i.test(url)) url='https://'+url;
+  n.links.push({label:url,url:url}); saveDB(); showDevNoteDetail(noteId);
+}
+function dnDeleteLink(noteId,idx){ const n=_dnFindNote(noteId); if(!n) return; n.links.splice(idx,1); saveDB(); showDevNoteDetail(noteId); }
+
+// === 샘플 수불처리대장 ===
+function saveSample(){
+  ensureNewTables();
+  const name = document.getElementById('sm-name')?.value.trim();
+  if(!name){ toast('샘플명을 입력하세요','error'); return; }
+  const s = {
+    id: Date.now(),
+    date: document.getElementById('sm-date')?.value||todayISO(),
+    dir: document.getElementById('sm-dir')?.value||'수령',
+    name,
+    supplier: document.getElementById('sm-supplier')?.value.trim()||'',
+    manager: document.getElementById('sm-manager')?.value.trim()||'',
+    status: document.getElementById('sm-status')?.value||'검토중',
+    request: document.getElementById('sm-request')?.value.trim()||'',
+    content: document.getElementById('sm-content')?.value.trim()||'',
+    improve: document.getElementById('sm-improve')?.value.trim()||'',
+    progress: [], files: (window._smpPendingFiles||[]).slice(), links: []
+  };
+  db.txn.T_SAMPLE.push(s);
+  window._smpPendingFiles = [];
+  const fi = document.getElementById('sm-files'); if(fi) fi.value='';
+  const fl = document.getElementById('sm-files-label'); if(fl) fl.textContent='';
+  logEvent('샘플수불: '+name);
+  toast('샘플 등록 완료','success');
+  ['sm-name','sm-supplier','sm-manager','sm-request','sm-content','sm-improve'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  saveDB();
+}
+function smpPickFiles(input){
+  window._smpPendingFiles = window._smpPendingFiles || [];
+  Array.from(input.files||[]).forEach(file=>{
+    if(file.size>3*1024*1024){ toast(file.name+': 3MB 초과로 제외','error'); return; }
+    const r=new FileReader();
+    r.onload=e=>{ window._smpPendingFiles.push({name:file.name,type:file.type,size:file.size,dataUrl:e.target.result});
+      const fl=document.getElementById('sm-files-label'); if(fl) fl.textContent=window._smpPendingFiles.length+'개 첨부 예정'; };
+    r.readAsDataURL(file);
+  });
+}
+function _smpFind(id){ return (db.txn.T_SAMPLE||[]).find(x=>String(x.id)===String(id)); }
+function smpStatusBadge(st){
+  const c={'검토중':'#0ea5e9','승인':'#16a34a','보류':'#f59e0b','반려':'#ef4444','재요청':'#8b5cf6'}[st]||'#64748b';
+  return '<span style="background:'+c+'22;color:'+c+';font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">'+_dnEsc(st||'-')+'</span>';
+}
+function renderSample(){
+  ensureNewTables();
+  const tbody=document.getElementById('tbl-sample');
+  if(!tbody) return;
+  tbody.innerHTML=[...db.txn.T_SAMPLE].reverse().map(s=>{
+    const prog=s.progress||[]; const att=(s.files||[]).length+(s.links||[]).length;
+    const attHtml = att ? ' <span style="color:#16a34a;font-size:10.5px">📎'+att+'</span>' : '';
+    const progHtml = prog.length ? '<span style="color:#0ea5e9;font-weight:700">'+prog.length+'건</span>' : '<span style="color:#cbd5e1">-</span>';
+    const dirHtml = '<span style="font-size:11px;color:'+(s.dir==='발송'?'#8b5cf6':'#0891b2')+';font-weight:700">'+_dnEsc(s.dir||'수령')+'</span>';
+    return '<tr class="cursor-pointer" onclick="showSampleDetail('+s.id+')"><td class="pl-3 text-xs">'+_dnEsc(s.date)+
+      '</td><td>'+dirHtml+'</td><td class="font-bold">'+_dnEsc(s.name)+attHtml+
+      '</td><td class="text-xs text-slate-500">'+_dnEsc(s.supplier||'-')+
+      '</td><td>'+smpStatusBadge(s.status)+
+      '</td><td class="text-xs">'+progHtml+
+      '</td><td class="text-right pr-3"><button class="btn btn-secondary btn-sm">보기</button></td></tr>';
+  }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">샘플 기록 없음</td></tr>';
+}
+function showSampleDetail(id){
+  const s=_smpFind(id); if(!s) return;
+  s.progress=s.progress||[]; s.files=s.files||[]; s.links=s.links||[];
+  let root=document.getElementById('smp-modal-root');
+  if(!root){ root=document.createElement('div'); root.id='smp-modal-root'; document.body.appendChild(root); }
+  const progressHtml = s.progress.length
+    ? s.progress.map((p,i)=>'<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9"><div style="min-width:84px;font-size:11px;color:#64748b;font-weight:700">'+_dnEsc(p.date)+'</div><div style="flex:1;font-size:13px;white-space:pre-wrap;word-break:break-word">'+_dnEsc(p.text)+'</div><button onclick="smpDeleteProgress(\''+s.id+'\','+i+')" style="color:#ef4444;font-size:11px">삭제</button></div>').join('')
+    : '<div style="color:#94a3b8;font-size:12px;padding:6px 0">아직 진행사항이 없습니다.</div>';
+  const filesHtml = s.files.map((file,i)=>{ const isImg=(file.type||'').indexOf('image/')===0; const thumb=isImg?'<img src="'+file.dataUrl+'" style="max-width:140px;max-height:100px;border-radius:6px;border:1px solid #e2e8f0;display:block;margin-top:4px">':'';
+    return '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;flex:1;word-break:break-all">📎 '+_dnEsc(file.name)+' <span style="color:#94a3b8;font-size:11px">('+Math.round((file.size||0)/1024)+'KB)</span></span><a href="'+file.dataUrl+'" download="'+_dnEsc(file.name)+'" style="color:#0ea5e9;font-size:12px;font-weight:700">다운로드</a><button onclick="smpDeleteFile(\''+s.id+'\','+i+')" style="color:#ef4444;font-size:11px">삭제</button></div>'+thumb+'</div>'; }).join('');
+  const linksHtml = s.links.map((l,i)=>'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9"><a href="'+_dnEsc(l.url)+'" target="_blank" style="color:#0ea5e9;font-size:13px;flex:1;word-break:break-all">🔗 '+_dnEsc(l.label||l.url)+'</a><button onclick="smpDeleteLink(\''+s.id+'\','+i+')" style="color:#ef4444;font-size:11px">삭제</button></div>').join('');
+  const noAtt = (!s.files.length&&!s.links.length) ? '<div style="color:#94a3b8;font-size:12px;padding:4px 0">첨부 없음</div>' : '';
+  const statusOpts = ['검토중','승인','보류','반려','재요청'].map(o=>'<option '+(s.status===o?'selected':'')+'>'+o+'</option>').join('');
+  const sec = (label,val,bg,border)=>'<div style="font-size:11px;font-weight:800;color:#0e7490;letter-spacing:.5px;margin:16px 0 6px">'+label+'</div><div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:'+bg+';'+(border||'')+'border-radius:8px;padding:12px 14px;color:#334155">'+(_dnEsc(val)||'<span style=color:#94a3b8>-</span>')+'</div>';
+  root.innerHTML='<div onclick="if(event.target===this)smpCloseDetail()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto"><div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)"><div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px;z-index:1"><div style="flex:1"><div style="font-size:17px;font-weight:800;color:#1e293b">🧪 '+_dnEsc(s.name)+'</div><div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(s.date)+' · '+_dnEsc(s.dir||'수령')+' · 공급처: '+_dnEsc(s.supplier||'-')+' · 담당: '+_dnEsc(s.manager||'-')+'</div></div><button onclick="smpCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div><div style="padding:18px 20px">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:12px;color:#64748b;font-weight:700">상태:</span><select id="smp-status-sel" onchange="smpSetStatus(\''+s.id+'\',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;font-size:13px">'+statusOpts+'</select></div>'+
+    sec('📋 요청사항',s.request,'#f8fafc','')+
+    sec('🧴 샘플내용',s.content,'#f8fafc','')+
+    sec('🔧 개선방향',s.improve,'#ecfeff','border:1px solid #cffafe;')+
+    '<div style="font-size:11px;font-weight:800;color:#0ea5e9;letter-spacing:.5px;margin:20px 0 6px">📈 진행사항</div><div style="background:#f8fafc;border-radius:8px;padding:6px 14px">'+progressHtml+'</div><div style="display:flex;gap:6px;margin-top:8px"><input id="smp-prog-input" placeholder="새 진행사항 입력 후 추가" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px"><button onclick="smpAddProgress(\''+s.id+'\')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700">추가</button></div>'+
+    '<div style="font-size:11px;font-weight:800;color:#16a34a;letter-spacing:.5px;margin:20px 0 6px">📎 첨부파일 / 링크</div><div>'+filesHtml+linksHtml+noAtt+'</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><label style="background:#16a34a;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer">파일 첨부<input type="file" multiple style="display:none" onchange="smpAttachFiles(\''+s.id+'\',this)"></label><input id="smp-link-url" placeholder="링크 URL" style="flex:1;min-width:160px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px"><button onclick="smpAddLink(\''+s.id+'\')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700">링크추가</button></div><div style="font-size:11px;color:#94a3b8;margin-top:6px">※ 파일은 1개당 3MB 이하 권장. 큰 파일은 링크로.</div>'+
+    '</div></div></div>';
+}
+function smpCloseDetail(){ const r=document.getElementById('smp-modal-root'); if(r) r.innerHTML=''; }
+function smpSetStatus(id,v){ const s=_smpFind(id); if(!s) return; s.status=v; logEvent('샘플 상태변경: '+s.name+' → '+v); saveDB(); renderSample(); }
+function smpAddProgress(id){ const s=_smpFind(id); if(!s) return; s.progress=s.progress||[]; const inp=document.getElementById('smp-prog-input'); const t=(inp?.value||'').trim(); if(!t){ toast('진행사항을 입력하세요','error'); return; } s.progress.push({date:todayISO(),text:t}); saveDB(); showSampleDetail(id); }
+function smpDeleteProgress(id,idx){ const s=_smpFind(id); if(!s) return; s.progress.splice(idx,1); saveDB(); showSampleDetail(id); }
+function smpAttachFiles(id,input){ const s=_smpFind(id); if(!s) return; s.files=s.files||[]; const files=Array.from(input.files||[]); let pending=files.length; if(!pending) return; const done=()=>{ pending--; if(pending<=0){ saveDB(); showSampleDetail(id); } }; files.forEach(file=>{ if(file.size>3*1024*1024){ toast(file.name+': 3MB 초과로 첨부 불가','error'); done(); return; } const r=new FileReader(); r.onload=e=>{ s.files.push({name:file.name,type:file.type,size:file.size,dataUrl:e.target.result}); done(); }; r.onerror=done; r.readAsDataURL(file); }); }
+function smpDeleteFile(id,idx){ const s=_smpFind(id); if(!s) return; s.files.splice(idx,1); saveDB(); showSampleDetail(id); }
+function smpAddLink(id){ const s=_smpFind(id); if(!s) return; s.links=s.links||[]; const u=document.getElementById('smp-link-url'); let url=(u?.value||'').trim(); if(!url){ toast('링크 URL을 입력하세요','error'); return; } if(!/^https?:\/\//i.test(url)) url='https://'+url; s.links.push({label:url,url:url}); saveDB(); showSampleDetail(id); }
+function smpDeleteLink(id,idx){ const s=_smpFind(id); if(!s) return; s.links.splice(idx,1); saveDB(); showSampleDetail(id); }
 
 // === 수불부 조회 ===
 function renderStockLedger() {
@@ -2024,6 +2264,10 @@ function initNewPage(pageId) {
       document.getElementById('dn-date').value = todayISO();
       const dnFml = document.getElementById('dn-formula');
       if (dnFml) dnFml.innerHTML = '<option value="">포뮬러 선택</option>'+(db.master.M_FORMULA||[]).map(f => '<option value="'+f.id+'">'+f.name+'</option>').join('');
+      break;
+    case 'sample':
+      renderSample();
+      { const sd = document.getElementById('sm-date'); if (sd && !sd.value) sd.value = todayISO(); }
       break;
     case 'stock-ledger':
       document.getElementById('sl-from').value = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -5707,7 +5951,7 @@ function initNewPage(pageId) {
   var _origRenderAll = window.renderAll;
   var EXTRA = ['renderSuppliers', 'renderPO', 'renderSO', 'renderReturn', 'renderClaim',
     'renderProdPlan', 'renderWorkOrder', 'renderProdResult', 'renderQcProd',
-    'renderNCR', 'renderCAPA', 'renderDevNote'];
+    'renderNCR', 'renderCAPA', 'renderDevNote', 'renderSample'];
   window.renderAll = function () {
     try { if (typeof _origRenderAll === 'function') _origRenderAll(); } catch (e) {}
     EXTRA.forEach(function (fn) {
