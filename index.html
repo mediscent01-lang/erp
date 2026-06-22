@@ -339,6 +339,7 @@
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">판매가(원)</label><input id="prd-price" type="number" class="input-field text-right" value="0"></div>
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">표준원가 추정</label><input id="prd-est-cost" class="input-field text-right bg-slate-50" readonly value="0"></div>
       </div>
+      <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">충진중량(g) <span class="text-slate-400 font-normal">· 원료 배합비(%) 원가계산용 (예: 50ml≈50g)</span></label><input id="prd-fill" type="number" step="0.1" class="input-field text-right" placeholder="비우면 원료도 수량방식" value="" oninput="refreshProductCostPreview()"></div>
       <div class="bg-slate-50 border border-slate-200 rounded p-3 space-y-2">
         <div class="flex items-center justify-between"><div class="text-[11px] font-bold text-slate-600">BOM 구성</div><button onclick="addProductBomRow()" class="btn btn-secondary btn-sm">+ 항목추가</button></div>
         <div id="product-bom-container" class="space-y-2"></div>
@@ -2533,6 +2534,19 @@ function delTxn(table,id,label){
   saveDB(); renderRecordsAdmin();
 }
 
+// === BOM 입력행: 원료=배합량(%) / 포장재=수량(개) 라벨 전환 ===
+function bomRowChanged(sel){
+  try{
+    var row = sel.closest('.product-bom-row');
+    if(row){
+      var type = (sel.value||'').split('-')[0];
+      var qi = row.querySelector('.prd-bom-qty');
+      if(qi) qi.placeholder = (type==='RAW') ? '배합량(%)' : (type==='PACK' ? '수량(개)' : '수량/배합량');
+    }
+  }catch(e){}
+  if(window.refreshProductCostPreview) window.refreshProductCostPreview();
+}
+
 // === 재고 LOT 수정·삭제 ===
 function _lotKey(type){ return {RAW:'RAW_LOT',PACK:'PACK_LOT',BULK:'BULK_LOT',FGT:'FGT_LOT'}[type]; }
 function _lotFind(type, lotNo){
@@ -2547,6 +2561,7 @@ function deleteLot(type, lotNo){
   logEvent('재고LOT 삭제: '+(lot.lotNo||''));
   toast('재고 LOT 삭제 완료','success');
   saveDB();
+  if(window.renderBulkPage) try{window.renderBulkPage()}catch(e){}
 }
 function editLot(type, lotNo){
   const lot=_lotFind(type, lotNo); if(!lot) return;
@@ -2571,6 +2586,7 @@ function lotSaveEdit(type, lotNo){
   logEvent('재고LOT 수정: '+(lot.lotNo||''));
   toast('재고 LOT 수정 완료','success');
   lotCloseModal(); saveDB();
+  if(window.renderBulkPage) try{window.renderBulkPage()}catch(e){}
 }
 
 // === 수불부 조회 ===
@@ -2770,13 +2786,18 @@ function initNewPage(pageId) {
     return '-';
   }
   function getStdCost(type, itemId){
-    if(type==='RAW') return num(findRaw(itemId)?.stdCost);
-    if(type==='PACK') return num(findPack(itemId)?.stdCost);
+    if(type==='RAW') return num(findRaw(Number(itemId))?.stdCost);
+    if(type==='PACK') return num(findPack(Number(itemId))?.stdCost);
     return 0;
   }
   function calcProductStdCost(product){
     if(!product?.bom?.length) return 0;
-    return product.bom.reduce((sum, row) => sum + num(row.qty) * getStdCost(row.type, row.itemId), 0);
+    const fw = num(product.fillWeight);
+    return product.bom.reduce((sum, row) => {
+      const unit = getStdCost(row.type, row.itemId);
+      if(row.type === 'RAW' && fw > 0) return sum + (num(row.qty)/100) * fw * unit;
+      return sum + num(row.qty) * unit;
+    }, 0);
   }
   function calcProductMarginRate(product){
     const cost = calcProductStdCost(product);
@@ -3036,11 +3057,13 @@ function initNewPage(pageId) {
     return '<option value="">BOM 항목 선택</option>' + rawOpts + packOpts;
   }
   function refreshProductCostPreview(){
+    const fw = num(document.getElementById('prd-fill')?.value);
     const est = Array.from(document.querySelectorAll('.product-bom-row')).reduce((sum,row) => {
       const val = row.querySelector('.prd-bom-item')?.value || '';
       const qty = num(row.querySelector('.prd-bom-qty')?.value);
       const [type,id] = val.split('-');
       if(!type || !id) return sum;
+      if(type === 'RAW' && fw > 0) return sum + (qty/100) * fw * getStdCost(type, id);
       return sum + qty * getStdCost(type, id);
     }, 0);
     const el = document.getElementById('prd-est-cost');
@@ -3052,14 +3075,16 @@ function initNewPage(pageId) {
     const row = document.createElement('div');
     row.className = 'grid grid-cols-[1fr_90px_24px] gap-2 items-center product-bom-row';
     const selected = rowData.type && rowData.itemId ? (rowData.type + '-' + rowData.itemId) : '';
-    row.innerHTML = '<select class="input-field text-xs prd-bom-item" onchange="refreshProductCostPreview()">' + buildBomOptions(selected) + '</select>' +
-      '<input type="number" step="0.001" class="input-field text-right prd-bom-qty" placeholder="수량" value="' + esc(rowData.qty || '') + '" oninput="refreshProductCostPreview()">' +
+    const _selType = (selected.split('-')[0]) || '';
+    const _ph = _selType === 'RAW' ? '배합량(%)' : (_selType === 'PACK' ? '수량(개)' : '수량/배합량');
+    row.innerHTML = '<select class="input-field text-xs prd-bom-item" onchange="bomRowChanged(this)">' + buildBomOptions(selected) + '</select>' +
+      '<input type="number" step="0.001" class="input-field text-right prd-bom-qty" placeholder="' + _ph + '" value="' + esc(rowData.qty || '') + '" oninput="refreshProductCostPreview()">' +
       '<button onclick="this.parentElement.remove();refreshProductCostPreview()" class="text-slate-400 hover:text-red-500 text-lg">×</button>';
     c.appendChild(row);
     refreshProductCostPreview();
   }
   function resetProductForm(){
-    ['prd-edit-id','prd-code','prd-name','prd-spec'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+    ['prd-edit-id','prd-code','prd-name','prd-spec','prd-fill'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
     const unit = document.getElementById('prd-unit'); if(unit) unit.value = 'ea';
     const price = document.getElementById('prd-price'); if(price) price.value = 0;
     const cost = document.getElementById('prd-est-cost'); if(cost) cost.value = 0;
@@ -3077,7 +3102,6 @@ function initNewPage(pageId) {
       const [type, itemId] = val.split('-');
       bom.push({type, itemId:Number(itemId), qty});
     });
-    if(!bom.length){ toast('BOM 항목을 1개 이상 등록하세요','error'); return; }
     const editId = document.getElementById('prd-edit-id')?.value;
     const payload = {
       code: document.getElementById('prd-code')?.value.trim() || '',
@@ -3085,6 +3109,7 @@ function initNewPage(pageId) {
       spec: document.getElementById('prd-spec')?.value.trim() || '',
       unit: document.getElementById('prd-unit')?.value || 'ea',
       salePrice: num(document.getElementById('prd-price')?.value),
+      fillWeight: num(document.getElementById('prd-fill')?.value),
       bom,
     };
     if(editId){
@@ -3109,6 +3134,7 @@ function initNewPage(pageId) {
     document.getElementById('prd-spec').value = row.spec || '';
     document.getElementById('prd-unit').value = row.unit || 'ea';
     document.getElementById('prd-price').value = num(row.salePrice);
+    { const fEl = document.getElementById('prd-fill'); if(fEl) fEl.value = num(row.fillWeight) || ''; }
     const c = document.getElementById('product-bom-container'); if(c) c.innerHTML = '';
     (row.bom || []).forEach(addProductBomRow);
     if(!(row.bom || []).length) addProductBomRow();
@@ -3475,6 +3501,7 @@ function initNewPage(pageId) {
   window.saveGoodsIn = saveGoodsIn;
   window.renderGoodsIn = renderGoodsIn;
   window.renderStock = renderStock;
+
   window.saveRaw = saveRaw;
   window.resetRawForm = resetRawForm;
   window.renderRaw = renderRaw;
@@ -3581,7 +3608,7 @@ function initNewPage(pageId) {
               <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label><input id="bulk-note2" class="input-field" placeholder="배합 메모"></div>
               <button onclick="createBulk2()" class="btn btn-primary w-full">벌크 LOT 생성</button>
             </div>
-            <div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">벌크 LOT 현황</h3><span class="badge-soft" id="bulk2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">벌크 LOT</th><th>제품</th><th class="text-right">잔량</th><th>배합일</th><th>숙성완료</th><th>상태</th></tr></thead><tbody id="tbl-bulk2"></tbody></table></div></div>
+            <div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">벌크 LOT 현황</h3><span class="badge-soft" id="bulk2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">벌크 LOT</th><th>제품</th><th class="text-right">잔량</th><th>배합일</th><th>숙성완료</th><th>상태</th><th class="text-center pr-3">관리</th></tr></thead><tbody id="tbl-bulk2"></tbody></table></div></div>
           </div>
         </div>`,
       't-batch': `
@@ -3903,9 +3930,10 @@ function initNewPage(pageId) {
     tbody.innerHTML = rows.map(l => {
       const done = l.matureUntil && l.matureUntil <= today();
       if(done && l.status==='HOLD') l.status='OK';
-      return `<tr><td class="pl-3"><span class="lot-badge bulk">${esc(l.lotNo)}</span></td><td class="text-xs font-bold">${esc(findProduct(l.productId)?.name||'-')}</td><td class="text-right">${esc(l.remaining)}</td><td class="text-xs">${esc(l.mfgDate||l.dateIn||'-')}</td><td class="text-xs">${esc(l.matureUntil||'-')}</td><td>${statusBadge(l.status||'HOLD')}</td></tr>`;
-    }).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">벌크 LOT 없음</td></tr>';
+      return `<tr><td class="pl-3"><span class="lot-badge bulk">${esc(l.lotNo)}</span></td><td class="text-xs font-bold">${esc(findProduct(l.productId)?.name||'-')}</td><td class="text-right">${esc(l.remaining)}</td><td class="text-xs">${esc(l.mfgDate||l.dateIn||'-')}</td><td class="text-xs">${esc(l.matureUntil||'-')}</td><td>${statusBadge(l.status||'HOLD')}</td><td class="text-center pr-3"><button onclick="editLot('BULK','${esc(l.lotNo)}')" class="btn btn-secondary btn-sm">수정</button> <button onclick="deleteLot('BULK','${esc(l.lotNo)}')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button></td></tr>`;
+    }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">벌크 LOT 없음</td></tr>';
   }
+  window.renderBulkPage = renderBulkPage;
   function createBatch2(){
     const bulkId = String(document.getElementById('batch-bulk-lot2')?.value||'');
     const qty = n(document.getElementById('batch-qty2')?.value);
