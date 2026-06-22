@@ -197,6 +197,9 @@
     <div onclick="goPage('purchase-log')" id="nav-purchase-log" class="nav-item">
       <i data-lucide="receipt-text" class="w-4 h-4 shrink-0"></i> 품목별 발주내역
     </div>
+    <div onclick="goPage('records-admin')" id="nav-records-admin" class="nav-item">
+      <i data-lucide="trash-2" class="w-4 h-4 shrink-0"></i> 기록 관리·삭제
+    </div>
     <div onclick="goPage('t-goods-in')" id="nav-t-goods-in" class="nav-item">
       <i data-lucide="archive-restore" class="w-4 h-4 shrink-0"></i> 입고관리
     </div>
@@ -946,7 +949,12 @@
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">파일 첨부 (사진·소형 PDF · 1개당 3MB 이하)</label>
           <input type="file" id="dn-files" multiple onchange="dnPickFiles(this)" class="text-xs">
           <span id="dn-files-label" class="text-[11px] text-emerald-600 ml-2"></span></div>
-        <button onclick="saveDevNote()" class="btn btn-primary px-6">노트 저장</button>
+        <div class="flex flex-wrap gap-2 items-center">
+          <input type="hidden" id="dn-edit-id">
+          <button onclick="saveDevNote()" class="btn btn-primary px-6">노트 저장</button>
+          <button onclick="dnCancelEdit()" id="dn-cancel" class="btn btn-secondary" style="display:none">수정취소</button>
+          <span id="dn-edit-badge" class="text-xs font-bold text-amber-600" style="display:none">✏️ 수정 중</span>
+        </div>
       </div>
       <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">연구노트 목록</h3></div>
         <div class="scroll-card-lg"><table><thead><tr>
@@ -985,7 +993,12 @@
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">파일 첨부 (사진·소형 PDF · 1개당 3MB 이하)</label>
           <input type="file" id="sm-files" multiple onchange="smpPickFiles(this)" class="text-xs">
           <span id="sm-files-label" class="text-[11px] text-emerald-600 ml-2"></span></div>
-        <button onclick="saveSample()" class="btn btn-primary px-6">샘플 저장</button>
+        <div class="flex flex-wrap gap-2 items-center">
+          <input type="hidden" id="sm-edit-id">
+          <button onclick="saveSample()" class="btn btn-primary px-6">샘플 저장</button>
+          <button onclick="smpCancelEdit()" id="sm-cancel" class="btn btn-secondary" style="display:none">수정취소</button>
+          <span id="sm-edit-badge" class="text-xs font-bold text-amber-600" style="display:none">✏️ 수정 중</span>
+        </div>
       </div>
       <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">샘플 수불 목록</h3></div>
         <div class="scroll-card-lg"><table><thead><tr>
@@ -1021,10 +1034,13 @@
           <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label>
             <input id="pl-note" class="input-field" placeholder="LOT/규격 등"></div>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 items-center">
+          <input type="hidden" id="pl-edit-id">
           <button onclick="savePurchaseLog()" class="btn btn-primary px-6">발주 저장</button>
           <button onclick="plUpload()" class="btn btn-secondary">📤 엑셀/CSV 업로드</button>
           <button onclick="plTemplate()" class="btn btn-secondary">📄 양식 다운로드</button>
+          <button onclick="plCancelEdit()" id="pl-cancel" class="btn btn-secondary" style="display:none">수정취소</button>
+          <span id="pl-edit-badge" class="text-xs font-bold text-amber-600" style="display:none">✏️ 수정 중</span>
         </div>
       </div>
       <div class="card p-3">
@@ -1041,6 +1057,22 @@
         <div class="scroll-card-lg"><table><thead><tr>
           <th class="pl-3">품목명</th><th>구분</th><th class="text-right">총 수량</th><th class="text-right">총 금액</th><th class="text-right">발주횟수</th><th class="text-right pr-3">최근발주일</th>
         </tr></thead><tbody id="tbl-purchase-summary"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ========== 기록 관리·삭제 콘솔 ========== -->
+    <section id="page-records-admin" class="page-section space-y-4">
+      <h2 class="text-lg font-black text-slate-800">기록 관리 · 삭제</h2>
+      <div class="card p-3">
+        <p class="text-xs text-slate-500 mb-3">잘못 입력했거나 삭제가 필요한 기록을 종류별로 골라 바로 삭제할 수 있습니다. (수정은 각 메뉴의 수정 버튼을 이용하세요.)</p>
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <select id="ra-type" class="input-field" style="max-width:210px" onchange="renderRecordsAdmin()"></select>
+          <input id="ra-search" class="input-field" style="max-width:220px" placeholder="검색" oninput="renderRecordsAdmin()">
+          <span id="ra-count" class="text-xs font-bold text-slate-600 ml-auto"></span>
+        </div>
+        <div class="scroll-card-lg"><table><thead><tr>
+          <th class="pl-3">일자</th><th>구분/번호</th><th>요약</th><th class="text-center pr-3">삭제</th>
+        </tr></thead><tbody id="tbl-records-admin"></tbody></table></div>
       </div>
     </section>
 
@@ -1320,7 +1352,7 @@ function renderSuppliers() {
     '<td class="text-xs">' + (s.contact||'-') + '</td>' +
     '<td class="text-xs">' + (s.tel||'-') + '</td>' +
     '<td class="text-right">' + (s.leadDays||7) + '일</td>' +
-    '<td class="text-center pr-4"><button onclick="editSupplier(' + s.id + ')" class="btn btn-secondary btn-sm">수정</button></td>' +
+    '<td class="text-center pr-4"><button onclick="editSupplier(' + s.id + ')" class="btn btn-secondary btn-sm">수정</button> <button onclick="deleteSupplier(' + s.id + ')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button></td>' +
     '</tr>').join('');
   const cnt = document.getElementById('sup-count');
   if (cnt) cnt.innerText = list.length;
@@ -1339,6 +1371,15 @@ function editSupplier(id) {
   document.getElementById('sup-addr').value = s.addr||'';
   document.getElementById('sup-lead').value = s.leadDays||7;
   document.getElementById('sup-note').value = s.note||'';
+}
+function deleteSupplier(id) {
+  const s = db.master.M_SUPPLIER.find(x => x.id === id);
+  if (!s) return;
+  if (!confirm('거래처 [' + s.name + '] 을(를) 삭제하시겠습니까?')) return;
+  db.master.M_SUPPLIER = db.master.M_SUPPLIER.filter(x => x.id !== id);
+  logEvent('거래처 삭제: ' + s.name);
+  toast('거래처 삭제 완료', 'success');
+  saveDB();
 }
 
 // === 구매발주 ===
@@ -1939,23 +1980,61 @@ function saveDevNote() {
   ensureNewTables();
   const title = document.getElementById('dn-title')?.value.trim();
   if (!title) { toast('제목을 입력하세요','error'); return; }
-  const note = {
-    id: Date.now(), title, date: document.getElementById('dn-date')?.value||todayISO(),
+  const rec = {
+    title, date: document.getElementById('dn-date')?.value||todayISO(),
     formulaId: document.getElementById('dn-formula')?.value||null,
     content: document.getElementById('dn-content')?.value.trim()||'',
-    conclusion: document.getElementById('dn-conclusion')?.value.trim()||'',
-    progress: [], files: (window._dnPendingFiles||[]).slice(), links: []
+    conclusion: document.getElementById('dn-conclusion')?.value.trim()||''
   };
-  db.txn.T_DEV_NOTE.push(note);
+  const editId = document.getElementById('dn-edit-id')?.value;
+  if (editId) {
+    const n = _dnFindNote(editId);
+    if (n) { Object.assign(n, rec); if(window._dnPendingFiles&&window._dnPendingFiles.length){ n.files=(n.files||[]).concat(window._dnPendingFiles); } }
+    toast('연구노트 수정 완료','success'); logEvent('연구노트 수정: '+title);
+  } else {
+    db.txn.T_DEV_NOTE.push(Object.assign({id:Date.now(), progress:[], files:(window._dnPendingFiles||[]).slice(), links:[]}, rec));
+    toast('연구노트 저장 완료','success'); logEvent('연구노트: '+title);
+  }
   window._dnPendingFiles = [];
   const fi = document.getElementById('dn-files'); if (fi) fi.value = '';
   const fl = document.getElementById('dn-files-label'); if (fl) fl.textContent = '';
-  logEvent('연구노트: '+title);
-  toast('연구노트 저장 완료','success');
+  dnClearEdit();
   document.getElementById('dn-title').value = '';
   document.getElementById('dn-content').value = '';
   document.getElementById('dn-conclusion').value = '';
   saveDB();
+}
+function editDevNote(id){
+  const n=_dnFindNote(id); if(!n) return;
+  document.getElementById('dn-edit-id').value=n.id;
+  document.getElementById('dn-title').value=n.title||'';
+  document.getElementById('dn-date').value=n.date||todayISO();
+  const fml=document.getElementById('dn-formula'); if(fml) fml.value=n.formulaId||'';
+  document.getElementById('dn-content').value=n.content||'';
+  document.getElementById('dn-conclusion').value=n.conclusion||'';
+  const cb=document.getElementById('dn-cancel'); if(cb) cb.style.display='';
+  const bd=document.getElementById('dn-edit-badge'); if(bd) bd.style.display='';
+  dnCloseDetail();
+  const pd=document.getElementById('page-dev-note'); if(pd && pd.scrollIntoView) pd.scrollIntoView({behavior:'smooth',block:'start'});
+  toast('수정 모드 — 변경 후 [노트 저장]','info');
+}
+function dnClearEdit(){
+  const e=document.getElementById('dn-edit-id'); if(e) e.value='';
+  const cb=document.getElementById('dn-cancel'); if(cb) cb.style.display='none';
+  const bd=document.getElementById('dn-edit-badge'); if(bd) bd.style.display='none';
+}
+function dnCancelEdit(){
+  dnClearEdit();
+  ['dn-title','dn-content','dn-conclusion'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  toast('수정 취소','info');
+}
+function deleteDevNote(id){
+  const n=_dnFindNote(id); if(!n) return;
+  if(!confirm('연구노트 [' + n.title + '] 을(를) 삭제할까요?')) return;
+  db.txn.T_DEV_NOTE = db.txn.T_DEV_NOTE.filter(x=>String(x.id)!==String(id));
+  logEvent('연구노트 삭제: '+n.title);
+  toast('연구노트 삭제 완료','success');
+  dnCloseDetail(); saveDB(); renderDevNote();
 }
 
 // 작성 폼에서 파일 미리 선택
@@ -2024,7 +2103,7 @@ function showDevNoteDetail(noteId) {
       '<div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px;z-index:1">'+
         '<div style="flex:1"><div style="font-size:17px;font-weight:800;color:#1e293b">📝 '+_dnEsc(n.title)+'</div>'+
         '<div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(n.date)+' · 포뮬러: '+_dnEsc(f?.name||'-')+'</div></div>'+
-        '<button onclick="dnCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div>'+
+        '<button onclick="editDevNote('+n.id+')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">수정</button><button onclick="deleteDevNote('+n.id+')" style="background:#fee2e2;color:#dc2626;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">삭제</button><button onclick="dnCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div>'+
       '<div style="padding:18px 20px">'+
         '<div style="font-size:11px;font-weight:800;color:#ec4899;letter-spacing:.5px;margin-bottom:6px">내용</div>'+
         '<div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:#f8fafc;border-radius:8px;padding:12px 14px;color:#334155">'+(_dnEsc(n.content)||'<span style=color:#94a3b8>(내용 없음)</span>')+'</div>'+
@@ -2080,8 +2159,7 @@ function saveSample(){
   ensureNewTables();
   const name = document.getElementById('sm-name')?.value.trim();
   if(!name){ toast('샘플명을 입력하세요','error'); return; }
-  const s = {
-    id: Date.now(),
+  const rec = {
     date: document.getElementById('sm-date')?.value||todayISO(),
     dir: document.getElementById('sm-dir')?.value||'수령',
     name,
@@ -2090,17 +2168,59 @@ function saveSample(){
     status: document.getElementById('sm-status')?.value||'검토중',
     request: document.getElementById('sm-request')?.value.trim()||'',
     content: document.getElementById('sm-content')?.value.trim()||'',
-    improve: document.getElementById('sm-improve')?.value.trim()||'',
-    progress: [], files: (window._smpPendingFiles||[]).slice(), links: []
+    improve: document.getElementById('sm-improve')?.value.trim()||''
   };
-  db.txn.T_SAMPLE.push(s);
+  const editId = document.getElementById('sm-edit-id')?.value;
+  if(editId){
+    const s=_smpFind(editId);
+    if(s){ Object.assign(s, rec); if(window._smpPendingFiles&&window._smpPendingFiles.length){ s.files=(s.files||[]).concat(window._smpPendingFiles); } }
+    toast('샘플 수정 완료','success'); logEvent('샘플수정: '+name);
+  } else {
+    db.txn.T_SAMPLE.push(Object.assign({id:Date.now(), progress:[], files:(window._smpPendingFiles||[]).slice(), links:[]}, rec));
+    toast('샘플 등록 완료','success'); logEvent('샘플수불: '+name);
+  }
   window._smpPendingFiles = [];
   const fi = document.getElementById('sm-files'); if(fi) fi.value='';
   const fl = document.getElementById('sm-files-label'); if(fl) fl.textContent='';
-  logEvent('샘플수불: '+name);
-  toast('샘플 등록 완료','success');
+  smpClearEdit();
   ['sm-name','sm-supplier','sm-manager','sm-request','sm-content','sm-improve'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
   saveDB();
+}
+function editSample(id){
+  const s=_smpFind(id); if(!s) return;
+  document.getElementById('sm-edit-id').value=s.id;
+  document.getElementById('sm-date').value=s.date||todayISO();
+  document.getElementById('sm-dir').value=s.dir||'수령';
+  document.getElementById('sm-status').value=s.status||'검토중';
+  document.getElementById('sm-name').value=s.name||'';
+  document.getElementById('sm-supplier').value=s.supplier||'';
+  document.getElementById('sm-manager').value=s.manager||'';
+  document.getElementById('sm-request').value=s.request||'';
+  document.getElementById('sm-content').value=s.content||'';
+  document.getElementById('sm-improve').value=s.improve||'';
+  const cb=document.getElementById('sm-cancel'); if(cb) cb.style.display='';
+  const bd=document.getElementById('sm-edit-badge'); if(bd) bd.style.display='';
+  smpCloseDetail();
+  const pd=document.getElementById('page-sample'); if(pd && pd.scrollIntoView) pd.scrollIntoView({behavior:'smooth',block:'start'});
+  toast('수정 모드 — 변경 후 [샘플 저장]','info');
+}
+function smpClearEdit(){
+  const e=document.getElementById('sm-edit-id'); if(e) e.value='';
+  const cb=document.getElementById('sm-cancel'); if(cb) cb.style.display='none';
+  const bd=document.getElementById('sm-edit-badge'); if(bd) bd.style.display='none';
+}
+function smpCancelEdit(){
+  smpClearEdit();
+  ['sm-name','sm-supplier','sm-manager','sm-request','sm-content','sm-improve'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  toast('수정 취소','info');
+}
+function deleteSample(id){
+  const s=_smpFind(id); if(!s) return;
+  if(!confirm('샘플 [' + s.name + '] 기록을 삭제할까요?')) return;
+  db.txn.T_SAMPLE = db.txn.T_SAMPLE.filter(x=>String(x.id)!==String(id));
+  logEvent('샘플 삭제: '+s.name);
+  toast('샘플 삭제 완료','success');
+  smpCloseDetail(); saveDB(); renderSample();
 }
 function smpPickFiles(input){
   window._smpPendingFiles = window._smpPendingFiles || [];
@@ -2148,7 +2268,7 @@ function showSampleDetail(id){
   const noAtt = (!s.files.length&&!s.links.length) ? '<div style="color:#94a3b8;font-size:12px;padding:4px 0">첨부 없음</div>' : '';
   const statusOpts = ['검토중','승인','보류','반려','재요청'].map(o=>'<option '+(s.status===o?'selected':'')+'>'+o+'</option>').join('');
   const sec = (label,val,bg,border)=>'<div style="font-size:11px;font-weight:800;color:#0e7490;letter-spacing:.5px;margin:16px 0 6px">'+label+'</div><div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:'+bg+';'+(border||'')+'border-radius:8px;padding:12px 14px;color:#334155">'+(_dnEsc(val)||'<span style=color:#94a3b8>-</span>')+'</div>';
-  root.innerHTML='<div onclick="if(event.target===this)smpCloseDetail()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto"><div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)"><div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px;z-index:1"><div style="flex:1"><div style="font-size:17px;font-weight:800;color:#1e293b">🧪 '+_dnEsc(s.name)+'</div><div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(s.date)+' · '+_dnEsc(s.dir||'수령')+' · 공급처: '+_dnEsc(s.supplier||'-')+' · 담당: '+_dnEsc(s.manager||'-')+'</div></div><button onclick="smpCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div><div style="padding:18px 20px">'+
+  root.innerHTML='<div onclick="if(event.target===this)smpCloseDetail()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto"><div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)"><div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px;z-index:1"><div style="flex:1"><div style="font-size:17px;font-weight:800;color:#1e293b">🧪 '+_dnEsc(s.name)+'</div><div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(s.date)+' · '+_dnEsc(s.dir||'수령')+' · 공급처: '+_dnEsc(s.supplier||'-')+' · 담당: '+_dnEsc(s.manager||'-')+'</div></div><button onclick="editSample('+s.id+')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">수정</button><button onclick="deleteSample('+s.id+')" style="background:#fee2e2;color:#dc2626;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">삭제</button><button onclick="smpCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div><div style="padding:18px 20px">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:12px;color:#64748b;font-weight:700">상태:</span><select id="smp-status-sel" onchange="smpSetStatus(\''+s.id+'\',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;font-size:13px">'+statusOpts+'</select></div>'+
     sec('📋 요청사항',s.request,'#f8fafc','')+
     sec('🧴 샘플내용',s.content,'#f8fafc','')+
@@ -2182,20 +2302,59 @@ function savePurchaseLog(){
   const q=_plNum(document.getElementById('pl-qty')?.value);
   const p=_plNum(document.getElementById('pl-price')?.value);
   let amt=_plNum(document.getElementById('pl-amount')?.value); if(!amt) amt=q*p;
-  db.txn.T_PURCHASE_LOG.push({
-    id:Date.now(),
+  const rec={
     date:document.getElementById('pl-date')?.value||todayISO(),
     supplier:document.getElementById('pl-supplier')?.value.trim()||'',
     category:document.getElementById('pl-category')?.value||'원료',
     item, qty:q, unit:document.getElementById('pl-unit')?.value.trim()||'',
     unitPrice:p, amount:amt,
     note:document.getElementById('pl-note')?.value.trim()||''
-  });
-  logEvent('발주입력: '+item+' '+_plFmt(amt)+'원');
-  toast('발주내역 저장 완료','success');
-  ['pl-item','pl-note'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  };
+  const editId=document.getElementById('pl-edit-id')?.value;
+  if(editId){
+    const r=db.txn.T_PURCHASE_LOG.find(x=>String(x.id)===String(editId));
+    if(r) Object.assign(r, rec);
+    toast('발주내역 수정 완료','success');
+    logEvent('발주수정: '+item+' '+_plFmt(amt)+'원');
+  } else {
+    db.txn.T_PURCHASE_LOG.push(Object.assign({id:Date.now()}, rec));
+    toast('발주내역 저장 완료','success');
+    logEvent('발주입력: '+item+' '+_plFmt(amt)+'원');
+  }
+  plClearEdit();
+  ['pl-item','pl-note','pl-supplier'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
   ['pl-qty','pl-price','pl-amount'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value='0'; });
   saveDB();
+}
+function editPurchaseLog(id){
+  plEnsure();
+  const r=db.txn.T_PURCHASE_LOG.find(x=>String(x.id)===String(id));
+  if(!r) return;
+  document.getElementById('pl-edit-id').value=r.id;
+  document.getElementById('pl-date').value=r.date||todayISO();
+  document.getElementById('pl-supplier').value=r.supplier||'';
+  document.getElementById('pl-category').value=r.category||'원료';
+  document.getElementById('pl-item').value=r.item||'';
+  document.getElementById('pl-qty').value=r.qty||0;
+  document.getElementById('pl-unit').value=r.unit||'';
+  document.getElementById('pl-price').value=r.unitPrice||0;
+  document.getElementById('pl-amount').value=r.amount||0;
+  document.getElementById('pl-note').value=r.note||'';
+  const cb=document.getElementById('pl-cancel'); if(cb) cb.style.display='';
+  const bd=document.getElementById('pl-edit-badge'); if(bd) bd.style.display='';
+  const pd=document.getElementById('page-purchase-log'); if(pd && pd.scrollIntoView) pd.scrollIntoView({behavior:'smooth',block:'start'});
+  toast('수정 모드 — 내용 변경 후 [발주 저장]','info');
+}
+function plClearEdit(){
+  const e=document.getElementById('pl-edit-id'); if(e) e.value='';
+  const cb=document.getElementById('pl-cancel'); if(cb) cb.style.display='none';
+  const bd=document.getElementById('pl-edit-badge'); if(bd) bd.style.display='none';
+}
+function plCancelEdit(){
+  plClearEdit();
+  ['pl-item','pl-note','pl-supplier'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  ['pl-qty','pl-price','pl-amount'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value='0'; });
+  toast('수정 취소','info');
 }
 function deletePurchaseLog(id){
   plEnsure();
@@ -2221,7 +2380,7 @@ function renderPurchaseLog(){
       '</td><td class="text-right text-xs">'+_plFmt(r.qty)+' '+_dnEsc(r.unit||'')+
       '</td><td class="text-right text-xs">'+_plFmt(r.unitPrice)+
       '</td><td class="text-right text-xs font-bold">'+_plFmt(r.amount)+
-      '</td><td class="text-center pr-3"><button onclick="deletePurchaseLog(\''+r.id+'\')" class="text-red-400 text-xs">삭제</button></td></tr>';
+      '</td><td class="text-center pr-3"><button onclick="editPurchaseLog(\''+r.id+'\')" class="text-sky-500 text-xs">수정</button> <button onclick="deletePurchaseLog(\''+r.id+'\')" class="text-red-400 text-xs">삭제</button></td></tr>';
   }).join('') || '<tr><td colspan="8" class="text-center py-4 text-slate-400">발주내역 없음</td></tr>';
   const totAmt=rows.reduce((s,r)=>s+_plNum(r.amount),0);
   const totQty=rows.reduce((s,r)=>s+_plNum(r.qty),0);
@@ -2296,6 +2455,52 @@ async function plParseFile(file){
     toast(added+'건 업로드 완료','success');
     saveDB(); renderPurchaseLog();
   }catch(err){ toast('업로드 오류: '+((err&&err.message)||err),'error'); }
+}
+
+// === 기록 관리·삭제 콘솔 ===
+var RA_TYPES=[
+ {label:'입고',t:'T_GOODS_IN'},{label:'출고',t:'T_SALE'},
+ {label:'생산계획',t:'T_PROD_PLAN'},{label:'작업지시',t:'T_WORK_ORDER'},
+ {label:'조향/벌크배합',t:'T_BULK'},{label:'충진/생산배치',t:'T_BATCH'},{label:'충진기록',t:'T_FILL'},
+ {label:'수입/벌크검사',t:'T_QC'},{label:'생산품검사',t:'T_QC_PROD'},
+ {label:'부적합(NCR)',t:'T_NCR'},{label:'CAPA',t:'T_CAPA'},{label:'재고조정',t:'T_ADJ'},
+ {label:'구매발주',t:'T_PO'},{label:'수주',t:'T_SO'},{label:'반품',t:'T_RETURN'},{label:'클레임',t:'T_CLAIM'},
+ {label:'품목별 발주내역',t:'T_PURCHASE_LOG'},{label:'샘플수불',t:'T_SAMPLE'},{label:'연구노트',t:'T_DEV_NOTE'}
+];
+function _raFillTypes(){
+  const sel=document.getElementById('ra-type'); if(!sel||sel.options.length) return;
+  sel.innerHTML=RA_TYPES.map(x=>'<option value="'+x.t+'">'+x.label+'</option>').join('');
+}
+function renderRecordsAdmin(){
+  _raFillTypes();
+  const sel=document.getElementById('ra-type'); const tbody=document.getElementById('tbl-records-admin');
+  if(!tbody) return;
+  const t=sel?.value||RA_TYPES[0].t;
+  const label=(RA_TYPES.find(x=>x.t===t)||{}).label||t;
+  const qs=(document.getElementById('ra-search')?.value||'').toLowerCase();
+  const skip=['id','progress','files','links','items','bom','dataUrl','createdAt'];
+  let list=(((db.txn&&db.txn[t])||[]).slice()).reverse();
+  let rows=list.map(r=>{
+    const primary=r.no||r.name||r.title||r.item||r.lotNo||r.productId||('#'+r.id);
+    const date=r.date||r.createdAt||'-';
+    const summary=Object.keys(r).filter(k=>skip.indexOf(k)<0&&r[k]!=null&&typeof r[k]!=='object').map(k=>k+': '+String(r[k]).slice(0,20)).slice(0,5).join(' · ');
+    return {r,primary:String(primary),date:String(date),summary};
+  });
+  if(qs) rows=rows.filter(o=>(o.primary+o.summary+o.date).toLowerCase().includes(qs));
+  tbody.innerHTML=rows.map(o=>'<tr><td class="pl-3 text-xs">'+_dnEsc(o.date)+
+    '</td><td class="font-bold text-xs">'+_dnEsc(o.primary)+
+    '</td><td class="text-[11px] text-slate-500">'+_dnEsc(o.summary)+
+    '</td><td class="text-center pr-3"><button onclick="delTxn(\''+t+'\',\''+o.r.id+'\',\''+_dnEsc(label)+'\')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button></td></tr>'
+  ).join('') || '<tr><td colspan="4" class="text-center py-4 text-slate-400">기록 없음</td></tr>';
+  const cnt=document.getElementById('ra-count'); if(cnt) cnt.textContent=rows.length+'건';
+}
+function delTxn(table,id,label){
+  if(!db.txn||!db.txn[table]) return;
+  if(!confirm((label||'기록')+' 1건을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  db.txn[table]=db.txn[table].filter(x=>String(x.id)!==String(id));
+  logEvent('기록삭제('+(label||table)+')');
+  toast('삭제 완료','success');
+  saveDB(); renderRecordsAdmin();
 }
 
 // === 수불부 조회 ===
@@ -2458,6 +2663,9 @@ function initNewPage(pageId) {
     case 'purchase-log':
       renderPurchaseLog();
       { const pd = document.getElementById('pl-date'); if (pd && !pd.value) pd.value = todayISO(); }
+      break;
+    case 'records-admin':
+      renderRecordsAdmin();
       break;
     case 'stock-ledger':
       document.getElementById('sl-from').value = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -6141,7 +6349,7 @@ function initNewPage(pageId) {
   var _origRenderAll = window.renderAll;
   var EXTRA = ['renderSuppliers', 'renderPO', 'renderSO', 'renderReturn', 'renderClaim',
     'renderProdPlan', 'renderWorkOrder', 'renderProdResult', 'renderQcProd',
-    'renderNCR', 'renderCAPA', 'renderDevNote', 'renderSample', 'renderPurchaseLog'];
+    'renderNCR', 'renderCAPA', 'renderDevNote', 'renderSample', 'renderPurchaseLog', 'renderRecordsAdmin'];
   window.renderAll = function () {
     try { if (typeof _origRenderAll === 'function') _origRenderAll(); } catch (e) {}
     EXTRA.forEach(function (fn) {
