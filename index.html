@@ -1444,8 +1444,38 @@ function renderPO() {
 function completePO(poId) {
   const po = db.txn.T_PO.find(p => p.id === poId);
   if (!po || po.status === '입고완료') return;
+  if (!confirm('발주 ' + po.no + ' 의 품목을 입고 처리할까요?\n(재고 LOT과 입고기록이 생성됩니다)')) return;
+  db.stock = db.stock || {};
+  db.stock.RAW_LOT = db.stock.RAW_LOT || [];
+  db.stock.PACK_LOT = db.stock.PACK_LOT || [];
+  db.txn.T_GOODS_IN = db.txn.T_GOODS_IN || [];
+  const dateIn = todayISO();
+  let made = 0;
+  (po.items || []).forEach((it, idx) => {
+    const ref = String(it.item || '');
+    let type = '', itemId = 0;
+    if (ref.indexOf('RAW-') === 0) { type = 'RAW'; itemId = Number(ref.slice(4)); }
+    else if (ref.indexOf('PACK-') === 0) { type = 'PACK'; itemId = Number(ref.slice(5)); }
+    else return;
+    const qty = Number(it.qty) || 0;
+    if (qty <= 0) return;
+    const master = type === 'RAW'
+      ? (db.master.M_RAW || []).find(r => String(r.rawId) === String(itemId))
+      : (db.master.M_PACK || []).find(p => String(p.packId) === String(itemId));
+    const shelf = master && master.shelfDays ? Number(master.shelfDays) : 0;
+    const expDate = shelf ? new Date(new Date(dateIn).getTime() + shelf * 86400000).toISOString().split('T')[0] : '';
+    const lotNo = (type === 'RAW' ? 'R' : 'P') + '-' + Date.now().toString(36).toUpperCase() + idx;
+    const unitCost = Number(it.price) || 0;
+    const lot = { id: Date.now() + idx, lotNo, remaining: qty, qty, unitCost, dateIn, expDate, status: 'OK', note: '발주 ' + po.no + ' 입고' };
+    if (type === 'RAW') lot.rawId = itemId; else lot.packId = itemId;
+    db.stock[type === 'RAW' ? 'RAW_LOT' : 'PACK_LOT'].push(lot);
+    db.txn.T_GOODS_IN.push({ id: 'GI-' + (Date.now() + idx), type, itemId, lotNo, qty, unitCost, dateIn, expDate, note: '발주 ' + po.no, poId: po.id });
+    made++;
+  });
   po.status = '입고완료';
-  toast('발주 ' + po.no + ' 입고 처리 완료', 'success');
+  po.receivedAt = dateIn;
+  logEvent('발주입고: ' + po.no + ' / ' + made + '품목');
+  toast(made > 0 ? ('입고 처리 완료 — ' + made + '품목이 입고관리·재고에 반영되었습니다') : '입고 가능한 품목이 없어 상태만 변경되었습니다', 'success');
   saveDB();
 }
 
