@@ -5653,6 +5653,36 @@ function initNewPage(pageId) {
 </script>
 <script src="responsive-erp.js"></script>
   <script src="erp-patch.js"></script>
+<script>
+/* ── 회사정보 클라우드 동기화 보완 (다른 기기 반영) — 노즈 추가 ── */
+(async function () {
+  try {
+    await new Promise(function (r) { setTimeout(r, 1500); });
+    if (!window.SB_URL || !window.SB_KEY) return;
+    var r = await fetch(window.SB_URL + '/rest/v1/erp_config?id=eq.doc_config&select=data,updated_at', {
+      headers: { 'apikey': window.SB_KEY, 'Authorization': 'Bearer ' + window.SB_KEY }
+    });
+    if (!r.ok) return;
+    var rows = await r.json();
+    if (!rows || !rows.length || !rows[0].data) return;
+    var remoteData = rows[0].data;
+    var remoteAt = rows[0].updated_at || '';
+    var localAt = localStorage.getItem('shifti_doc_cfg_at') || '';
+    var localEmpty = true;
+    try {
+      var lr = localStorage.getItem('shifti_doc_cfg');
+      localEmpty = !lr || Object.keys(JSON.parse(lr)).length === 0;
+    } catch (e) {}
+    if (localEmpty || remoteAt > localAt) {
+      localStorage.setItem('shifti_doc_cfg', JSON.stringify(remoteData));
+      localStorage.setItem('shifti_doc_cfg_at', remoteAt);
+      try { if (typeof loadCompanyInfo === 'function') loadCompanyInfo(); } catch (e) {}
+      try { if (typeof refreshDocHeaders === 'function') refreshDocHeaders(); } catch (e) {}
+      console.log('[CFG] 클라우드 회사정보 적용됨');
+    }
+  } catch (e) { console.warn('[CFG] cloud load fail:', e && e.message); }
+})();
+</script>
 </body>
  
 </html>
