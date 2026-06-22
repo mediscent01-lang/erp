@@ -2086,6 +2086,24 @@ function initNewPage(pageId) {
     db.meta.updatedAt = new Date().toISOString();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
     renderAll();
+    /* 클라우드 업로드 (노즈 수정: 마스터 데이터도 동기화) */
+    if (window.SB_URL && window.SB_KEY) {
+      fetch(window.SB_URL + '/rest/v1/erp_data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': window.SB_KEY,
+          'Authorization': 'Bearer ' + window.SB_KEY,
+          'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify({ id: (window.SB_ROW || 'shifti_erp_main'), data: db, updated_at: db.meta.updatedAt })
+      }).then(function (r) {
+        if (window._setCS) window._setCS(r.ok ? '☁️' : '⚠️', r.ok ? ('저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })) : '저장 실패 (로컬만)');
+      }).catch(function (e) {
+        if (window._setCS) window._setCS('⚠️', '저장 실패 (로컬만)');
+        console.warn('[SB] master save fail:', e && e.message);
+      });
+    }
   }
   window.saveDB = saveDB;
 
