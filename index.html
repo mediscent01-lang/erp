@@ -967,6 +967,10 @@
     <!-- ========== 샘플 수불처리대장 ========== -->
     <section id="page-sample" class="page-section space-y-4">
       <h2 class="text-lg font-black text-slate-800">샘플 수불처리대장</h2>
+      <div class="card p-3 bg-cyan-50 border border-cyan-200 flex items-center justify-between gap-3 flex-wrap">
+        <div class="text-xs text-cyan-900"><b>에데카 샘플시트</b> 84건을 수불대장에 한 번에 등록합니다. <span class="text-cyan-700">(이미 등록된 코드는 자동 제외 · 여러 번 눌러도 중복 안 됨)</span></div>
+        <button onclick="loadEdekaSamples()" class="btn btn-primary btn-sm whitespace-nowrap">📥 에데카 84건 불러오기</button>
+      </div>
       <div class="card p-4 space-y-3 border-l-4 border-l-cyan-500">
         <h3 class="font-bold text-slate-700 text-sm">샘플 등록</h3>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -979,11 +983,13 @@
           <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">담당자</label>
             <input id="sm-manager" class="input-field" placeholder="담당자"></div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">샘플명 / 향명</label>
-            <input id="sm-name" class="input-field" placeholder="예: Rose Accord A-3"></div>
-          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">공급처 / 거래처</label>
-            <input id="sm-supplier" class="input-field" placeholder="예: ○○향료"></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">샘플명 / 향명</label>
+          <input id="sm-name" class="input-field" placeholder="예: Rose Accord A-3"></div>
+        <div class="flex items-center gap-4 flex-wrap bg-slate-50 border border-slate-200 rounded px-3 py-2">
+          <span class="text-[10.5px] font-bold text-slate-500">체크</span>
+          <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="sm-review" class="w-4 h-4"> 검토</label>
+          <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="sm-revise" class="w-4 h-4"> 수정</label>
+          <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="sm-security" class="w-4 h-4"> 보안</label>
         </div>
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">요청사항</label>
           <textarea id="sm-request" class="input-field" rows="2" placeholder="우리가 요청한 내용 (예: 톱노트 시트러스 강화, 잔향 6시간 이상)"></textarea></div>
@@ -991,6 +997,8 @@
           <textarea id="sm-content" class="input-field" rows="3" placeholder="받은 샘플 설명 (향 구성, 농도, 특징, 평가)"></textarea></div>
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">개선방향</label>
           <textarea id="sm-improve" class="input-field" rows="2" placeholder="개선 요청·다음 방향 (예: 머스크 줄이고 우디 보강)"></textarea></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고 (진행사항)</label>
+          <textarea id="sm-remark" class="input-field" rows="2" placeholder="향후 진행사항 업데이트 (예: 6/26 재의뢰 → 7/2 승인 예정)"></textarea></div>
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">파일 첨부 (사진·소형 PDF · 1개당 3MB 이하)</label>
           <input type="file" id="sm-files" multiple onchange="smpPickFiles(this)" class="text-xs">
           <span id="sm-files-label" class="text-[11px] text-emerald-600 ml-2"></span></div>
@@ -1003,7 +1011,7 @@
       </div>
       <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">샘플 수불 목록</h3></div>
         <div class="scroll-card-lg"><table><thead><tr>
-          <th class="pl-3">일자</th><th>구분</th><th>샘플명</th><th>공급처</th><th>상태</th><th>진행</th><th class="text-right pr-3">관리</th>
+          <th class="pl-3">일자</th><th>구분</th><th>샘플명</th><th class="text-center">검토</th><th class="text-center">수정</th><th class="text-center">보안</th><th>상태</th><th>비고</th><th class="text-right pr-3">관리</th>
         </tr></thead><tbody id="tbl-sample"></tbody></table></div>
       </div>
     </section>
@@ -1203,7 +1211,7 @@ async function resetDB(){
 }
 function autoExpireLots(){const n=new Date();['RAW_LOT','PACK_LOT'].forEach(k=>{(db.stock[k]||[]).forEach(l=>{if(l.expDate&&l.status!=='FAIL'&&l.status!=='EXPIRED'&&new Date(l.expDate)<n)l.status='EXPIRED'})})}
 function getDocConfig(){try{return JSON.parse(localStorage.getItem('shifti_doc_cfg')||'{}')}catch(e){return{}}}
-async function saveDocConfig(c){localStorage.setItem('shifti_doc_cfg',JSON.stringify(c));try{await _sbSet('erp_config',SB_CFG,c)}catch(e){console.warn('[SB] cfg save fail:',e.message)}}
+async function saveDocConfig(c){localStorage.setItem('shifti_doc_cfg',JSON.stringify(c));localStorage.setItem('shifti_doc_cfg_at',new Date().toISOString());try{await _sbSet('erp_config',SB_CFG,c)}catch(e){console.warn('[SB] cfg save fail:',e.message)}}
 function refreshDocHeaders(){const c=getDocConfig();const co=c.company||'SHIFTI';['bmr-company-name','coa-company-name','rel-company-name'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerText=co})}
 function initPspecPage(){}
 function saveRaw(){toast('원료 저장(stub)','info')}
@@ -2204,12 +2212,15 @@ function saveSample(){
     date: document.getElementById('sm-date')?.value||todayISO(),
     dir: document.getElementById('sm-dir')?.value||'수령',
     name,
-    supplier: document.getElementById('sm-supplier')?.value.trim()||'',
     manager: document.getElementById('sm-manager')?.value.trim()||'',
     status: document.getElementById('sm-status')?.value||'검토중',
     request: document.getElementById('sm-request')?.value.trim()||'',
     content: document.getElementById('sm-content')?.value.trim()||'',
-    improve: document.getElementById('sm-improve')?.value.trim()||''
+    improve: document.getElementById('sm-improve')?.value.trim()||'',
+    review: document.getElementById('sm-review')?.checked||false,
+    revise: document.getElementById('sm-revise')?.checked||false,
+    security: document.getElementById('sm-security')?.checked||false,
+    remark: document.getElementById('sm-remark')?.value.trim()||''
   };
   const editId = document.getElementById('sm-edit-id')?.value;
   if(editId){
@@ -2224,8 +2235,9 @@ function saveSample(){
   const fi = document.getElementById('sm-files'); if(fi) fi.value='';
   const fl = document.getElementById('sm-files-label'); if(fl) fl.textContent='';
   smpClearEdit();
-  ['sm-name','sm-supplier','sm-manager','sm-request','sm-content','sm-improve'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  ['sm-name','sm-manager','sm-request','sm-content','sm-improve','sm-remark'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; }); ['sm-review','sm-revise','sm-security'].forEach(id=>{ const e=document.getElementById(id); if(e) e.checked=false; });
   saveDB();
+  if(typeof renderSample==='function') renderSample();
 }
 function editSample(id){
   const s=_smpFind(id); if(!s) return;
@@ -2234,11 +2246,14 @@ function editSample(id){
   document.getElementById('sm-dir').value=s.dir||'수령';
   document.getElementById('sm-status').value=s.status||'검토중';
   document.getElementById('sm-name').value=s.name||'';
-  document.getElementById('sm-supplier').value=s.supplier||'';
   document.getElementById('sm-manager').value=s.manager||'';
   document.getElementById('sm-request').value=s.request||'';
   document.getElementById('sm-content').value=s.content||'';
   document.getElementById('sm-improve').value=s.improve||'';
+  { const r=document.getElementById('sm-review'); if(r) r.checked=!!s.review; }
+  { const r=document.getElementById('sm-revise'); if(r) r.checked=!!s.revise; }
+  { const r=document.getElementById('sm-security'); if(r) r.checked=!!s.security; }
+  { const r=document.getElementById('sm-remark'); if(r) r.value=s.remark||''; }
   const cb=document.getElementById('sm-cancel'); if(cb) cb.style.display='';
   const bd=document.getElementById('sm-edit-badge'); if(bd) bd.style.display='';
   smpCloseDetail();
@@ -2252,7 +2267,7 @@ function smpClearEdit(){
 }
 function smpCancelEdit(){
   smpClearEdit();
-  ['sm-name','sm-supplier','sm-manager','sm-request','sm-content','sm-improve'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  ['sm-name','sm-manager','sm-request','sm-content','sm-improve','sm-remark'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; }); ['sm-review','sm-revise','sm-security'].forEach(id=>{ const e=document.getElementById(id); if(e) e.checked=false; });
   toast('수정 취소','info');
 }
 function deleteSample(id){
@@ -2283,17 +2298,29 @@ function renderSample(){
   const tbody=document.getElementById('tbl-sample');
   if(!tbody) return;
   tbody.innerHTML=[...db.txn.T_SAMPLE].reverse().map(s=>{
-    const prog=s.progress||[]; const att=(s.files||[]).length+(s.links||[]).length;
+    const att=(s.files||[]).length+(s.links||[]).length;
     const attHtml = att ? ' <span style="color:#16a34a;font-size:10.5px">📎'+att+'</span>' : '';
-    const progHtml = prog.length ? '<span style="color:#0ea5e9;font-weight:700">'+prog.length+'건</span>' : '<span style="color:#cbd5e1">-</span>';
     const dirHtml = '<span style="font-size:11px;color:'+(s.dir==='발송'?'#8b5cf6':'#0891b2')+';font-weight:700">'+_dnEsc(s.dir||'수령')+'</span>';
-    return '<tr class="cursor-pointer" onclick="showSampleDetail('+s.id+')"><td class="pl-3 text-xs">'+_dnEsc(s.date)+
-      '</td><td>'+dirHtml+'</td><td class="font-bold">'+_dnEsc(s.name)+attHtml+
-      '</td><td class="text-xs text-slate-500">'+_dnEsc(s.supplier||'-')+
-      '</td><td>'+smpStatusBadge(s.status)+
-      '</td><td class="text-xs">'+progHtml+
-      '</td><td class="text-right pr-3"><button class="btn btn-secondary btn-sm">보기</button></td></tr>';
-  }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">샘플 기록 없음</td></tr>';
+    const cb = (field,checked)=>'<td class="text-center" onclick="event.stopPropagation()"><input type="checkbox" class="w-4 h-4 cursor-pointer" '+(checked?'checked':'')+' onclick="smpToggle(\''+s.id+'\',\''+field+'\')"></td>';
+    return '<tr class="cursor-pointer hover:bg-slate-50" onclick="showSampleDetail(\''+s.id+'\')"><td class="pl-3 text-xs">'+_dnEsc(s.date)+
+      '</td><td>'+dirHtml+'</td><td class="font-bold text-xs">'+_dnEsc(s.name)+attHtml+'</td>'+
+      cb('review',s.review)+cb('revise',s.revise)+cb('security',s.security)+
+      '<td>'+smpStatusBadge(s.status)+
+      '</td><td onclick="event.stopPropagation()"><input class="input-field text-xs" style="min-width:130px;padding:3px 7px" value="'+_dnEsc(s.remark||'')+'" placeholder="진행사항…" onchange="smpSetRemark(\''+s.id+'\',this.value)"></td>'+
+      '<td class="text-right pr-3"><button class="btn btn-secondary btn-sm">보기</button></td></tr>';
+  }).join('') || '<tr><td colspan="9" class="text-center py-4 text-slate-400">샘플 기록 없음</td></tr>';
+}
+function smpToggle(id, field){
+  const s=_smpFind(id); if(!s) return;
+  s[field]=!s[field];
+  logEvent('샘플체크: '+(s.name||'')+'/'+field+'='+s[field]);
+  saveDB();
+}
+function smpSetRemark(id, val){
+  const s=_smpFind(id); if(!s) return;
+  s.remark=val;
+  logEvent('샘플비고: '+(s.name||''));
+  saveDB();
 }
 function showSampleDetail(id){
   const s=_smpFind(id); if(!s) return;
@@ -2309,11 +2336,12 @@ function showSampleDetail(id){
   const noAtt = (!s.files.length&&!s.links.length) ? '<div style="color:#94a3b8;font-size:12px;padding:4px 0">첨부 없음</div>' : '';
   const statusOpts = ['검토중','승인','보류','반려','재요청'].map(o=>'<option '+(s.status===o?'selected':'')+'>'+o+'</option>').join('');
   const sec = (label,val,bg,border)=>'<div style="font-size:11px;font-weight:800;color:#0e7490;letter-spacing:.5px;margin:16px 0 6px">'+label+'</div><div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:'+bg+';'+(border||'')+'border-radius:8px;padding:12px 14px;color:#334155">'+(_dnEsc(val)||'<span style=color:#94a3b8>-</span>')+'</div>';
-  root.innerHTML='<div onclick="if(event.target===this)smpCloseDetail()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto"><div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)"><div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px;z-index:1"><div style="flex:1"><div style="font-size:17px;font-weight:800;color:#1e293b">🧪 '+_dnEsc(s.name)+'</div><div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(s.date)+' · '+_dnEsc(s.dir||'수령')+' · 공급처: '+_dnEsc(s.supplier||'-')+' · 담당: '+_dnEsc(s.manager||'-')+'</div></div><button onclick="editSample('+s.id+')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">수정</button><button onclick="deleteSample('+s.id+')" style="background:#fee2e2;color:#dc2626;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">삭제</button><button onclick="smpCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div><div style="padding:18px 20px">'+
+  root.innerHTML='<div onclick="if(event.target===this)smpCloseDetail()" style="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto"><div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)"><div style="position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 20px;display:flex;align-items:center;gap:10px;z-index:1"><div style="flex:1"><div style="font-size:17px;font-weight:800;color:#1e293b">🧪 '+_dnEsc(s.name)+'</div><div style="font-size:11.5px;color:#64748b;margin-top:2px">'+_dnEsc(s.date)+' · '+_dnEsc(s.dir||'수령')+' · 담당: '+_dnEsc(s.manager||'-')+'</div><div style="font-size:11px;margin-top:5px;display:flex;gap:10px">'+(s.review?'<span style="color:#16a34a;font-weight:800">✅ 검토</span>':'<span style="color:#cbd5e1">⬜ 검토</span>')+(s.revise?'<span style="color:#16a34a;font-weight:800">✅ 수정</span>':'<span style="color:#cbd5e1">⬜ 수정</span>')+(s.security?'<span style="color:#16a34a;font-weight:800">✅ 보안</span>':'<span style="color:#cbd5e1">⬜ 보안</span>')+'</div></div><button onclick="editSample(\''+s.id+'\')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">수정</button><button onclick="deleteSample(\''+s.id+'\')" style="background:#fee2e2;color:#dc2626;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;margin-right:4px">삭제</button><button onclick="smpCloseDetail()" style="font-size:24px;color:#94a3b8;line-height:1;padding:2px 8px">×</button></div><div style="padding:18px 20px">'+
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:12px;color:#64748b;font-weight:700">상태:</span><select id="smp-status-sel" onchange="smpSetStatus(\''+s.id+'\',this.value)" style="border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;font-size:13px">'+statusOpts+'</select></div>'+
     sec('📋 요청사항',s.request,'#f8fafc','')+
     sec('🧴 샘플내용',s.content,'#f8fafc','')+
     sec('🔧 개선방향',s.improve,'#ecfeff','border:1px solid #cffafe;')+
+    sec('📝 비고 (진행사항)',s.remark,'#fffbeb','border:1px solid #fde68a;')+
     '<div style="font-size:11px;font-weight:800;color:#0ea5e9;letter-spacing:.5px;margin:20px 0 6px">📈 진행사항</div><div style="background:#f8fafc;border-radius:8px;padding:6px 14px">'+progressHtml+'</div><div style="display:flex;gap:6px;margin-top:8px"><input id="smp-prog-input" placeholder="새 진행사항 입력 후 추가" style="flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:13px"><button onclick="smpAddProgress(\''+s.id+'\')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700">추가</button></div>'+
     '<div style="font-size:11px;font-weight:800;color:#16a34a;letter-spacing:.5px;margin:20px 0 6px">📎 첨부파일 / 링크</div><div>'+filesHtml+linksHtml+noAtt+'</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"><label style="background:#16a34a;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer">파일 첨부<input type="file" multiple style="display:none" onchange="smpAttachFiles(\''+s.id+'\',this)"></label><input id="smp-link-url" placeholder="링크 URL" style="flex:1;min-width:160px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 10px;font-size:12.5px"><button onclick="smpAddLink(\''+s.id+'\')" style="background:#0ea5e9;color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700">링크추가</button></div><div style="font-size:11px;color:#94a3b8;margin-top:6px">※ 파일은 1개당 3MB 이하 권장. 큰 파일은 링크로.</div>'+
     '</div></div></div>';
@@ -2555,6 +2583,109 @@ function bomRowChanged(sel){
     }
   }catch(e){}
   if(window.refreshProductCostPreview) window.refreshProductCostPreview();
+}
+
+
+// === 에데카 샘플시트 일괄 등록 ===
+var EDEKA_SAMPLES=[{n:"BERRY RUM",c:"HPD-BE39082",u:"PERFUME",d:"RC≥50 90% 이상, ORANGE OIL 포함"},
+{n:"POWDERY WOOD",c:"HPD-BE39083",u:"PERFUME",d:"RC≥50 90% 이상, CEDARWOOD OIL 포함"},
+{n:"GLOAM WOOD",c:"HPD-BE38965",u:"DIFFUSER",d:"AESOP GLOAM HPD-BE37683 DIFFUSER VER. 화평법, CEDARWOOD OIL 포함, RC≥50 90% 이상"},
+{n:"GLOAM WOOD",c:"HPD-BE37683",u:"PERFUME",d:"AESOP GLOAM HPD-BE32821 EUCALYPTUS OIL 제외"},
+{n:"GLOAM WOOD",c:"HPD-BE34636",u:"DIFFUSER",d:"AESOP GLOAM ISO 16128 RC≥50 91%, 화평법"},
+{n:"POETIC NARCISSUS",c:"HPD-BE32891",u:"PERFUME",d:"CHLOE NARCISSUS POETICUS"},
+{n:"PURPLE MALLOW",c:"HPD-BE32822",u:"PERFUME",d:"JO MALONE MALLOW ON THE MOOR"},
+{n:"YELLOW ARCHILLEA",c:"HPD-BE32890",u:"PERFUME",d:"JO MALONE WILD ARCHILLEA"},
+{n:"GLOAM WOOD",c:"HPD-BE32821",u:"PERFUME",d:"AESOP GLOAM"},
+{n:"BLUE HINOKI",c:"HPD-BE39876",u:"PERFUME",d:"RC≥50 91%, Cedarwood Oil"},
+{n:"PORTRAIT LADY",c:"HPD-BE39858",u:"PERFUME",d:"RC≥50 91%, Cedarwood Oil"},
+{n:"CITRUS WOODY",c:"HPD-BE39859",u:"PERFUME",d:"RC≥50 95%, Cedarwood Oil"},
+{n:"IRIS MALTE",c:"HPD-BE39860",u:"PERFUME",d:"RC≥50 99%, Cedarwood Oil"},
+{n:"KARST",c:"HPD-BE39861",u:"PERFUME",d:"RC≥50 93%, Cedarwood Oil"},
+{n:"MOONLIT CAMOMILE",c:"HPD-BE39862",u:"PERFUME",d:"RC≥50 93%, Orange/Lavender Oil"},
+{n:"MOSSY WOOD",c:"HPD-BE39569",u:"PERFUME",d:"RC≥50 90%, ORANGE OIL"},
+{n:"TEMPO",c:"HPD-BE39570",u:"PERFUME",d:"DIPTYQUE TEMPO RC≥50 100%, LAVENDER OIL"},
+{n:"MIMOSA",c:"HPD-BE39571",u:"PERFUME",d:"LE COUVENT MIMOSA RC≥50 90%, CEDARWOOD OIL"},
+{n:"SUPER CEDAR",c:"HPD-BE39572",u:"PERFUME",d:"BYREDO SUPER CEDAR RC≥50 98%, CEDARWOOD OIL"},
+{n:"MUSKY AMBER",c:"HPD-BE39084",u:"PERFUME",d:"RC≥50 90% 이상, CEDARWOOD OIL 포함"},
+{n:"CITRUS WOODY",c:"HPD-BE39085",u:"PERFUME",d:"RC≥50 90% 이상, CEDARWOOD OIL 포함"},
+{n:"OUD WOOD",c:"HPD-BE39086",u:"PERFUME",d:"RC≥50 90% 이상, CEDARWOOD OIL 포함"},
+{n:"BALANCED CALM",c:"HPD-BF01525",u:"PERFUME",d:"RC≥50 100%"},
+{n:"BRIGHT JOY",c:"HPD-BF01524",u:"PERFUME",d:"RC≥50 90%"},
+{n:"DEEP FOCUS",c:"HPD-BF01523",u:"PERFUME",d:"RC≥50 98%"},
+{n:"STEADY ENERGY",c:"HPD-BF01522",u:"PERFUME",d:"RC≥50 90%"},
+{n:"GROUNDED CONFIDENCE",c:"HPD-BF01521",u:"PERFUME",d:"RC≥50 100%"},
+{n:"REFLECTIVE SADNESS",c:"HPD-BF01520",u:"PERFUME",d:"RC≥50 100%"},
+{n:"HINOKI WOOD",c:"HPD-BF00517",u:"ROOM SPRAY",d:"Le Labo Hinoki 화평법"},
+{n:"HINOKI",c:"HPD-BF00548",u:"PERFUME",d:"Le Labo Hinoki"},
+{n:"PHILOSYKOS",c:"HPD-BE39863",u:"PERFUME",d:"RC≥50 91%, Cedarwood/Orange/Lavender Oil"},
+{n:"AMBERWOOD",c:"HPD-BE39864",u:"PERFUME",d:"RC≥50 99%, Cedarwood Oil"},
+{n:"TRIPLE TEA",c:"HPD-BE39865",u:"PERFUME",d:"RC≥50 94%, Cedarwood Oil"},
+{n:"AROMATIC WOODY",c:"HPD-BE39866",u:"PERFUME",d:"RC≥50 91%, Cedarwood Oil"},
+{n:"AQUA ORANGE",c:"HPD-BE39867",u:"PERFUME",d:"RC≥50 90%, Orange Oil"},
+{n:"BERRY RUM",c:"HPD-BF02211",u:"PERFUME",d:"HPD-BE39082 개선, RC≥50 90%, Cedarwood, Black Pepper, Frankincense oil"},
+{n:"BLUE HINOKI",c:"HPD-BF02080",u:"PERFUME",d:"HPD-BE39876 개선, RC≥50 91%, Orange/Bergamot/Cedarwood/Frankinsence/Sandal wood Oil"},
+{n:"SUPER CEDAR",c:"HPD-BF02079",u:"PERFUME",d:"BYREDO SUPER CEDAR HPD-BE39572 개선, RC≥50 98%, Orange/Cedarwood/Frankinsence/Rosemary/Black Pepper oil"},
+{n:"PORTRAIT LADY",c:"HPD-BF02078",u:"PERFUME",d:"HPD-BE39858 개선, RC≥50 91%, Orange/Bergamot/Cedarwood/Lavender/Neroli oil"},
+{n:"CITRUS WOODY",c:"HPD-BF02077",u:"PERFUME",d:"HPD-BE39085 개선, RC≥50 90%, Orange/Bergamot/Cedarwood/Frankincense/Sandal wood oil"},
+{n:"AQUA ORANGE",c:"HPD-BF02076",u:"PERFUME",d:"HPD-BE39867 개선, RC≥50 90%, Orange/Lemon/Peppermin/Rosemary Oil"},
+{n:"BRIGHT JOY",c:"HPD-BF02075",u:"PERFUME",d:"HPD-BF01524 개선, RC≥50 90%, Orange/Bergamot/Cedarwood/Frankincense oil"},
+{n:"HINOKI",c:"HPD-BF01632",u:"PERFUME",d:"입수제품(히노끼 2-르라보 우디강화VER.) HPD-BF00548 개선"},
+{n:"HINOKI WOOD",c:"HPD-BF01631",u:"ROOM SPRAY",d:"입수제품(히노끼 2-르라보 우디강화VER.) HPD-BF00517 개선, 화평법"},
+{n:"ANTICIPATORY ANXIETY",c:"HPD-BF01519",u:"PERFUME",d:"RC≥50 91%"},
+{n:"FUNCTIONAL STRESS",c:"HPD-BF01518",u:"PERFUME",d:"RC≥50 94%"},
+{n:"CONTROLLED ANGER",c:"HPD-BF01516",u:"PERFUME",d:"RC≥50 94%"},
+{n:"BALANCED RECOVERY",c:"HPD-BF01515",u:"PERFUME",d:"RC≥50 93%"},
+{n:"ILIO MIST",c:"HPD-BF05100",u:"AIR FRESHNER",d:"Diptyque Ilio +LAVENDER OIL+ORANGE OIL 화평법"},
+{n:"FRENCH LAVENDER",c:"HPD-BF04692",u:"디퓨져,룸스프레이, 필로우 미스트",d:"화평법"},
+{n:"LAVENDER",c:"HPD-BF04693",u:"디퓨져,룸스프레이, 필로우 미스트",d:"화평법"},
+{n:"ORANGE PUNCH",c:"HPD-BF04690",u:"디퓨져,룸스프레이, 필로우 미스트",d:"화평법"},
+{n:"ORANGE",c:"HPD-BF04691",u:"디퓨져,룸스프레이, 필로우 미스트",d:"화평법"},
+{n:"SWEET HERBAL WOODY",c:"HPD-BF04551",u:"AIR FRESHENER",d:"ORANGE, LAVENDER, CEDARWOOD NATURAL MIX, 화평법"},
+{n:"IRIS TOUCH",c:"HPD-BF04209",u:"PERFUME",d:"Prada Infusion D'Iris RC≥50 100%"},
+{n:"SILKY VANILLA",c:"HPD-BF03896",u:"PERFUME",d:"TOM FORD VANILLA RC≥50 92%"},
+{n:"MANGO COCONUT",c:"HPD-BF07026",u:"HAIR/BODY CARE",d:"입수제품(Dr.PAWPAW it does it hair&body conditioner Mango & Coconut) BODY/HAND CREAM"},
+{n:"SMOKY MAUVE",c:"HPD-BF07025",u:"BODY/HAND CREAM",d:"입수제품(Daccanto boutique rich velvet texture hand cream Smoky Mauve)"},
+{n:"MOSS FLOWER",c:"HPD-BF07024",u:"BODY/HAND CREAM",d:"입수제품(Daccanto boutique airy chiffon texture hand cream Moss Flower)"},
+{n:"BRIGHT YUJA",c:"HPD-BF06429",u:"PERFUME",d:"RC≥50 90%"},
+{n:"YUJA FORET",c:"HPD-BF06430",u:"PERFUME",d:"RC≥50 91%"},
+{n:"CLEAN PINE FOREST",c:"HPD-BF06433",u:"PERFUME",d:"RC≥50 95%"},
+{n:"ICY PINE FOREST",c:"HPD-BF06434",u:"PERFUME",d:"RC≥50 100%"},
+{n:"WHITE TEA MUSK",c:"HPD-BF06431",u:"PERFUME",d:"RC≥50 90%"},
+{n:"WHITE PORCELAIN TEA",c:"HPD-BF06432",u:"PERFUME",d:"RC≥50 94%"},
+{n:"IRIS TOUCH LOTUS WOODY",c:"HPD-BF06362",u:"PERFUME",d:"Prada Infusion D'Iris +LOTUS, WOODY HPD-BF04209 개선, RC≥50 99.2%"},
+{n:"LOTUS SERENITY",c:"HPD-BF06098",u:"PERFUME",d:"L향 컨셉 : Lotus Serenity (연꽃의 고요) RC≥50 92%"},
+{n:"LOTUS SERENITY F",c:"HPD-BF06110",u:"PERFUME",d:"L향 컨셉 : Lotus Serenity (연꽃의 고요)"},
+{n:"CITRUS GREEN",c:"HPD-BF08746",u:"PERFUME",d:"RC≥50 91%"},
+{n:"HERBAL WOODY",c:"HPD-BF08744",u:"PERFUME",d:"RC≥50 90%"},
+{n:"AQUA FREESIA",c:"HPD-BF08089",u:"PERFUME",d:"RC≥50 91%"},
+{n:"LILAC FLORAL",c:"HPD-BF08088",u:"PERFUME",d:"RC≥50 90.84%"},
+{n:"VANILLA",c:"HPD-BF08087",u:"PERFUME",d:"RC≥50 90.6%"},
+{n:"OUD BERGAMOT",c:"HPD-BF07801",u:"DIFFUSER",d:"화평법, RC≥50 90.6%"},
+{n:"HINOKI WOOD",c:"HPD-BF07802",u:"DIFFUSER",d:"화평법, RC≥50 93%"},
+{n:"FRESH WOODY",c:"HPD-BF09425",u:"ROOM SPRAY",d:"입수제품(아베크 룸 스프레이) 화평법"},
+{n:"JASMIN",c:"HPD-BF09426",u:"PERFUME",d:"입수제품(JASMIN) RC≥50 90%"},
+{n:"ROSE",c:"HPD-BF09427",u:"PERFUME",d:"입수제품(ROSE) RC≥50 90%"},
+{n:"AQUA",c:"HPD-BF09428",u:"PERFUME",d:"입수제품(AQUA) RC≥50 92.6%"},
+{n:"OSMANTHUS",c:"HPD-BF09431",u:"PERFUME",d:"RC≥50 90%"},
+{n:"OSMANTHUS WOODY",c:"HPD-BF09430",u:"PERFUME",d:"RC≥50 90%"},
+{n:"OSMANTHUS GOURMAND",c:"HPD-BF09429",u:"PERFUME",d:"RC≥50 94%"},
+{n:"OSMANTHUS FLORAL",c:"HPD-BF09432",u:"PERFUME",d:"RC≥50 90%"},
+{n:"BASIL TEA",c:"HPD-BF08747",u:"PERFUME",d:"RC≥50 91%"}];
+function loadEdekaSamples(){
+  if(typeof ensureNewTables==='function') ensureNewTables();
+  db.txn.T_SAMPLE = db.txn.T_SAMPLE || [];
+  var existing={}; db.txn.T_SAMPLE.forEach(function(s){ if(s.code) existing[s.code]=1; });
+  var added=0;
+  EDEKA_SAMPLES.forEach(function(e,i){
+    if(e.c && existing[e.c]) return;
+    var content=(e.c?'['+e.c+'] ':'')+(e.u||'')+(e.d?' · '+e.d:'');
+    db.txn.T_SAMPLE.push({id:'SMP-EDK-'+(e.c||(Date.now()+i)),code:e.c||'',date:'2026-06-26',dir:'수령',status:'검토중',name:e.n,manager:'',request:'',content:content,improve:'',review:false,revise:false,security:false,remark:'',progress:[],files:[],links:[]});
+    if(e.c) existing[e.c]=1; added++;
+  });
+  if(typeof toast==='function') toast(added>0?('에데카 샘플 '+added+'건 등록 완료'):'이미 모두 등록되어 있습니다','success');
+  if(typeof logEvent==='function') logEvent('에데카샘플 일괄등록: '+added+'건');
+  if(typeof saveDB==='function') saveDB();
+  if(window.renderSample){ try{renderSample()}catch(e){} }
 }
 
 // === 재고 LOT 수정·삭제 ===
@@ -5282,12 +5413,12 @@ function initNewPage(pageId) {
   const BRAND_DOC_CFG = {
     company: '(주)메디센츠 MEDISCENT',
     bizNo: '',
-    addr: '',
-    reg: '',
+    addr: '경기 구리시 갈매순환로154 현대테라타워 A동 1038호',
+    reg: '화장품제조업 제7691호',
     ceo: '김경수',
     manager: '김경수',
-    tel: '',
-    email: ''
+    tel: '070-4365-4807',
+    email: 'justina0726@gmail.com'
   };
 
   function mergeDocCfg(force){
@@ -6436,6 +6567,9 @@ function initNewPage(pageId) {
     var rows = await r.json();
     if (!rows || !rows.length || !rows[0].data) return;
     var remoteData = rows[0].data;
+    // 클라우드 값이 비어있으면(모든 항목 공란) 절대 로컬을 덮어쓰지 않음 — 공란 재발 방지
+    var remoteEmpty = !remoteData || (typeof remoteData === 'object' && !Object.keys(remoteData).some(function (k) { return remoteData[k] && String(remoteData[k]).trim(); }));
+    if (remoteEmpty) { console.log('[CFG] 클라우드 값이 비어있어 로컬 유지'); return; }
     var remoteAt = rows[0].updated_at || '';
     var localAt = localStorage.getItem('shifti_doc_cfg_at') || '';
     var localEmpty = true;
