@@ -6577,7 +6577,9 @@ function initNewPage(pageId) {
       var lr = localStorage.getItem('shifti_doc_cfg');
       localEmpty = !lr || Object.keys(JSON.parse(lr)).length === 0;
     } catch (e) {}
-    if (localEmpty || remoteAt > localAt) {
+    // 로컬 우선: 이 기기에 회사정보가 있으면 클라우드로 덮어쓰지 않음(초기화 방지).
+    // 로컬이 완전히 비었을 때만 클라우드에서 가져옴(새 기기 첫 로드).
+    if (localEmpty) {
       localStorage.setItem('shifti_doc_cfg', JSON.stringify(remoteData));
       localStorage.setItem('shifti_doc_cfg_at', remoteAt);
       try { if (typeof loadCompanyInfo === 'function') loadCompanyInfo(); } catch (e) {}
