@@ -1132,7 +1132,7 @@
       </div>
       <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">샘플 수불 목록</h3></div>
         <div class="scroll-card-lg"><table><thead><tr>
-          <th class="pl-3">일자</th><th>구분</th><th>샘플명</th><th class="text-center">검토</th><th class="text-center">수정</th><th class="text-center">보안</th><th>상태</th><th>비고</th><th class="text-right pr-3">관리</th>
+          <th class="pl-3 cursor-pointer select-none" onclick="smpSort('date')" title="클릭 정렬">일자<span id="smp-arr-date"></span></th><th>구분</th><th>샘플명</th><th class="text-center cursor-pointer select-none" onclick="smpSort('review')" title="클릭 정렬">검토<span id="smp-arr-review"></span></th><th class="text-center cursor-pointer select-none" onclick="smpSort('revise')" title="클릭 정렬">수정<span id="smp-arr-revise"></span></th><th class="text-center cursor-pointer select-none" onclick="smpSort('security')" title="클릭 정렬">보안<span id="smp-arr-security"></span></th><th class="cursor-pointer select-none" onclick="smpSort('status')" title="클릭 정렬">상태<span id="smp-arr-status"></span></th><th>비고</th><th class="text-right pr-3">관리</th>
         </tr></thead><tbody id="tbl-sample"></tbody></table></div>
       </div>
     </section>
@@ -1366,19 +1366,7 @@ function exportCSV(kind){
     const type=document.getElementById('sl-type')?.value||'RAW';
     const from=document.getElementById('sl-from')?.value||'';
     const to=document.getElementById('sl-to')?.value||'9999-12-31';
-    let entries=[];
-    if(type==='RAW'||type==='PACK'){
-      const isRaw=type==='RAW';
-      (db.txn.T_GOODS_IN||[]).filter(t=>t.type===type&&t.dateIn>=from&&t.dateIn<=to).forEach(t=>{
-        const name=isRaw?findRaw(t.itemId)?.name:findPack(t.itemId)?.name;
-        entries.push({date:t.dateIn,action:'입고',name:name||'',lot:t.lotNo,inQty:t.qty,outQty:0,note:t.note||''});
-      });
-    }
-    if(type==='FGT'){
-      (db.txn.T_BATCH||[]).filter(t=>t.date>=from&&t.date<=to).forEach(t=>{entries.push({date:t.date,action:'생산입고',name:findProduct(t.productId)?.name||'',lot:t.lotNo,inQty:t.qty,outQty:0,note:''})});
-      (db.txn.T_SALE||[]).filter(t=>t.date>=from&&t.date<=to).forEach(t=>{entries.push({date:t.date,action:'출고',name:findProduct(t.productId)?.name||'',lot:t.lotNo,inQty:0,outQty:t.qty,note:t.note||''})});
-    }
-    entries.sort((a,b)=>a.date.localeCompare(b.date));
+    const entries = buildLedgerEntries(type, from, to);
     let running=0;
     const rows=[['일자','구분','품목','LOT','입고','출고','잔량','비고']];
     entries.forEach(e=>{running+=e.inQty-e.outQty;rows.push([e.date,e.action,e.name,e.lot,e.inQty||'',e.outQty||'',running,e.note])});
@@ -2447,7 +2435,17 @@ function renderSample(){
   ensureNewTables();
   const tbody=document.getElementById('tbl-sample');
   if(!tbody) return;
-  tbody.innerHTML=[...db.txn.T_SAMPLE].reverse().map(s=>{
+  let rows=[...db.txn.T_SAMPLE].reverse();
+  const so=window._smpSort||{};
+  if(so.key){
+    const k=so.key, d=so.dir||1;
+    rows.sort((a,b)=>{
+      if(k==='date') return String(a.date||'').localeCompare(String(b.date||''))*d;
+      if(k==='status') return String(a.status||'').localeCompare(String(b.status||''))*d;
+      return ((a[k]?1:0)-(b[k]?1:0))*d;
+    });
+  }
+  tbody.innerHTML=rows.map(s=>{
     const att=(s.files||[]).length+(s.links||[]).length;
     const attHtml = att ? ' <span style="color:#16a34a;font-size:10.5px">📎'+att+'</span>' : '';
     const dirHtml = '<span style="font-size:11px;color:'+(s.dir==='발송'?'#8b5cf6':'#0891b2')+';font-weight:700">'+_dnEsc(s.dir||'수령')+'</span>';
@@ -2459,6 +2457,16 @@ function renderSample(){
       '</td><td onclick="event.stopPropagation()"><input class="input-field text-xs" style="min-width:130px;padding:3px 7px" value="'+_dnEsc(s.remark||'')+'" placeholder="진행사항…" onchange="smpSetRemark(\''+s.id+'\',this.value)"></td>'+
       '<td class="text-right pr-3"><button class="btn btn-secondary btn-sm">보기</button></td></tr>';
   }).join('') || '<tr><td colspan="9" class="text-center py-4 text-slate-400">샘플 기록 없음</td></tr>';
+}
+window._smpSort = window._smpSort || {key:'', dir:1};
+function smpSort(key){
+  const so=window._smpSort;
+  if(so.key===key){ so.dir=-so.dir; } else { so.key=key; so.dir=(key==='date'?-1:1); }
+  ['date','review','revise','security','status'].forEach(k=>{
+    const el=document.getElementById('smp-arr-'+k);
+    if(el) el.textContent = so.key===k ? (so.dir===1?' ▲':' ▼') : '';
+  });
+  renderSample();
 }
 function smpToggle(id, field){
   const s=_smpFind(id); if(!s) return;
@@ -2881,35 +2889,73 @@ function lotSaveEdit(type, lotNo){
 }
 
 // === 수불부 조회 ===
+function buildLedgerEntries(type, from, to){
+  from = from || '';
+  to = to || '9999-12-31';
+  const entries = [];
+  const inRange = d => (d||'') >= from && (d||'') <= to;
+  if(type === 'RAW' || type === 'PACK'){
+    const isRaw = type === 'RAW';
+    /* 입고: LOT 원장 기준 → 발주입고·직접입고·일괄등록 전부 포함 */
+    (isRaw ? db.stock.RAW_LOT : db.stock.PACK_LOT || []).forEach(l => {
+      if(!inRange(l.dateIn)) return;
+      const name = isRaw ? findRaw(l.rawId)?.name : findPack(l.packId)?.name;
+      entries.push({date:l.dateIn, action:'입고', name:name||'', lot:l.lotNo, inQty:Number(l.qty)||0, outQty:0, note:l.note||''});
+    });
+    /* 소모: 벌크배합(원료) / 충진(포장재) */
+    if(isRaw){
+      (db.txn.T_BULK||[]).forEach(t => {
+        if(!inRange(t.date)) return;
+        (t.materials||[]).forEach(u => (u.lots||[]).forEach(x => {
+          entries.push({date:t.date, action:'벌크소모', name:findRaw(u.itemId)?.name||'', lot:x.lotNo||'', inQty:0, outQty:Number(x.qty)||0, note:'벌크 '+(t.lotNo||'')});
+        }));
+      });
+    } else {
+      (db.txn.T_BATCH||[]).forEach(t => {
+        if(!inRange(t.date)) return;
+        (t.consumedLots||[]).forEach(u => (u.lots||[]).forEach(x => {
+          entries.push({date:t.date, action:'충진소모', name:findPack(u.itemId)?.name||'', lot:x.lotNo||'', inQty:0, outQty:Number(x.qty)||0, note:'생산 '+(t.lotNo||'')});
+        }));
+      });
+    }
+  }
+  if(type === 'FGT'){
+    const batchLots = new Set((db.txn.T_BATCH||[]).map(t => t.lotNo));
+    (db.stock.FGT_LOT||[]).forEach(l => {
+      if(!inRange(l.dateIn)) return;
+      entries.push({date:l.dateIn, action:batchLots.has(l.lotNo)?'생산입고':'입고', name:findProduct(l.productId)?.name||'', lot:l.lotNo, inQty:Number(l.qty)||0, outQty:0, note:l.note||''});
+    });
+    (db.txn.T_SALE||[]).forEach(t => {
+      if(!inRange(t.date)) return;
+      entries.push({date:t.date, action:'출고', name:findProduct(t.productId)?.name||'', lot:t.lotNo||'', inQty:0, outQty:Number(t.qty)||0, note:t.note||''});
+    });
+  }
+  /* 재고조정: 모든 유형 공통 */
+  (db.txn.T_ADJ||[]).forEach(t => {
+    if(t.type !== type || !inRange(t.date)) return;
+    const q = Number(t.qty)||0;
+    const name = type==='RAW' ? findRaw(t.itemId)?.name : type==='PACK' ? findPack(t.itemId)?.name : findProduct(t.itemId)?.name;
+    entries.push({date:t.date, action:q>=0?'조정입고':'조정출고', name:name||'', lot:t.lotNo||'', inQty:q>0?q:0, outQty:q<0?-q:0, note:t.note||'재고조정'});
+  });
+  entries.sort((a,b) => String(a.date).localeCompare(String(b.date)));
+  return entries;
+}
+window.buildLedgerEntries = buildLedgerEntries;
+
 function renderStockLedger() {
   const type = document.getElementById('sl-type')?.value||'RAW';
   const from = document.getElementById('sl-from')?.value||'';
   const to = document.getElementById('sl-to')?.value||'9999-12-31';
   const tbody = document.getElementById('tbl-ledger');
   if (!tbody) return;
-  let entries = [];
-  if (type === 'RAW' || type === 'PACK') {
-    const isRaw = type === 'RAW';
-    db.txn.T_GOODS_IN.filter(t => t.type === type && t.dateIn >= from && t.dateIn <= to).forEach(t => {
-      const name = isRaw ? findRaw(t.itemId)?.name : findPack(t.itemId)?.name;
-      entries.push({date:t.dateIn, action:'입고', name:name||'', lot:t.lotNo, inQty:t.qty, outQty:0, note:t.note||''});
-    });
-  }
-  if (type === 'FGT') {
-    db.txn.T_BATCH.filter(t => t.date >= from && t.date <= to).forEach(t => {
-      const p = findProduct(t.productId);
-      entries.push({date:t.date, action:'생산입고', name:p?.name||'', lot:t.lotNo, inQty:t.qty, outQty:0, note:''});
-    });
-    db.txn.T_SALE.filter(t => t.date >= from && t.date <= to).forEach(t => {
-      const p = findProduct(t.productId);
-      entries.push({date:t.date, action:'출고', name:p?.name||'', lot:t.lotNo, inQty:0, outQty:t.qty, note:t.note||''});
-    });
-  }
-  entries.sort((a,b) => a.date.localeCompare(b.date));
+  const entries = buildLedgerEntries(type, from, to);
+  const badge = a =>
+    a==='입고'||a==='생산입고'||a==='조정입고' ? '<span class="badge-soft" style="background:#d1fae5;color:#059669">'+a+'</span>'
+    : '<span class="badge-soft" style="background:#fee2e2;color:#dc2626">'+a+'</span>';
   let running = 0;
   tbody.innerHTML = entries.map(e => {
     running += e.inQty - e.outQty;
-    return '<tr><td class="pl-3 text-xs">'+e.date+'</td><td class="text-xs"><span class="badge-soft">'+e.action+'</span></td>'+
+    return '<tr><td class="pl-3 text-xs">'+e.date+'</td><td class="text-xs">'+badge(e.action)+'</td>'+
       '<td class="text-xs font-bold">'+escH(e.name)+'</td><td class="mono text-[10px]">'+escH(e.lot)+'</td>'+
       '<td class="text-right '+(e.inQty?'text-emerald-600 font-bold':'')+'">'+(e.inQty||'-')+'</td>'+
       '<td class="text-right '+(e.outQty?'text-red-500 font-bold':'')+'">'+(e.outQty||'-')+'</td>'+
@@ -4051,7 +4097,7 @@ function initNewPage(pageId) {
         </div>`,
       'formula-dev': `
         <div class="space-y-4"><div class="flex items-center justify-between"><h2 class="text-lg font-black text-slate-800">포뮬러 버전 관리</h2><span class="badge-teal">M_FORMULA</span></div>
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4"><div class="card p-4 space-y-3"><input type="hidden" id="fml-id2"><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">제품</label><select id="fml-product2" class="input-field"></select></div><div class="grid grid-cols-2 gap-2"><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">버전</label><input id="fml-version2" class="input-field" value="v1"></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">명칭</label><input id="fml-name2" class="input-field" placeholder="예: AnnE v1"></div></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">메모</label><input id="fml-note2" class="input-field" placeholder="수정 포인트"></div><button class="btn btn-primary w-full" onclick="saveFormula2()">포뮬러 저장</button></div><div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">포뮬러 목록</h3><span class="badge-soft" id="fml2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">버전</th><th>제품</th><th>명칭</th><th>메모</th></tr></thead><tbody id="tbl-formula2"></tbody></table></div></div></div></div>`,
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4"><div class="card p-4 space-y-3"><input type="hidden" id="fml-id2"><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">제품</label><select id="fml-product2" class="input-field"></select></div><div class="grid grid-cols-2 gap-2"><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">버전</label><input id="fml-version2" class="input-field" value="v1"></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">명칭</label><input id="fml-name2" class="input-field" placeholder="예: AnnE v1"></div></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">메모</label><input id="fml-note2" class="input-field" placeholder="수정 포인트"></div><button class="btn btn-primary w-full" onclick="saveFormula2()">포뮬러 저장</button></div><div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">포뮬러 목록</h3><span class="badge-soft" id="fml2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">버전</th><th>제품</th><th>명칭</th><th>메모</th><th class="text-center pr-3">관리</th></tr></thead><tbody id="tbl-formula2"></tbody></table></div></div></div></div>`,
       'bulk-maturation': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">벌크 숙성 추적</h2><div class="card"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">숙성 현황</h3></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">벌크 LOT</th><th>제품</th><th>배합일</th><th>목표 숙성일</th><th class="text-right">남은일수</th><th>상태</th></tr></thead><tbody id="tbl-maturation2"></tbody></table></div></div></div>`,
       'allergen-report': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">알레르겐 자동 계산</h2><div class="card p-4 space-y-3"><div class="grid grid-cols-1 md:grid-cols-4 gap-3"><div class="md:col-span-2"><label class="block text-[10.5px] font-bold text-slate-500 mb-1">제품</label><select id="allergen-product2" class="input-field"></select></div><div class="flex items-end"><button class="btn btn-primary w-full" onclick="renderAllergen2()">계산</button></div></div><div id="allergen-result2"></div></div></div>`,
       'safety-stock': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">안전재고 알림</h2><div class="grid grid-cols-1 lg:grid-cols-3 gap-4"><div class="card p-4 space-y-3"><h3 class="font-bold text-sm text-slate-700">기준 등록</h3><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">유형</label><select id="ss-type2" class="input-field"><option value="RAW">원료</option><option value="PACK">포장재</option><option value="FGT">완제품</option></select></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">품목</label><select id="ss-item2" class="input-field"></select></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">최소재고</label><input id="ss-min2" type="number" class="input-field text-right" value="10"></div><button class="btn btn-primary w-full" onclick="saveSafety2()">저장</button></div><div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">부족 품목</h3></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">유형</th><th>품목</th><th class="text-right">현재고</th><th class="text-right">기준재고</th><th class="text-right">부족분</th></tr></thead><tbody id="tbl-safety2"></tbody></table></div></div></div></div>`,
@@ -4584,14 +4630,49 @@ function initNewPage(pageId) {
   }
   function saveFormula2(){
     db.master.M_FORMULA = db.master.M_FORMULA || [];
+    const editId = document.getElementById('fml-id2')?.value;
     const productId = Number(document.getElementById('fml-product2')?.value);
     const version = document.getElementById('fml-version2')?.value?.trim() || 'v1';
     const name = document.getElementById('fml-name2')?.value?.trim() || 'Formula';
     const note = document.getElementById('fml-note2')?.value?.trim() || '';
     const product = findProduct(productId);
     if(!product){ toast('제품을 선택하세요','error'); return; }
-    db.master.M_FORMULA.push({id:Date.now(), productId, version, name, note, bom:JSON.parse(JSON.stringify(product.bom||[])), createdAt:new Date().toISOString()});
-    logEvent(`포뮬러 저장: ${name} ${version}`);
+    if(editId){
+      const f = (db.master.M_FORMULA||[]).find(x => String(x.id) === String(editId));
+      if(f){
+        Object.assign(f, { productId, version, name, note, updatedAt:new Date().toISOString() });
+        logEvent(`포뮬러 수정: ${name} ${version}`);
+        toast('포뮬러 수정 완료 (배합 스냅샷은 원본 유지)','success');
+      }
+      document.getElementById('fml-id2').value = '';
+    } else {
+      db.master.M_FORMULA.push({id:Date.now(), productId, version, name, note, bom:JSON.parse(JSON.stringify(product.bom||[])), createdAt:new Date().toISOString()});
+      logEvent(`포뮬러 저장: ${name} ${version}`);
+      toast('포뮬러 저장 완료','success');
+    }
+    document.getElementById('fml-version2').value = 'v1';
+    document.getElementById('fml-name2').value = '';
+    document.getElementById('fml-note2').value = '';
+    saveDB();
+    renderFormulaPage();
+  }
+  function editFormula2(id){
+    const f = (db.master.M_FORMULA||[]).find(x => String(x.id) === String(id));
+    if(!f){ toast('포뮬러를 찾을 수 없습니다','error'); return; }
+    fillProductSelect('fml-product2');
+    document.getElementById('fml-id2').value = f.id;
+    document.getElementById('fml-product2').value = f.productId;
+    document.getElementById('fml-version2').value = f.version || 'v1';
+    document.getElementById('fml-name2').value = f.name || '';
+    document.getElementById('fml-note2').value = f.note || '';
+    toast('수정 모드: 내용 변경 후 [포뮬러 저장]을 누르세요','info');
+  }
+  function deleteFormula2(id){
+    const f = (db.master.M_FORMULA||[]).find(x => String(x.id) === String(id));
+    if(!f) return;
+    if(!confirm('포뮬러 "' + (f.name||'') + ' ' + (f.version||'') + '" 을(를) 삭제할까요?')) return;
+    db.master.M_FORMULA = db.master.M_FORMULA.filter(x => String(x.id) !== String(id));
+    logEvent(`포뮬러 삭제: ${f.name||''} ${f.version||''}`);
     saveDB();
     renderFormulaPage();
   }
@@ -4600,7 +4681,7 @@ function initNewPage(pageId) {
     const tbody=document.getElementById('tbl-formula2'); if(!tbody) return;
     const rows=[...(db.master.M_FORMULA||[])].reverse();
     document.getElementById('fml2-count').innerText = rows.length;
-    tbody.innerHTML = rows.map(r => `<tr><td class="pl-3 mono text-[11px]">${esc(r.version)}</td><td class="text-xs">${esc(findProduct(r.productId)?.name||'-')}</td><td class="text-xs font-bold">${esc(r.name)}</td><td class="text-xs text-slate-500">${esc(r.note||'-')}</td></tr>`).join('') || '<tr><td colspan="4" class="text-center py-4 text-slate-400">포뮬러 없음</td></tr>';
+    tbody.innerHTML = rows.map(r => `<tr><td class="pl-3 mono text-[11px]">${esc(r.version)}</td><td class="text-xs">${esc(findProduct(r.productId)?.name||'-')}</td><td class="text-xs font-bold">${esc(r.name)}</td><td class="text-xs text-slate-500">${esc(r.note||'-')}</td><td class="text-center pr-3 whitespace-nowrap"><button class="btn btn-secondary btn-sm" onclick="editFormula2('${r.id}')">수정</button> <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626" onclick="deleteFormula2('${r.id}')">삭제</button></td></tr>`).join('') || '<tr><td colspan="5" class="text-center py-4 text-slate-400">포뮬러 없음</td></tr>';
   }
   function renderMaturationPage(){
     const tbody=document.getElementById('tbl-maturation2'); if(!tbody) return;
@@ -4714,6 +4795,8 @@ function initNewPage(pageId) {
   window.exportLotCsv2 = exportLotCsv2;
   window.renderLabel2 = renderLabel2;
   window.saveFormula2 = saveFormula2;
+  window.editFormula2 = editFormula2;
+  window.deleteFormula2 = deleteFormula2;
   window.renderAllergen2 = renderAllergen2;
   window.saveSafety2 = saveSafety2;
   window.addEventListener('load', function(){
