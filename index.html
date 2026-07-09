@@ -134,154 +134,198 @@
       <i data-lucide="layout-dashboard" class="w-4 h-4 shrink-0"></i> 대시보드
     </div>
 
-    <div class="nav-label">기초정보</div>
-    <div onclick="goPage('cfg-company')" id="nav-cfg-company" class="nav-item">
-      <i data-lucide="building-2" class="w-4 h-4 shrink-0"></i> 회사정보
-    </div>
+    <div class="nav-label">1 · 기준정보</div>
+
     <div onclick="goPage('master-supplier')" id="nav-master-supplier" class="nav-item">
       <i data-lucide="handshake" class="w-4 h-4 shrink-0"></i> 거래처관리
     </div>
+
+    <div onclick="goPage('master-cust')" id="nav-master-cust" class="nav-item">
+      <i data-lucide="users" class="w-4 h-4 shrink-0"></i> 고객관리
+    </div>
+
     <div onclick="goPage('master-raw')" id="nav-master-raw" class="nav-item">
       <i data-lucide="flask-conical" class="w-4 h-4 shrink-0"></i> 품목정보(원료)
     </div>
+
     <div onclick="goPage('master-pack')" id="nav-master-pack" class="nav-item">
       <i data-lucide="box" class="w-4 h-4 shrink-0"></i> 품목정보(포장재)
     </div>
+
     <div onclick="goPage('master-product')" id="nav-master-product" class="nav-item">
       <i data-lucide="clipboard-list" class="w-4 h-4 shrink-0"></i> 설계정보(제품&원가)
     </div>
 
-    <div class="nav-label">연구개발관리</div>
+    <div class="nav-label">2 · 연구개발</div>
+
     <div onclick="goPage('formula-dev')" id="nav-formula-dev" class="nav-item">
       <i data-lucide="flask-conical" class="w-4 h-4 shrink-0"></i> 처방(포뮬러)관리
     </div>
+
     <div onclick="goPage('dev-fullcomp')" id="nav-dev-fullcomp" class="nav-item">
       <i data-lucide="list-tree" class="w-4 h-4 shrink-0"></i> 전성분관리
     </div>
+
     <div onclick="goPage('doc-pspec')" id="nav-doc-pspec" class="nav-item">
       <i data-lucide="book-open" class="w-4 h-4 shrink-0"></i> 제품표준서
     </div>
+
     <div onclick="goPage('dev-note')" id="nav-dev-note" class="nav-item">
       <i data-lucide="notebook-pen" class="w-4 h-4 shrink-0"></i> 연구개발노트
     </div>
+
     <div onclick="goPage('sample')" id="nav-sample" class="nav-item">
       <i data-lucide="flask-round" class="w-4 h-4 shrink-0"></i> 샘플수불대장
     </div>
+
     <div onclick="goPage('allergen-report')" id="nav-allergen-report" class="nav-item">
       <i data-lucide="shield-alert" class="w-4 h-4 shrink-0"></i> 알레르겐 계산
     </div>
 
-    <div class="nav-label">영업관리</div>
-    <div onclick="goPage('sales-order')" id="nav-sales-order" class="nav-item">
-      <i data-lucide="file-input" class="w-4 h-4 shrink-0"></i> 수주관리
-    </div>
-    <div onclick="goPage('t-sale')" id="nav-t-sale" class="nav-item">
-      <i data-lucide="truck" class="w-4 h-4 shrink-0"></i> 출고/판매
-    </div>
-    <div onclick="goPage('master-cust')" id="nav-master-cust" class="nav-item">
-      <i data-lucide="users" class="w-4 h-4 shrink-0"></i> 고객관리
-    </div>
-    <div onclick="goPage('sales-return')" id="nav-sales-return" class="nav-item">
-      <i data-lucide="undo-2" class="w-4 h-4 shrink-0"></i> 반품관리
-    </div>
-    <div onclick="goPage('sales-claim')" id="nav-sales-claim" class="nav-item">
-      <i data-lucide="message-square-warning" class="w-4 h-4 shrink-0"></i> 클레임관리
-    </div>
-    <div onclick="goPage('channel-sales')" id="nav-channel-sales" class="nav-item">
-      <i data-lucide="pie-chart" class="w-4 h-4 shrink-0"></i> 매출분석
-    </div>
+    <div class="nav-label">3 · 구매 / 입고</div>
 
-    <div class="nav-label">구매관리</div>
     <div onclick="goPage('purchase-order')" id="nav-purchase-order" class="nav-item">
       <i data-lucide="shopping-cart" class="w-4 h-4 shrink-0"></i> 구매발주관리
     </div>
-    <div onclick="goPage('purchase-log')" id="nav-purchase-log" class="nav-item">
-      <i data-lucide="receipt-text" class="w-4 h-4 shrink-0"></i> 품목별 발주내역
-    </div>
-    <div onclick="goPage('records-admin')" id="nav-records-admin" class="nav-item">
-      <i data-lucide="trash-2" class="w-4 h-4 shrink-0"></i> 기록 관리·삭제
-    </div>
+
     <div onclick="goPage('t-goods-in')" id="nav-t-goods-in" class="nav-item">
       <i data-lucide="archive-restore" class="w-4 h-4 shrink-0"></i> 입고관리
     </div>
+
+    <div onclick="goPage('purchase-log')" id="nav-purchase-log" class="nav-item">
+      <i data-lucide="receipt-text" class="w-4 h-4 shrink-0"></i> 품목별 발주내역
+    </div>
+
     <div onclick="goPage('safety-stock')" id="nav-safety-stock" class="nav-item">
       <i data-lucide="bell" class="w-4 h-4 shrink-0"></i> 안전재고/발주추천
     </div>
 
-    <div class="nav-label">생산계획</div>
+    <div class="nav-label">4 · 생산</div>
+
     <div onclick="goPage('prod-plan')" id="nav-prod-plan" class="nav-item">
       <i data-lucide="calendar-range" class="w-4 h-4 shrink-0"></i> 생산계획관리
     </div>
+
     <div onclick="goPage('mrp-calc')" id="nav-mrp-calc" class="nav-item">
       <i data-lucide="calculator" class="w-4 h-4 shrink-0"></i> 자재소요량(MRP)
     </div>
 
-    <div class="nav-label">공정관리</div>
     <div onclick="goPage('work-order')" id="nav-work-order" class="nav-item">
       <i data-lucide="clipboard-pen" class="w-4 h-4 shrink-0"></i> 작업지시관리
     </div>
+
     <div onclick="goPage('t-bulk')" id="nav-t-bulk" class="nav-item">
       <i data-lucide="beaker" class="w-4 h-4 shrink-0"></i> 조향/벌크배합
     </div>
+
     <div onclick="goPage('bulk-maturation')" id="nav-bulk-maturation" class="nav-item">
       <i data-lucide="timer" class="w-4 h-4 shrink-0"></i> 벌크숙성추적
     </div>
+
     <div onclick="goPage('t-batch')" id="nav-t-batch" class="nav-item">
       <i data-lucide="factory" class="w-4 h-4 shrink-0"></i> 충진/생산배치
     </div>
+
     <div onclick="goPage('prod-result')" id="nav-prod-result" class="nav-item">
       <i data-lucide="bar-chart-3" class="w-4 h-4 shrink-0"></i> 생산실적관리
     </div>
 
-    <div class="nav-label">품질관리</div>
+    <div class="nav-label">5 · 품질</div>
+
     <div onclick="goPage('t-qc')" id="nav-t-qc" class="nav-item">
       <i data-lucide="microscope" class="w-4 h-4 shrink-0"></i> 수입/벌크검사
     </div>
+
     <div onclick="goPage('qc-prod')" id="nav-qc-prod" class="nav-item">
       <i data-lucide="scan-search" class="w-4 h-4 shrink-0"></i> 생산품검사
     </div>
+
     <div onclick="goPage('qc-ncr')" id="nav-qc-ncr" class="nav-item">
       <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0"></i> 부적합보고서
     </div>
+
     <div onclick="goPage('qc-capa')" id="nav-qc-capa" class="nav-item">
       <i data-lucide="shield-check" class="w-4 h-4 shrink-0"></i> 시정/예방조치(CAPA)
     </div>
+
     <div onclick="goPage('qc-trace')" id="nav-qc-trace" class="nav-item">
       <i data-lucide="git-branch" class="w-4 h-4 shrink-0"></i> 제품추적
     </div>
 
-    <div class="nav-label">재고관리</div>
+    <div class="nav-label">6 · 재고</div>
+
     <div onclick="goPage('stock')" id="nav-stock" class="nav-item">
       <i data-lucide="boxes" class="w-4 h-4 shrink-0"></i> LOT재고현황
     </div>
+
     <div onclick="goPage('stock-adj')" id="nav-stock-adj" class="nav-item">
       <i data-lucide="clipboard-check" class="w-4 h-4 shrink-0"></i> 재고실사/조정
     </div>
+
     <div onclick="goPage('stock-ledger')" id="nav-stock-ledger" class="nav-item">
       <i data-lucide="book-text" class="w-4 h-4 shrink-0"></i> 수불부조회
     </div>
+
     <div onclick="goPage('stock-dead')" id="nav-stock-dead" class="nav-item">
       <i data-lucide="archive-x" class="w-4 h-4 shrink-0"></i> 부동재고리스트
     </div>
 
-    <div class="nav-label">법정서식/보고</div>
+    <div class="nav-label">7 · 영업 / 출고</div>
+
+    <div onclick="goPage('sales-order')" id="nav-sales-order" class="nav-item">
+      <i data-lucide="file-input" class="w-4 h-4 shrink-0"></i> 수주관리
+    </div>
+
+    <div onclick="goPage('t-sale')" id="nav-t-sale" class="nav-item">
+      <i data-lucide="truck" class="w-4 h-4 shrink-0"></i> 출고/판매
+    </div>
+
+    <div onclick="goPage('sales-return')" id="nav-sales-return" class="nav-item">
+      <i data-lucide="undo-2" class="w-4 h-4 shrink-0"></i> 반품관리
+    </div>
+
+    <div onclick="goPage('sales-claim')" id="nav-sales-claim" class="nav-item">
+      <i data-lucide="message-square-warning" class="w-4 h-4 shrink-0"></i> 클레임관리
+    </div>
+
+    <div onclick="goPage('channel-sales')" id="nav-channel-sales" class="nav-item">
+      <i data-lucide="pie-chart" class="w-4 h-4 shrink-0"></i> 매출분석
+    </div>
+
+    <div class="nav-label">8 · 문서 / 보고</div>
+
     <div onclick="goPage('doc-batch-record')" id="nav-doc-batch-record" class="nav-item">
       <i data-lucide="file-text" class="w-4 h-4 shrink-0"></i> 제조관리기록서
     </div>
+
     <div onclick="goPage('doc-qc-report')" id="nav-doc-qc-report" class="nav-item">
       <i data-lucide="clipboard-check" class="w-4 h-4 shrink-0"></i> 품질검사성적서
     </div>
+
     <div onclick="goPage('doc-release')" id="nav-doc-release" class="nav-item">
       <i data-lucide="send" class="w-4 h-4 shrink-0"></i> 출고기록서
     </div>
+
     <div onclick="goPage('doc-label')" id="nav-doc-label" class="nav-item">
       <i data-lucide="tag" class="w-4 h-4 shrink-0"></i> LOT라벨출력
     </div>
+
     <div onclick="goPage('annual-report')" id="nav-annual-report" class="nav-item">
       <i data-lucide="file-bar-chart" class="w-4 h-4 shrink-0"></i> 연간생산실적
     </div>
+
     <div onclick="goPage('report')" id="nav-report" class="nav-item">
       <i data-lucide="bar-chart-2" class="w-4 h-4 shrink-0"></i> 리포트/내보내기
+    </div>
+
+    <div class="nav-label">9 · 설정</div>
+
+    <div onclick="goPage('cfg-company')" id="nav-cfg-company" class="nav-item">
+      <i data-lucide="building-2" class="w-4 h-4 shrink-0"></i> 회사정보
+    </div>
+
+    <div onclick="goPage('records-admin')" id="nav-records-admin" class="nav-item">
+      <i data-lucide="trash-2" class="w-4 h-4 shrink-0"></i> 기록 관리·삭제
     </div>
   </nav>
   <div class="p-3 border-t border-slate-800 space-y-2 shrink-0">
@@ -702,7 +746,7 @@
           <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">대상 제품</label>
             <select id="mrp-product" class="input-field" onchange="calcMRP()"></select></div>
           <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">생산 목표 수량</label>
-            <input id="mrp-qty" type="number" class="input-field text-right font-bold" placeholder="100" oninput="calcMRP()"></div>
+            <input id="mrp-qty" type="number" class="input-field text-right font-bold" value="100" oninput="calcMRP()"></div>
           <div><button onclick="calcMRP()" class="btn btn-primary w-full h-8">📊 소요량 계산</button></div>
         </div>
       </div>
@@ -3790,7 +3834,7 @@ function initNewPage(pageId) {
               <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label><input id="bulk-note2" class="input-field" placeholder="배합 메모"></div>
               <button onclick="createBulk2()" class="btn btn-primary w-full">벌크 LOT 생성</button>
             </div>
-            <div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">벌크 LOT 현황</h3><span class="badge-soft" id="bulk2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">벌크 LOT</th><th>제품</th><th class="text-right">잔량</th><th>배합일</th><th>숙성완료</th><th>상태</th><th class="text-center pr-3">관리</th></tr></thead><tbody id="tbl-bulk2"></tbody></table></div></div>
+            <div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">벌크 LOT 현황</h3><span class="badge-soft" id="bulk2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">벌크 LOT</th><th>제품</th><th class="text-right">잔량</th><th class="text-right">원가/ea</th><th>배합일</th><th>숙성완료</th><th>상태</th><th class="text-center pr-3">관리</th></tr></thead><tbody id="tbl-bulk2"></tbody></table></div></div>
           </div>
         </div>`,
       't-batch': `
@@ -3804,7 +3848,7 @@ function initNewPage(pageId) {
               <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label><input id="batch-note2" class="input-field" placeholder="생산 메모"></div>
               <button onclick="createBatch2()" class="btn btn-primary w-full">완제품 LOT 생성</button>
             </div>
-            <div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">생산 배치 이력</h3><span class="badge-soft" id="batch2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">일자</th><th>제품</th><th>완제품 LOT</th><th class="text-right">수량</th><th>원벌크</th><th>비고</th></tr></thead><tbody id="tbl-batch2"></tbody></table></div></div>
+            <div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">생산 배치 이력</h3><span class="badge-soft" id="batch2-count">0</span></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">일자</th><th>제품</th><th>완제품 LOT</th><th class="text-right">수량</th><th class="text-right">실제원가/ea</th><th>원벌크</th><th>비고</th></tr></thead><tbody id="tbl-batch2"></tbody></table></div></div>
           </div>
         </div>`,
       't-qc': `
@@ -4096,9 +4140,16 @@ function initNewPage(pageId) {
       if(!res.ok){ toast(res.message,'error'); return; }
       uses.push({type:'RAW', itemId:req.itemId, need:req.need, lots:res.used});
     }
+    /* 실제원가: 소모한 원료 LOT들의 실구매 단가 합산 */
+    let rawCost = 0;
+    uses.forEach(u => (u.lots||[]).forEach(x => {
+      const lot = (db.stock.RAW_LOT||[]).find(l => String(l.id)===String(x.id));
+      rawCost += n(x.qty) * n(lot && lot.unitCost);
+    }));
+    const bulkUnitCost = qty > 0 ? Math.round((rawCost/qty)*100)/100 : 0;
     const lotNo = 'BLK-' + Date.now().toString(36).toUpperCase();
-    db.stock.BULK_LOT.push({id:Date.now(), lotNo, productId, qty, remaining:qty, dateIn:date, mfgDate:date, matureUntil:new Date(new Date(date+'T00:00:00').getTime() + matureDays*86400000).toISOString().split('T')[0], status:'HOLD', note});
-    db.txn.T_BULK.push({id:generateId('BULK'), lotNo, productId, qty, date, matureDays, note, materials:uses});
+    db.stock.BULK_LOT.push({id:Date.now(), lotNo, productId, qty, remaining:qty, dateIn:date, mfgDate:date, matureUntil:new Date(new Date(date+'T00:00:00').getTime() + matureDays*86400000).toISOString().split('T')[0], status:'HOLD', unitCost:bulkUnitCost, totalCost:Math.round(rawCost), note});
+    db.txn.T_BULK.push({id:generateId('BULK'), lotNo, productId, qty, date, matureDays, note, materials:uses, rawCost:Math.round(rawCost), unitCost:bulkUnitCost});
     logEvent(`벌크배합: ${product.name} / ${lotNo} / ${qty}`);
     saveDB();
     renderBulkPage();
@@ -4112,8 +4163,8 @@ function initNewPage(pageId) {
     tbody.innerHTML = rows.map(l => {
       const done = l.matureUntil && l.matureUntil <= today();
       if(done && l.status==='HOLD') l.status='OK';
-      return `<tr><td class="pl-3"><span class="lot-badge bulk">${esc(l.lotNo)}</span></td><td class="text-xs font-bold">${esc(findProduct(l.productId)?.name||'-')}</td><td class="text-right">${esc(l.remaining)}</td><td class="text-xs">${esc(l.mfgDate||l.dateIn||'-')}</td><td class="text-xs">${esc(l.matureUntil||'-')}</td><td>${statusBadge(l.status||'HOLD')}</td><td class="text-center pr-3"><button onclick="editLot('BULK','${esc(l.lotNo)}')" class="btn btn-secondary btn-sm">수정</button> <button onclick="deleteLot('BULK','${esc(l.lotNo)}')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button></td></tr>`;
-    }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">벌크 LOT 없음</td></tr>';
+      return `<tr><td class="pl-3"><span class="lot-badge bulk">${esc(l.lotNo)}</span></td><td class="text-xs font-bold">${esc(findProduct(l.productId)?.name||'-')}</td><td class="text-right">${esc(l.remaining)}</td><td class="text-right text-xs">${l.unitCost ? Math.round(l.unitCost).toLocaleString()+'원' : '-'}</td><td class="text-xs">${esc(l.mfgDate||l.dateIn||'-')}</td><td class="text-xs">${esc(l.matureUntil||'-')}</td><td>${statusBadge(l.status||'HOLD')}</td><td class="text-center pr-3"><button onclick="editLot('BULK','${esc(l.lotNo)}')" class="btn btn-secondary btn-sm">수정</button> <button onclick="deleteLot('BULK','${esc(l.lotNo)}')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button></td></tr>`;
+    }).join('') || '<tr><td colspan="8" class="text-center py-4 text-slate-400">벌크 LOT 없음</td></tr>';
   }
   window.renderBulkPage = renderBulkPage;
   function createBatch2(){
@@ -4127,12 +4178,32 @@ function initNewPage(pageId) {
     const product = findProduct(bulk.productId);
     const packReqs = (product?.bom||[]).filter(r => r.type==='PACK').map(r => ({...r, need:(window.bomNeed?window.bomNeed(product,r,qty):n(r.qty)*qty)}));
     for(const req of packReqs){ if(totalStock('PACK', req.itemId) < req.need){ toast(`포장재 부족: ${findPack(req.itemId)?.name||req.itemId}`,'error'); return; } }
-    for(const req of packReqs){ const res = allocateLots('PACK', req.itemId, req.need); if(!res.ok){ toast(res.message,'error'); return; } }
+    const packUses = [];
+    let packCost = 0;
+    for(const req of packReqs){
+      const res = allocateLots('PACK', req.itemId, req.need);
+      if(!res.ok){ toast(res.message,'error'); return; }
+      (res.used||[]).forEach(x => {
+        const lot = (db.stock.PACK_LOT||[]).find(l => String(l.id)===String(x.id));
+        packCost += n(x.qty) * n(lot && lot.unitCost);
+      });
+      packUses.push({type:'PACK', itemId:req.itemId, need:req.need, lots:res.used});
+    }
+    /* 벌크 1개분 원료원가: 벌크 LOT 기록값 → 없으면(과거 벌크) 마스터 표준단가로 추정 */
+    let bulkPerEa = n(bulk.unitCost);
+    if(bulkPerEa <= 0){
+      const fw = n(product?.fillWeight);
+      bulkPerEa = (product?.bom||[]).filter(r => r.type==='RAW').reduce((s,r) => {
+        const std = n(findRaw(r.itemId)?.stdCost);
+        return s + ((fw > 0) ? (n(r.qty)/100)*fw*std : n(r.qty)*std);
+      }, 0);
+    }
+    const fgtUnitCost = Math.round(bulkPerEa + (qty > 0 ? packCost/qty : 0));
     bulk.remaining = n(bulk.remaining) - qty;
     const lotNo = 'FGT-' + Date.now().toString(36).toUpperCase();
-    db.stock.FGT_LOT.push({id:Date.now()+1, lotNo, productId:bulk.productId, qty, remaining:qty, dateIn:date, status:'HOLD', note});
-    db.txn.T_BATCH.push({id:generateId('BAT'), lotNo, bulkLotNo:bulk.lotNo, productId:bulk.productId, qty, date, note});
-    logEvent(`생산배치: ${product?.name||''} / ${lotNo} / ${qty}`);
+    db.stock.FGT_LOT.push({id:Date.now()+1, lotNo, productId:bulk.productId, qty, remaining:qty, dateIn:date, status:'HOLD', unitCost:fgtUnitCost, note});
+    db.txn.T_BATCH.push({id:generateId('BAT'), lotNo, bulkLotNo:bulk.lotNo, productId:bulk.productId, qty, date, note, consumedLots:packUses, unitCost:fgtUnitCost, bulkPerEa:Math.round(bulkPerEa*100)/100, packCost:Math.round(packCost)});
+    logEvent(`생산배치: ${product?.name||''} / ${lotNo} / ${qty} / 실제원가 ${fgtUnitCost.toLocaleString()}원/ea`);
     saveDB();
     renderBatchPage();
   }
@@ -4142,7 +4213,7 @@ function initNewPage(pageId) {
     document.getElementById('batch-date2').value = document.getElementById('batch-date2').value || today();
     const rows = [...(db.txn.T_BATCH||[])].reverse();
     document.getElementById('batch2-count').innerText = rows.length;
-    tbody.innerHTML = rows.map(r => `<tr><td class="pl-3 text-xs">${esc(r.date)}</td><td class="text-xs font-bold">${esc(findProduct(r.productId)?.name||'-')}</td><td><span class="lot-badge fgt">${esc(r.lotNo)}</span></td><td class="text-right">${esc(r.qty)}</td><td class="mono text-[10px]">${esc(r.bulkLotNo||'-')}</td><td class="text-xs">${esc(r.note||'-')}</td></tr>`).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">생산 배치 없음</td></tr>';
+    tbody.innerHTML = rows.map(r => `<tr><td class="pl-3 text-xs">${esc(r.date)}</td><td class="text-xs font-bold">${esc(findProduct(r.productId)?.name||'-')}</td><td><span class="lot-badge fgt">${esc(r.lotNo)}</span></td><td class="text-right">${esc(r.qty)}</td><td class="text-right text-xs">${r.unitCost ? Math.round(r.unitCost).toLocaleString()+'원' : '-'}</td><td class="mono text-[10px]">${esc(r.bulkLotNo||'-')}</td><td class="text-xs">${esc(r.note||'-')}</td></tr>`).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">생산 배치 없음</td></tr>';
   }
   function saveQc2(){
     const type = document.getElementById('qc-type2')?.value;
@@ -6033,7 +6104,9 @@ function initNewPage(pageId) {
   window.calcMRP = function(){
     ensureMRPSummary();
     const prodId = Number(document.getElementById('mrp-product')?.value);
-    const qty = _n(document.getElementById('mrp-qty')?.value);
+    const qtyEl = document.getElementById('mrp-qty');
+    if(prodId && qtyEl && String(qtyEl.value).trim() === '') qtyEl.value = 100;
+    const qty = _n(qtyEl?.value);
     const rawBody = document.getElementById('tbl-mrp-raw');
     const packBody = document.getElementById('tbl-mrp-pack');
     const msg = document.getElementById('mrp-message');
@@ -6061,7 +6134,7 @@ function initNewPage(pageId) {
     const rawRows = [], packRows = [];
     let shortCount = 0;
     rows.forEach(b => {
-      const needed = _n(b.qty) * qty * lossFactor;
+      const needed = (typeof window.bomNeed === 'function' ? window.bomNeed(product, b, qty) : _n(b.qty) * qty) * lossFactor;
       const avail = availableStock(b.type, b.itemId);
       const shortage = Math.max(0, needed - avail);
       if(shortage > 0) shortCount++;
@@ -6952,6 +7025,40 @@ function initNewPage(pageId) {
     if(typeof toast === 'function') toast('BOM 저장 완료 · ' + newBom.length + '개 항목' + (removed > 0 ? ' (' + removed + '개 제거)' : ''), 'success');
     if(typeof saveDB === 'function') saveDB();
   };
+})();
+</script>
+<script>
+/* ── 사이드바 그룹 접기/펼치기 v3.5 — 노즈 ── */
+(function(){
+  'use strict';
+  var KEY = 'shifti_nav_collapsed';
+  var collapsed = {};
+  try{ collapsed = JSON.parse(localStorage.getItem(KEY) || '{}'); }catch(e){}
+  function groupItems(lb){
+    var els = [], n = lb.nextElementSibling;
+    while(n && !n.classList.contains('nav-label')){ els.push(n); n = n.nextElementSibling; }
+    return els;
+  }
+  document.querySelectorAll('.nav-label').forEach(function(lb){
+    var key = lb.textContent.trim();
+    lb.style.cursor = 'pointer';
+    lb.title = '클릭하여 접기/펼치기';
+    var chev = document.createElement('span');
+    chev.textContent = '▾';
+    chev.style.cssText = 'float:right;transition:transform .15s;opacity:.6';
+    lb.appendChild(chev);
+    function apply(){
+      var hide = !!collapsed[key];
+      groupItems(lb).forEach(function(el){ el.style.display = hide ? 'none' : ''; });
+      chev.style.transform = hide ? 'rotate(-90deg)' : '';
+    }
+    lb.addEventListener('click', function(){
+      collapsed[key] = !collapsed[key];
+      try{ localStorage.setItem(KEY, JSON.stringify(collapsed)); }catch(e){}
+      apply();
+    });
+    apply();
+  });
 })();
 </script>
 </body>
