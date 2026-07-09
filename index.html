@@ -1,14 +1,15 @@
 
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <title>SHIFTI ERP · 클라우드 스마트 제조 시스템</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/lucide@1.23.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Pretendard:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script>
     window.tailwind = window.tailwind || {};
@@ -1237,7 +1238,36 @@ function importJSON(e){const f=e.target.files[0];if(!f)return;const r=new FileRe
 function loadSampleData(){toast('샘플 데이터 로드 완료','success');saveDB();goPage('dashboard')}
 async function cloudLogin(){_showLoader('연결 확인 중…');try{await _sbGet('erp_data',SB_ROW);_hideLoader();_setCS('☁️','연결됨');toast('☁️ Supabase 연결 정상','success')}catch(e){_hideLoader();_setCS('❌','연결 실패');toast('연결 실패: URL/KEY를 확인하세요','error')}}
 function cloudLogout(){_setCS('☁️','로컬 모드');toast('오프라인 모드','info')}
-function exportCSV(){}
+function escH(v){return String(v==null?'':v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+window.escH = escH;
+function exportCSV(kind){
+  try{
+    if(kind!=='LEDGER'){ toast('지원하지 않는 CSV 종류입니다','error'); return; }
+    const type=document.getElementById('sl-type')?.value||'RAW';
+    const from=document.getElementById('sl-from')?.value||'';
+    const to=document.getElementById('sl-to')?.value||'9999-12-31';
+    let entries=[];
+    if(type==='RAW'||type==='PACK'){
+      const isRaw=type==='RAW';
+      (db.txn.T_GOODS_IN||[]).filter(t=>t.type===type&&t.dateIn>=from&&t.dateIn<=to).forEach(t=>{
+        const name=isRaw?findRaw(t.itemId)?.name:findPack(t.itemId)?.name;
+        entries.push({date:t.dateIn,action:'입고',name:name||'',lot:t.lotNo,inQty:t.qty,outQty:0,note:t.note||''});
+      });
+    }
+    if(type==='FGT'){
+      (db.txn.T_BATCH||[]).filter(t=>t.date>=from&&t.date<=to).forEach(t=>{entries.push({date:t.date,action:'생산입고',name:findProduct(t.productId)?.name||'',lot:t.lotNo,inQty:t.qty,outQty:0,note:''})});
+      (db.txn.T_SALE||[]).filter(t=>t.date>=from&&t.date<=to).forEach(t=>{entries.push({date:t.date,action:'출고',name:findProduct(t.productId)?.name||'',lot:t.lotNo,inQty:0,outQty:t.qty,note:t.note||''})});
+    }
+    entries.sort((a,b)=>a.date.localeCompare(b.date));
+    let running=0;
+    const rows=[['일자','구분','품목','LOT','입고','출고','잔량','비고']];
+    entries.forEach(e=>{running+=e.inQty-e.outQty;rows.push([e.date,e.action,e.name,e.lot,e.inQty||'',e.outQty||'',running,e.note])});
+    const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='수불부_'+type+'_'+todayISO()+'.csv';a.click();URL.revokeObjectURL(url);
+    toast('CSV 다운로드 완료 ('+entries.length+'건)','success');
+  }catch(e){console.error(e);toast('CSV 생성 실패','error')}
+}
 window.addEventListener('load',async function(){
   try{if(typeof lucide!=='undefined')lucide.createIcons()}catch(e){}
   const h=document.getElementById('hdr-today');if(h)h.innerText=new Date().toLocaleString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
@@ -1355,11 +1385,11 @@ function renderSuppliers() {
   const tbody = document.getElementById('tbl-supplier');
   if (!tbody) return;
   tbody.innerHTML = list.map(s => '<tr>' +
-    '<td class="pl-4 text-[11px] mono text-slate-500">' + (s.code||'-') + '</td>' +
-    '<td class="font-bold">' + s.name + '</td>' +
+    '<td class="pl-4 text-[11px] mono text-slate-500">' + escH(s.code||'-') + '</td>' +
+    '<td class="font-bold">' + escH(s.name) + '</td>' +
     '<td><span class="badge-soft">' + s.type + '</span></td>' +
-    '<td class="text-xs">' + (s.contact||'-') + '</td>' +
-    '<td class="text-xs">' + (s.tel||'-') + '</td>' +
+    '<td class="text-xs">' + escH(s.contact||'-') + '</td>' +
+    '<td class="text-xs">' + escH(s.tel||'-') + '</td>' +
     '<td class="text-right">' + (s.leadDays||7) + '일</td>' +
     '<td class="text-center pr-4"><button onclick="editSupplier(' + s.id + ')" class="btn btn-secondary btn-sm">수정</button> <button onclick="deleteSupplier(' + s.id + ')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button></td>' +
     '</tr>').join('');
@@ -1443,7 +1473,7 @@ function renderPO() {
   tbody.innerHTML = [...db.txn.T_PO].reverse().slice(0,30).map(po => {
     const sup = db.master.M_SUPPLIER?.find(s => s.id === po.supplierId);
     return '<tr><td class="pl-3 mono text-xs">' + po.no + '</td><td class="text-xs">' + po.date +
-      '</td><td>' + (sup?.name||'-') + '</td><td class="text-xs">' + (po.dueDate||'-') +
+      '</td><td>' + escH(sup?.name||'-') + '</td><td class="text-xs">' + (po.dueDate||'-') +
       '</td><td class="text-right">' + Math.round(po.totalAmount||0).toLocaleString() + '원</td>' +
       '<td class="text-center"><span class="status-badge status-' + (po.status==='입고완료'?'ok':'hold') + '">' + po.status + '</span></td>' +
       '<td class="text-right pr-3"><button onclick="completePO(\'' + po.id + '\')" class="btn btn-secondary btn-sm">입고처리</button></td></tr>';
@@ -1539,7 +1569,7 @@ function renderSO() {
   tbody.innerHTML = [...db.txn.T_SO].reverse().map(so => {
     const c = findCustomer(so.customerId);
     return '<tr><td class="pl-3 mono text-xs">'+so.no+'</td><td class="text-xs">'+so.date+
-      '</td><td>'+(c?.name||'-')+'</td><td class="text-xs">'+(so.dueDate||'-')+
+      '</td><td>'+escH(c?.name||'-')+'</td><td class="text-xs">'+(so.dueDate||'-')+
       '</td><td class="text-right">'+Math.round(so.totalAmount||0).toLocaleString()+'원</td>'+
       '<td class="text-center"><span class="badge-soft">'+so.status+'</span></td>'+
       '<td class="text-right pr-3 text-xs">'+so.items.length+'품목</td></tr>';
@@ -1578,10 +1608,10 @@ function renderReturn() {
   if (!tbody) return;
   tbody.innerHTML = [...db.txn.T_RETURN].reverse().map(r => {
     const p = findProduct(r.productId);
-    return '<tr><td class="pl-3 text-xs">'+r.date+'</td><td class="text-xs font-bold">'+(p?.name||'-')+
-      '</td><td><span class="lot-badge fgt">'+r.lotNo+'</span></td><td class="text-right">'+r.qty+
-      '</td><td class="text-xs">'+r.reason+'</td><td class="text-xs">'+r.action+
-      '</td><td class="text-right pr-3 text-xs text-slate-500">'+(r.note||'-')+'</td></tr>';
+    return '<tr><td class="pl-3 text-xs">'+r.date+'</td><td class="text-xs font-bold">'+escH(p?.name||'-')+
+      '</td><td><span class="lot-badge fgt">'+escH(r.lotNo)+'</span></td><td class="text-right">'+r.qty+
+      '</td><td class="text-xs">'+escH(r.reason)+'</td><td class="text-xs">'+escH(r.action)+
+      '</td><td class="text-right pr-3 text-xs text-slate-500">'+escH(r.note||'-')+'</td></tr>';
   }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">반품 이력 없음</td></tr>';
 }
 
@@ -1611,11 +1641,11 @@ function renderClaim() {
   const SEV = {LOW:'bg-slate-100 text-slate-600',MED:'bg-yellow-100 text-yellow-700',HIGH:'bg-orange-100 text-orange-700',CRITICAL:'bg-red-100 text-red-700'};
   tbody.innerHTML = [...db.txn.T_CLAIM].reverse().map(c => {
     const cust = findCustomer(c.customerId);
-    return '<tr><td class="pl-3 text-xs">'+c.date+'</td><td class="text-xs">'+(cust?.name||'-')+
+    return '<tr><td class="pl-3 text-xs">'+c.date+'</td><td class="text-xs">'+escH(cust?.name||'-')+
       '</td><td class="text-xs">'+c.type+'</td><td class="text-center"><span class="text-[10px] px-2 py-0.5 rounded '+(SEV[c.severity]||'')+'">'+c.severity+'</span></td>'+
       '<td class="text-center"><span class="badge-soft">'+c.status+'</span></td>'+
-      '<td class="mono text-[10px]">'+(c.lot||'-')+'</td>'+
-      '<td class="text-right pr-3 text-xs text-slate-500">'+c.desc.slice(0,20)+'</td></tr>';
+      '<td class="mono text-[10px]">'+escH(c.lot||'-')+'</td>'+
+      '<td class="text-right pr-3 text-xs text-slate-500">'+escH((c.desc||'').slice(0,20))+'</td></tr>';
   }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">클레임 없음</td></tr>';
 }
 
@@ -1646,7 +1676,7 @@ function renderProdPlan() {
   const PRIO = {일반:'badge-soft',긴급:'bg-orange-100 text-orange-700',최우선:'bg-red-100 text-red-700'};
   tbody.innerHTML = [...db.txn.T_PROD_PLAN].reverse().map(pp => {
     const p = findProduct(pp.productId);
-    return '<tr><td class="pl-3 mono text-xs">'+pp.no+'</td><td class="text-xs font-bold">'+(p?.name||'-')+
+    return '<tr><td class="pl-3 mono text-xs">'+pp.no+'</td><td class="text-xs font-bold">'+escH(p?.name||'-')+
       '</td><td class="text-right font-bold">'+pp.qty+'ea</td><td class="text-xs">'+pp.date+
       '</td><td class="text-center"><span class="text-[10px] px-2 py-0.5 rounded '+(PRIO[pp.priority]||'badge-soft')+'">'+pp.priority+'</span></td>'+
       '<td class="text-center"><span class="badge-soft">'+pp.status+'</span></td>'+
@@ -1750,8 +1780,8 @@ function renderWorkOrder() {
     const plan = db.txn.T_PROD_PLAN?.find(p => p.id === wo.planId);
     const prod = plan ? findProduct(plan.productId) : null;
     return '<tr><td class="pl-3 mono text-xs">'+wo.no+'</td><td class="text-xs">'+wo.date+
-      '</td><td class="text-xs">'+(prod?.name||'-')+'</td><td class="text-xs">'+wo.process+
-      '</td><td class="text-xs">'+wo.worker+'</td><td class="text-center"><span class="badge-soft">'+wo.status+'</span></td>'+
+      '</td><td class="text-xs">'+escH(prod?.name||'-')+'</td><td class="text-xs">'+escH(wo.process)+
+      '</td><td class="text-xs">'+escH(wo.worker)+'</td><td class="text-center"><span class="badge-soft">'+wo.status+'</span></td>'+
       '<td class="text-right pr-3"><button onclick="completeWO(\''+wo.id+'\')" class="btn btn-secondary btn-sm">완료</button></td></tr>';
   }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">작업지시 없음</td></tr>';
 }
@@ -1793,7 +1823,7 @@ function renderProdResult() {
       const p = findProduct(Number(pid));
       const avg = v.qty>0 ? v.cost/v.qty : 0;
       const pct = totalAll>0 ? (v.qty/totalAll*100).toFixed(1) : '0';
-      return '<tr><td class="pl-3 font-bold text-xs">'+(p?.name||'-')+'</td><td class="text-right">'+v.batches+'건</td>'+
+      return '<tr><td class="pl-3 font-bold text-xs">'+escH(p?.name||'-')+'</td><td class="text-right">'+v.batches+'건</td>'+
         '<td class="text-right font-bold">'+v.qty+'ea</td><td class="text-right">'+Math.round(avg).toLocaleString()+'원</td>'+
         '<td class="text-right">'+Math.round(v.cost).toLocaleString()+'원</td><td class="text-right pr-3">'+pct+'%</td></tr>';
     }).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">생산 이력 없음</td></tr>';
@@ -1827,8 +1857,8 @@ function renderNCR() {
   if (!tbody) return;
   tbody.innerHTML = [...db.txn.T_NCR].reverse().map(n =>
     '<tr><td class="pl-3 mono text-xs">'+n.no+'</td><td class="text-xs">'+n.date+
-    '</td><td class="text-xs">'+n.process+'</td><td class="text-xs">'+n.type+
-    '</td><td class="mono text-[10px]">'+(n.lot||'-')+'</td><td class="text-right">'+n.qty+
+    '</td><td class="text-xs">'+escH(n.process)+'</td><td class="text-xs">'+escH(n.type)+
+    '</td><td class="mono text-[10px]">'+escH(n.lot||'-')+'</td><td class="text-right">'+n.qty+
     '</td><td class="text-center"><span class="badge-soft">'+n.status+'</span></td>'+
     '<td class="text-right pr-3 text-xs">'+(n.capaId?'연결됨':'-')+'</td></tr>'
   ).join('') || '<tr><td colspan="8" class="text-center py-4 text-slate-400">NCR 없음</td></tr>';
@@ -1859,7 +1889,7 @@ function renderCAPA() {
   if (!tbody) return;
   tbody.innerHTML = [...db.txn.T_CAPA].reverse().map(c =>
     '<tr><td class="pl-3 mono text-xs">'+c.no+'</td><td class="text-center"><span class="badge-teal">'+c.type+'</span></td>'+
-    '<td class="text-xs">'+(c.ncrId||'-')+'</td><td class="text-xs">'+c.owner+
+    '<td class="text-xs">'+escH(c.ncrId||'-')+'</td><td class="text-xs">'+escH(c.owner)+
     '</td><td class="text-xs">'+(c.dueDate||'-')+'</td>'+
     '<td class="text-center"><span class="badge-soft">'+c.status+'</span></td>'+
     '<td class="text-right pr-3"><button onclick="updateCAPAStatus(\''+c.id+'\')" class="btn btn-secondary btn-sm">상태변경</button></td></tr>'
@@ -1990,9 +2020,9 @@ function renderQcProd() {
   tbody.innerHTML = [...db.txn.T_QC_PROD].reverse().map(r => {
     const p = findProduct(r.productId);
     return '<tr><td class="pl-3 text-xs">'+r.date+'</td><td><span class="lot-badge fgt">'+r.lotNo+'</span></td>'+
-      '<td class="text-xs">'+(p?.name||'-')+'</td><td class="text-xs text-center">'+r.visual+'</td>'+
+      '<td class="text-xs">'+escH(p?.name||'-')+'</td><td class="text-xs text-center">'+escH(r.visual)+'</td>'+
       '<td class="text-xs text-center">'+r.scent+'</td><td class="text-xs text-center">'+r.volume+'</td>'+
-      '<td class="text-center">'+statusBadge(r.result)+'</td><td class="text-right pr-3 text-xs">'+r.inspector+'</td></tr>';
+      '<td class="text-center">'+statusBadge(r.result)+'</td><td class="text-right pr-3 text-xs">'+escH(r.inspector)+'</td></tr>';
   }).join('') || '<tr><td colspan="8" class="text-center py-4 text-slate-400">검사 이력 없음</td></tr>';
 }
 
@@ -2760,11 +2790,11 @@ function renderStockLedger() {
   tbody.innerHTML = entries.map(e => {
     running += e.inQty - e.outQty;
     return '<tr><td class="pl-3 text-xs">'+e.date+'</td><td class="text-xs"><span class="badge-soft">'+e.action+'</span></td>'+
-      '<td class="text-xs font-bold">'+e.name+'</td><td class="mono text-[10px]">'+e.lot+'</td>'+
+      '<td class="text-xs font-bold">'+escH(e.name)+'</td><td class="mono text-[10px]">'+escH(e.lot)+'</td>'+
       '<td class="text-right '+(e.inQty?'text-emerald-600 font-bold':'')+'">'+(e.inQty||'-')+'</td>'+
       '<td class="text-right '+(e.outQty?'text-red-500 font-bold':'')+'">'+(e.outQty||'-')+'</td>'+
       '<td class="text-right font-bold">'+running+'</td>'+
-      '<td class="text-right pr-3 text-xs text-slate-400">'+e.note+'</td></tr>';
+      '<td class="text-right pr-3 text-xs text-slate-400">'+escH(e.note)+'</td></tr>';
   }).join('') || '<tr><td colspan="8" class="text-center py-4 text-slate-400">해당 기간 이력 없음</td></tr>';
 }
 
@@ -2780,7 +2810,7 @@ function renderDeadStock() {
   db.stock.RAW_LOT.filter(l => l.remaining > 0 && l.dateIn < cutoffStr).forEach(l => {
     const r = findRaw(l.rawId);
     const daysSince = Math.floor((new Date() - new Date(l.dateIn))/86400000);
-    rows += '<tr><td class="pl-3"><span class="badge-soft">RAW</span></td><td class="text-xs font-bold">'+(r?.name||'-')+
+    rows += '<tr><td class="pl-3"><span class="badge-soft">RAW</span></td><td class="text-xs font-bold">'+escH(r?.name||'-')+
       '</td><td class="mono text-[10px]">'+l.lotNo+'</td><td class="text-right">'+l.remaining+' '+(r?.unit||'')+
       '</td><td class="text-right">'+Math.round(l.remaining*(l.unitCost||0)).toLocaleString()+'원</td>'+
       '<td class="text-xs">'+l.dateIn+'</td><td class="text-right font-bold text-red-500">'+daysSince+'일</td>'+
@@ -2790,7 +2820,7 @@ function renderDeadStock() {
   db.stock.PACK_LOT.filter(l => l.remaining > 0 && l.dateIn < cutoffStr).forEach(l => {
     const p = findPack(l.packId);
     const daysSince = Math.floor((new Date() - new Date(l.dateIn))/86400000);
-    rows += '<tr><td class="pl-3"><span class="badge-soft">PACK</span></td><td class="text-xs font-bold">'+(p?.name||'-')+
+    rows += '<tr><td class="pl-3"><span class="badge-soft">PACK</span></td><td class="text-xs font-bold">'+escH(p?.name||'-')+
       '</td><td class="mono text-[10px]">'+l.lotNo+'</td><td class="text-right">'+l.remaining+' '+(p?.unit||'')+
       '</td><td class="text-right">'+Math.round(l.remaining*(l.unitCost||0)).toLocaleString()+'원</td>'+
       '<td class="text-xs">'+l.dateIn+'</td><td class="text-right font-bold text-red-500">'+daysSince+'일</td>'+
@@ -2980,6 +3010,9 @@ function initNewPage(pageId) {
     }
   }
   window.saveDB = saveDB;
+  window.calcProductMarginRate = calcProductMarginRate;
+  window.calcProductStdCost = calcProductStdCost;
+  window.getAllLots = getAllLots;
 
   function resetRawForm(){
     ['raw-edit-id','raw-code','raw-name','raw-inci','raw-supplier','raw-storage','raw-ifra-limit'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
@@ -4550,6 +4583,8 @@ function initNewPage(pageId) {
     bind('ss-type2','change',()=>fillSafetyItems());
     route(activePageId());
   });
+  window.totalStock = totalStock;
+  window.allocateLots = allocateLots;
 })();
 
 
@@ -6602,6 +6637,103 @@ function initNewPage(pageId) {
       try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
     });
   };
+})();
+</script>
+<script>
+/* ══════════════════════════════════════════════════
+   통합 안정화 패치 v3.3 — 노즈 (2026-07-09)
+   1) saveDB 최종 통합본: 로컬 즉시 저장 + 클라우드 디바운스(1.2초)
+   2) 탭 닫기/화면 이탈 시 미전송분 즉시 전송
+   3) resetDB 이중 안전장치 ("삭제" 직접 입력 필수)
+   4) 일 1회 자동 클라우드 백업 + 30일 경과분 자동 정리
+   5) 다른 기기 변경 감지(60초) + 로컬 최신분 자동 업로드
+   ══════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+  var ROW = window.SB_ROW || 'shifti_erp_main';
+  var KEY = window.STORAGE_KEY || 'shifti_erp_v2';
+  function hdr(){ return {'Content-Type':'application/json','apikey':window.SB_KEY,'Authorization':'Bearer '+window.SB_KEY,'Prefer':'resolution=merge-duplicates,return=minimal'}; }
+
+  /* 1) saveDB 최종본 */
+  var _t = null, _dirty = false;
+  function cloudPush(useKeepalive){
+    if(!window.SB_URL || !window.SB_KEY || !window.db) return Promise.resolve();
+    _dirty = false;
+    var body = JSON.stringify({ id: ROW, data: window.db, updated_at: (window.db.meta && window.db.meta.updatedAt) || new Date().toISOString() });
+    var opt = { method:'POST', headers:hdr(), body:body };
+    if(useKeepalive && body.length < 60000) opt.keepalive = true;
+    return fetch(window.SB_URL + '/rest/v1/erp_data', opt)
+      .then(function(r){
+        if(window._setCS) window._setCS(r.ok?'☁️':'⚠️', r.ok?('저장됨 '+new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})):'저장 실패 (로컬만)');
+        if(!r.ok) _dirty = true;
+      })
+      .catch(function(){ _dirty = true; if(window._setCS) window._setCS('⚠️','저장 실패 (로컬만)'); });
+  }
+  window.saveDB = function(){
+    var db = window.db; if(!db) return;
+    if(!db.meta) db.meta = { version:'3.3' };
+    db.meta.updatedAt = new Date().toISOString();
+    try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e){ console.error('[로컬저장 실패]', e); }
+    try { if(typeof window.renderAll === 'function') window.renderAll(); } catch(e){}
+    _dirty = true;
+    if(window._setCS) window._setCS('⏳','클라우드 저장 중…');
+    clearTimeout(_t);
+    _t = setTimeout(function(){ cloudPush(false); }, 1200);
+  };
+  /* 2) 이탈 시 즉시 플러시 */
+  window.addEventListener('pagehide', function(){ if(_dirty){ clearTimeout(_t); cloudPush(true); } });
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden' && _dirty){ clearTimeout(_t); cloudPush(true); } });
+
+  /* 3) resetDB 이중 안전장치 */
+  var _origReset = window.resetDB;
+  window.resetDB = async function(){
+    var ans = prompt('⚠️ 클라우드 포함 모든 데이터가 삭제됩니다.\n계속하려면 "삭제" 를 정확히 입력하세요.\n(일별 자동 백업본 shifti_erp_backup_* 은 유지됩니다)');
+    if(ans !== '삭제'){ if(typeof toast==='function') toast('초기화가 취소되었습니다','info'); return; }
+    if(typeof _origReset === 'function') return _origReset();
+  };
+
+  /* 4) 일 1회 자동 백업 */
+  function pad(x){ return (x<10?'0':'')+x; }
+  function ymd(d){ return ''+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate()); }
+  function dailyBackup(){
+    try{
+      if(!window.SB_URL || !window.SB_KEY || !window.db) return;
+      var today = ymd(new Date());
+      if(localStorage.getItem('shifti_last_backup') === today) return;
+      var id = 'shifti_erp_backup_' + today;
+      fetch(window.SB_URL + '/rest/v1/erp_data', { method:'POST', headers:hdr(), body: JSON.stringify({ id:id, data:window.db, updated_at:new Date().toISOString() }) })
+        .then(function(r){
+          if(!r.ok) return;
+          localStorage.setItem('shifti_last_backup', today);
+          console.log('[자동백업] ' + id + ' 저장 완료');
+          var cut = new Date(); cut.setDate(cut.getDate() - 30);
+          fetch(window.SB_URL + '/rest/v1/erp_data?id=like.shifti_erp_backup_*&id=lt.shifti_erp_backup_' + ymd(cut), { method:'DELETE', headers:hdr() }).catch(function(){});
+        }).catch(function(){});
+    }catch(e){}
+  }
+
+  /* 5) 다른 기기 변경 감지 */
+  var _warned = false;
+  function checkRemote(){
+    if(!window.SB_URL || !window.SB_KEY || !window.db || !window.db.meta || _dirty) return;
+    fetch(window.SB_URL + '/rest/v1/erp_data?id=eq.' + ROW + '&select=data->meta->>updatedAt', { headers:{ 'apikey':window.SB_KEY, 'Authorization':'Bearer '+window.SB_KEY } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(rows){
+        if(!rows || !rows.length) return;
+        var remote = rows[0].updatedAt || '';
+        var local = window.db.meta.updatedAt || '';
+        if(!remote || !local) return;
+        if(new Date(remote) > new Date(local) && !_warned){
+          _warned = true;
+          if(typeof toast === 'function') toast('🔄 다른 기기에서 최신 저장이 감지되었습니다. 새로고침(F5)을 권장합니다','info');
+          if(window._setCS) window._setCS('🔄','다른 기기 변경 감지 — 새로고침 권장');
+        } else if(new Date(local) > new Date(remote)){
+          cloudPush(false); /* 지난번 전송 실패분 자동 복구 업로드 */
+        }
+      }).catch(function(){});
+  }
+  setTimeout(function(){ dailyBackup(); checkRemote(); }, 4000);
+  setInterval(checkRemote, 60000);
 })();
 </script>
 </body>
