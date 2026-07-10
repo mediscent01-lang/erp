@@ -138,6 +138,11 @@
     .gd-acc summary::before{content:'▸ ';color:#0d9488}
     .gd-acc[open] summary::before{content:'▾ '}
     .gd-acc-body{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+    .gd-menu-name{font-size:11.5px;font-weight:800;color:#0f172a;min-width:110px;flex-shrink:0}
+    .dash-sums{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;margin-top:8px}
+    .dash-sums>div{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+    .dash-sums span{font-size:11px;color:rgba(255,255,255,.6);font-weight:600}
+    .dash-sums b{font-size:17px;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap}
     /* ── Dashboard v3.5 ── */
     .dash-hero{display:grid;grid-template-columns:1.05fr 1.6fr;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#0f172a 0%,#134e4a 62%,#0d9488 135%);color:#fff;box-shadow:0 14px 34px -14px rgba(13,148,136,.5)}
     .dash-hero-main{padding:22px 26px;position:relative}
@@ -353,6 +358,10 @@
       <i data-lucide="tag" class="w-4 h-4 shrink-0"></i> LOT라벨출력
     </div>
 
+    <div onclick="goPage('doc-quote')" id="nav-doc-quote" class="nav-item">
+      <i data-lucide="file-text" class="w-4 h-4 shrink-0"></i> 견적서 작성
+    </div>
+
     <div onclick="goPage('annual-report')" id="nav-annual-report" class="nav-item">
       <i data-lucide="file-bar-chart" class="w-4 h-4 shrink-0"></i> 연간생산실적
     </div>
@@ -408,9 +417,15 @@
       <!-- 히어로: 핵심 자산 + 오늘의 운영 지표 -->
       <div class="dash-hero">
         <div class="dash-hero-main">
-          <div class="dash-hero-label">재고 자산 평가액</div>
-          <div id="dash-total-inv" class="dash-hero-value">0원</div>
-          <div class="dash-hero-sub">원료 · 포장재 · 완제품 실시간 합계</div>
+          <div class="dash-hero-label">재고 수량 합계</div>
+          <div class="dash-sums">
+            <div><span>원료</span><b id="dash-sum-raw">0</b></div>
+            <div><span>부자재</span><b id="dash-sum-pack">0</b></div>
+            <div><span>완제품</span><b id="dash-sum-fgt">0</b></div>
+            <div><span>벌크</span><b id="dash-sum-bulk">0</b></div>
+          </div>
+          <span id="dash-total-inv" style="display:none"></span>
+          <div class="dash-hero-sub">잔량 기준 실시간 · 원료는 kg 환산</div>
         </div>
         <div class="dash-hero-stats">
           <div class="dash-stat" onclick="goPage('t-batch')" title="충진/생산배치로 이동"><i data-lucide="factory"></i><div><div class="dash-stat-v" id="dash-today-batch">0</div><div class="dash-stat-l">금일 생산배치</div></div></div>
@@ -457,8 +472,8 @@
 
     <section id="page-guide" class="page-section space-y-5">
       <div>
-        <h2 class="text-lg font-black text-slate-800">SHIFTI ERP 운영 가이드</h2>
-        <div class="text-[11px] text-slate-400 mt-0.5">메뉴 번호(1~9)가 곧 업무 순서입니다 · 각 단계의 [이동] 버튼으로 바로 해당 화면이 열립니다</div>
+        <h2 class="text-lg font-black text-slate-800">SHIFTI ERP 운영 가이드 <span class="badge-soft ml-1">v3.7</span></h2>
+        <div class="text-[11px] text-slate-400 mt-0.5">메뉴 번호(1~9)가 곧 업무 순서 · 모든 단계의 [이동] 버튼으로 해당 화면이 바로 열립니다 · ▾제목 클릭으로 접기 가능</div>
       </div>
 
       <div class="gd-strip">
@@ -475,71 +490,177 @@
       <div class="card p-4">
         <h3 class="font-bold text-slate-700 text-sm mb-3">☀️ 매일 아침 3분 루틴</h3>
         <div class="space-y-2">
-          <div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>대시보드 확인</b> — 재고 자산·금일 지표, 빨강/호박색 타일에 숫자가 있으면 즉시 처리 대상</div><button class="btn btn-secondary btn-sm" onclick="goPage('dashboard')">이동</button></div>
-          <div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>QC 대기 처리</b> — HOLD 상태 LOT을 검사해 합격 처리해야 출고·충진이 가능합니다</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-qc')">이동</button></div>
-          <div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>유통기한·안전재고 확인</b> — 임박 LOT은 우선 사용(FEFO 자동), 부족 품목은 발주</div><button class="btn btn-secondary btn-sm" onclick="goPage('safety-stock')">이동</button></div>
+          <div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>대시보드</b> — 재고 수량 합계·금일 지표 확인. 빨강(유통기한)·호박색(QC 대기) 타일에 숫자가 있으면 오늘의 최우선 처리 대상. 타일 클릭 시 해당 화면으로 이동</div><button class="btn btn-secondary btn-sm" onclick="goPage('dashboard')">이동</button></div>
+          <div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>QC 대기 처리</b> — HOLD 상태 LOT을 검사해 합격(OK) 처리. 합격 전에는 그 LOT으로 충진·출고가 불가능합니다 (QC 게이트)</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-qc')">이동</button></div>
+          <div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>유통기한·안전재고</b> — 임박 LOT은 시스템이 자동으로 우선 사용(FEFO)하지만, 소진이 어려우면 폐기 계획을. 안전재고 미달 품목은 발주</div><button class="btn btn-secondary btn-sm" onclick="goPage('safety-stock')">이동</button></div>
+          <div class="gd-step"><span class="gd-num">4</span><div class="flex-1"><b>아침 8시 메일 리포트</b> — 위 1~3을 요약한 리포트가 매일 justina0726@gmail.com 으로 자동 발송됩니다 (설정 완료 시)</div></div>
         </div>
       </div>
 
       <div class="card p-4 space-y-2">
-        <h3 class="font-bold text-slate-700 text-sm mb-1">🔁 핵심 업무 흐름</h3>
+        <h3 class="font-bold text-slate-700 text-sm mb-1">🔁 핵심 업무 흐름 (필드 수준 상세)</h3>
 
         <details class="gd-acc" open>
           <summary>A. 신제품 등록 — 여기가 정확해야 모든 계산이 정확해집니다</summary>
           <div class="gd-acc-body">
-            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1">원료 마스터에 <b>표준단가(원/g)</b>까지 입력 — 향료뿐 아니라 에탄올·정제수도 등록</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-raw')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1">포장재 마스터 등록 (병·캡·박스, 표준단가 포함)</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-pack')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1">제품 등록: <b>충진중량은 실제 무게(g)</b> — 변환 도우미(ml×비중) 사용. BOM 배합비는 <b>합계 100%</b>가 되도록 (배지가 초록 ✓이면 정상)</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-product')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">4</span><div class="flex-1">확정된 배합은 포뮬러로 <b>버전 저장</b> (v1, v2…) — 그 시점 처방이 스냅샷으로 보존됩니다</div><button class="btn btn-secondary btn-sm" onclick="goPage('formula-dev')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>원료 등록</b> — 이름, 단위(g), <b>표준단가(원/g 기준!)</b>, 유통기한 일수 입력. kg당 가격을 알면 ÷1000. 향료만이 아니라 <b>에탄올·정제수까지 전부</b> 등록해야 배합비 100%를 채울 수 있습니다</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-raw')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>포장재 등록</b> — 병·캡·박스·라벨 각각 개당 표준단가와 함께</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-pack')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>제품 등록</b> — 판매가 입력, <b>충진중량은 실제 내용물 무게(g)</b>: 변환 도우미에 용량(ml)×비중(향수 약 0.87) 입력 후 [→ g 적용]. BOM 구성에서 원료는 배합비(%), 포장재는 개수로 추가 — <b>배지가 "원료 합계 100% ✓" 초록색</b>이 되게 맞추면 표준원가가 자동 계산됩니다</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-product')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">4</span><div class="flex-1"><b>포뮬러 버전 저장</b> — 확정 배합을 v1으로 저장하면 그 시점 처방이 스냅샷으로 영구 보존. 이후 배합을 바꾸면 v2로 새로 저장 (이력 관리). [상세] 버튼에서 성분별 비고·숙성조건 메모까지 기록</div><button class="btn btn-secondary btn-sm" onclick="goPage('formula-dev')">이동</button></div>
           </div>
         </details>
 
-        <details class="gd-acc">
+        <details class="gd-acc" open>
           <summary>B. 구매 → 입고 → 검사</summary>
           <div class="gd-acc-body">
-            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1">발주 등록 (품목·수량·단가) → 도착 시 <b>[입고완료]</b> — LOT과 입고기록이 자동 생성됩니다</div><button class="btn btn-secondary btn-sm" onclick="goPage('purchase-order')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1">발주 없이 들어온 자재는 입고관리에서 직접 등록 — <b>실구매 단가를 정확히</b> (실제원가 계산의 재료)</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-goods-in')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1">수입검사에서 합격 처리 → 그때부터 생산에 사용 가능</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-qc')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>발주 등록</b> — 공급처 선택 → 품목·수량·<b>단위(g/kg/ea)</b>·단가 입력. kg 선택 시 자동으로 g 환산 저장되어 BOM 계산과 단위가 맞습니다. 도착하면 [입고완료] 클릭 → 입고기록과 LOT이 자동 생성</div><button class="btn btn-secondary btn-sm" onclick="goPage('purchase-order')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>직접 입고</b> — 발주 없이 들어온 자재는 여기서. 품목·수량(단위 선택 가능)·<b>실구매 단가</b>·유통기한 입력. 이 단가가 나중에 벌크·완제품 실제원가의 재료가 되므로 정확하게</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-goods-in')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>수입검사</b> — 새 LOT은 HOLD 상태. 검사 후 합격 처리해야 생산에 사용 가능</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-qc')">이동</button></div>
           </div>
         </details>
 
-        <details class="gd-acc">
+        <details class="gd-acc" open>
           <summary>C. 생산 사이클 — 원가가 자동으로 따라옵니다</summary>
           <div class="gd-acc-body">
-            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1">MRP에서 제품 선택 → 소요량·부족분 확인 후 부족분 발주</div><button class="btn btn-secondary btn-sm" onclick="goPage('mrp-calc')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1">벌크배합 — 원료가 유통기한 임박순(FEFO)으로 자동 차감되고 <b>벌크 원가/ea가 실구매가 기준으로 자동 기록</b></div><button class="btn btn-secondary btn-sm" onclick="goPage('t-bulk')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1">숙성 완료 확인 후 충진/생산배치 — 포장재 자동 차감, <b>완제품 실제원가/ea 자동 기록</b>, LOT은 HOLD로 생성</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-batch')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">4</span><div class="flex-1">생산품검사 합격 → OK 상태가 되어야 출고 가능 (QC 게이트)</div><button class="btn btn-secondary btn-sm" onclick="goPage('qc-prod')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>MRP 계산</b> — 제품 선택 (수량 기본 100, 수정 가능) → 원료·포장재 필요량과 현재고·부족분이 즉시 표시. 부족분은 발주로</div><button class="btn btn-secondary btn-sm" onclick="goPage('mrp-calc')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>벌크배합</b> — 제품·수량(생산 예정 개수)·숙성일 입력 → 원료가 유통기한 임박순(FEFO)으로 자동 차감되고, <b>소모된 원료 LOT들의 실구매가 합산으로 벌크 원가/ea 자동 기록</b></div><button class="btn btn-secondary btn-sm" onclick="goPage('t-bulk')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>숙성 확인</b> — 벌크숙성추적 또는 벌크 목록의 숙성완료일 확인. 완료된 벌크만 충진 진행</div><button class="btn btn-secondary btn-sm" onclick="goPage('bulk-maturation')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">4</span><div class="flex-1"><b>충진/생산배치</b> — 벌크 LOT 선택·충진수량 입력 → 포장재 자동 차감, <b>완제품 실제원가/ea = 벌크원가 + 포장재 실구매가</b>로 자동 기록. 완제품 LOT은 HOLD로 생성</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-batch')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">5</span><div class="flex-1"><b>생산품검사</b> — 외관·향·용량 검사 후 합격 → OK 상태가 되어 출고 가능</div><button class="btn btn-secondary btn-sm" onclick="goPage('qc-prod')">이동</button></div>
           </div>
         </details>
 
-        <details class="gd-acc">
-          <summary>D. 판매 → 월말 마감</summary>
+        <details class="gd-acc" open>
+          <summary>D. 판매 → 견적 → 월말 마감</summary>
           <div class="gd-acc-body">
-            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1">출고/판매 등록 — QC 합격 LOT만 출고되며 FEFO로 자동 차감</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-sale')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1">수불부에서 유형별 입·출·잔량 대조, CSV로 내보내 보관</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock-ledger')">이동</button></div>
-            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1">월말: 재고실사로 실물과 맞추고(차이는 조정으로 기록) 리포트 출력</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock-adj')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>견적서</b> — 고객사·품목·수량 선택 (단가는 제품 판매가 자동) → 인쇄/PDF 또는 [메일로 보내기]로 견적 본문이 담긴 메일 초안 발송</div><button class="btn btn-secondary btn-sm" onclick="goPage('doc-quote')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>출고/판매</b> — 제품·수량 입력 → QC 합격(OK) LOT만 FEFO 순서로 자동 차감. HOLD LOT은 출고 불가</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-sale')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>수불부 대조</b> — 유형(원료/포장재/완제품)별 입고·소모·출고·조정 전체 이력과 누적 잔량. CSV로 내보내 회계 자료로 보관</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock-ledger')">이동</button></div>
+            <div class="gd-step"><span class="gd-num">4</span><div class="flex-1"><b>월말 실사</b> — 실물 재고와 시스템 잔량을 대조하고 차이는 재고조정으로 기록 (사유 필수). 연간 실적은 연도·월별 보고서에서 확인</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock-adj')">이동</button></div>
           </div>
         </details>
+      </div>
+
+      <div class="card p-4 space-y-2">
+        <h3 class="font-bold text-slate-700 text-sm mb-1">📖 메뉴별 상세 설명 (전체 46개)</h3>
+
+        <details class="gd-acc" open><summary>1 · 기준정보 — 모든 계산의 뿌리</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">거래처관리</span><div class="flex-1 text-[11.5px] text-slate-500">원료·포장재를 공급하는 회사 등록 (담당자·연락처). 발주서의 수신처가 됩니다</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-supplier')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">고객관리</span><div class="flex-1 text-[11.5px] text-slate-500">제품을 구매하는 회사/채널 등록. 수주·출고·견적서의 수신처. 이메일을 넣어두면 견적 메일에 자동 사용</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-cust')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">원료관리</span><div class="flex-1 text-[11.5px] text-slate-500">원료 마스터. 표준단가는 원/g 기준, 유통기한 일수를 넣으면 입고 시 만료일 자동 계산</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-raw')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">포장재관리</span><div class="flex-1 text-[11.5px] text-slate-500">병·캡·박스·라벨 등 부자재 마스터 (개당 표준단가)</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-pack')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">제품&원가</span><div class="flex-1 text-[11.5px] text-slate-500">제품 마스터 + BOM(배합비/포장재) + 충진중량 + 로스율 → 표준원가·마진율 자동 계산. [N개·수정] 버튼으로 BOM 팝업 편집</div><button class="btn btn-secondary btn-sm" onclick="goPage('master-product')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>2 · 연구개발</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">처방(포뮬러)관리</span><div class="flex-1 text-[11.5px] text-slate-500">배합 버전(v1, v2…)을 스냅샷으로 보존. [상세]에서 성분·배합비·비고 편집, [수정]으로 메타 변경, [삭제] 가능</div><button class="btn btn-secondary btn-sm" onclick="goPage('formula-dev')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">전성분관리</span><div class="flex-1 text-[11.5px] text-slate-500">제품별 전성분(INCI) 표시 관리</div><button class="btn btn-secondary btn-sm" onclick="goPage('dev-fullcomp')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">제품표준서</span><div class="flex-1 text-[11.5px] text-slate-500">제품별 규격·BOM이 정리된 표준서 열람</div><button class="btn btn-secondary btn-sm" onclick="goPage('doc-pspec')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">연구노트</span><div class="flex-1 text-[11.5px] text-slate-500">개발 과정 기록 (일자별 노트)</div><button class="btn btn-secondary btn-sm" onclick="goPage('dev-note')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">샘플수불대장</span><div class="flex-1 text-[11.5px] text-slate-500">샘플 발송/회수 기록. 검토·수정·보안 체크박스, 상태(검토중/승인/보류/반려/재요청) 필터와 컬럼 클릭 정렬 지원</div><button class="btn btn-secondary btn-sm" onclick="goPage('sample')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">알레르겐성분표</span><div class="flex-1 text-[11.5px] text-slate-500">알레르겐 성분 보고서</div><button class="btn btn-secondary btn-sm" onclick="goPage('allergen-report')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>3 · 구매 / 입고</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">발주관리</span><div class="flex-1 text-[11.5px] text-slate-500">발주서(PO) 생성·상태 관리. 품목별 g/kg/ea 단위 선택. [입고완료] 시 LOT 자동 생성</div><button class="btn btn-secondary btn-sm" onclick="goPage('purchase-order')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">입고관리</span><div class="flex-1 text-[11.5px] text-slate-500">발주 없는 직접 입고. kg 선택 시 g 자동 환산, 실구매 단가 기록</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-goods-in')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">품목별 발주내역</span><div class="flex-1 text-[11.5px] text-slate-500">품목 기준으로 과거 발주 이력·단가 추이 조회</div><button class="btn btn-secondary btn-sm" onclick="goPage('purchase-log')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">안전재고/발주추천</span><div class="flex-1 text-[11.5px] text-slate-500">안전재고 기준 미달 품목과 추천 발주량</div><button class="btn btn-secondary btn-sm" onclick="goPage('safety-stock')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>4 · 생산</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">생산계획관리</span><div class="flex-1 text-[11.5px] text-slate-500">생산 계획 등록. [생산시작]을 누르면 충진 화면으로 이동하며 수량·벌크가 자동 선택됩니다</div><button class="btn btn-secondary btn-sm" onclick="goPage('prod-plan')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">자재소요량 MRP</span><div class="flex-1 text-[11.5px] text-slate-500">생산 목표수량 기준 원료(배합비×충진중량×로스율)·포장재 필요량과 부족분 계산</div><button class="btn btn-secondary btn-sm" onclick="goPage('mrp-calc')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">작업지시관리</span><div class="flex-1 text-[11.5px] text-slate-500">작업지시서 발행·출력 (공정·작업자 기록)</div><button class="btn btn-secondary btn-sm" onclick="goPage('work-order')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">벌크배합</span><div class="flex-1 text-[11.5px] text-slate-500">원료 FEFO 차감 + 벌크 LOT 생성 + 원가/ea 자동 기록. 숙성기간 설정</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-bulk')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">벌크숙성추적</span><div class="flex-1 text-[11.5px] text-slate-500">숙성 중 벌크의 완료 예정일 추적</div><button class="btn btn-secondary btn-sm" onclick="goPage('bulk-maturation')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">충진/생산배치</span><div class="flex-1 text-[11.5px] text-slate-500">벌크→완제품 충진. 포장재 차감 + 실제원가/ea 자동 기록. 이력 표에서 배치별 원가 확인</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-batch')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">생산실적관리</span><div class="flex-1 text-[11.5px] text-slate-500">제품별 생산 실적 집계</div><button class="btn btn-secondary btn-sm" onclick="goPage('prod-result')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>5 · 품질</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">수입/벌크검사</span><div class="flex-1 text-[11.5px] text-slate-500">입고 원료·포장재·벌크·완제품 LOT의 합격/불합격 판정. 합격 전 사용 불가</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-qc')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">생산품검사</span><div class="flex-1 text-[11.5px] text-slate-500">완제품 관능(외관·향)·용량 검사와 검사자 기록</div><button class="btn btn-secondary btn-sm" onclick="goPage('qc-prod')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">부적합관리 (NCR)</span><div class="flex-1 text-[11.5px] text-slate-500">공정·품질 부적합 사항 기록</div><button class="btn btn-secondary btn-sm" onclick="goPage('qc-ncr')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">시정조치 (CAPA)</span><div class="flex-1 text-[11.5px] text-slate-500">부적합에 대한 시정·예방조치와 담당자·기한 관리</div><button class="btn btn-secondary btn-sm" onclick="goPage('qc-capa')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">제품추적</span><div class="flex-1 text-[11.5px] text-slate-500">LOT 번호로 원료→벌크→완제품→출고까지 정·역방향 추적</div><button class="btn btn-secondary btn-sm" onclick="goPage('qc-trace')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>6 · 재고</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">LOT 재고현황</span><div class="flex-1 text-[11.5px] text-slate-500">전 유형 LOT의 잔량·단가·평가금액·유통기한·상태. [수정]으로 단가·상태 보정 가능</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">재고실사/조정</span><div class="flex-1 text-[11.5px] text-slate-500">실물 대조 후 차이를 ± 조정으로 기록 (수불부에 조정입고/조정출고로 남음)</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock-adj')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">수불부</span><div class="flex-1 text-[11.5px] text-slate-500">입고·벌크소모·충진소모·생산입고·출고·조정 전 이력 통합 원장 + 누적 잔량 + CSV</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock-ledger')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">부동재고</span><div class="flex-1 text-[11.5px] text-slate-500">장기간 움직임 없는 재고 목록 — 소진·폐기 판단용</div><button class="btn btn-secondary btn-sm" onclick="goPage('stock-dead')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>7 · 영업 / 출고</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">수주관리</span><div class="flex-1 text-[11.5px] text-slate-500">고객 주문(SO) 등록·납기 관리</div><button class="btn btn-secondary btn-sm" onclick="goPage('sales-order')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">출고/판매</span><div class="flex-1 text-[11.5px] text-slate-500">QC 합격 LOT을 FEFO로 차감하며 출고 기록</div><button class="btn btn-secondary btn-sm" onclick="goPage('t-sale')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">반품관리</span><div class="flex-1 text-[11.5px] text-slate-500">반품 접수와 사유·처리(재입고/폐기) 기록</div><button class="btn btn-secondary btn-sm" onclick="goPage('sales-return')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">클레임관리</span><div class="flex-1 text-[11.5px] text-slate-500">고객 클레임 접수·처리 이력</div><button class="btn btn-secondary btn-sm" onclick="goPage('sales-claim')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">매출분석</span><div class="flex-1 text-[11.5px] text-slate-500">채널·기간별 매출 분석</div><button class="btn btn-secondary btn-sm" onclick="goPage('channel-sales')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>8 · 문서 / 보고</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">제조기록서</span><div class="flex-1 text-[11.5px] text-slate-500">배치별 제조기록서 출력 (감사·인증 대응)</div><button class="btn btn-secondary btn-sm" onclick="goPage('doc-batch-record')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">품질검사성적서</span><div class="flex-1 text-[11.5px] text-slate-500">LOT 선택 → 검사 성적서 출력</div><button class="btn btn-secondary btn-sm" onclick="goPage('doc-qc-report')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">출고기록서</span><div class="flex-1 text-[11.5px] text-slate-500">출고 건 선택 → 출고기록서 출력</div><button class="btn btn-secondary btn-sm" onclick="goPage('doc-release')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">LOT 라벨</span><div class="flex-1 text-[11.5px] text-slate-500">LOT 라벨 인쇄</div><button class="btn btn-secondary btn-sm" onclick="goPage('doc-label')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">연간생산실적</span><div class="flex-1 text-[11.5px] text-slate-500">연도 선택 → 연간 KPI + 제품별 + 월별 생산/출고/매출 상세</div><button class="btn btn-secondary btn-sm" onclick="goPage('annual-report')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">리포트</span><div class="flex-1 text-[11.5px] text-slate-500">종합 리포트와 JSON 수동 백업/복원</div><button class="btn btn-secondary btn-sm" onclick="goPage('report')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">견적서 작성</span><div class="flex-1 text-[11.5px] text-slate-500">고객 견적서 즉시 발행 — 인쇄/PDF + 메일 초안 발송</div><button class="btn btn-secondary btn-sm" onclick="goPage('doc-quote')">이동</button></div>
+        </div></details>
+
+        <details class="gd-acc"><summary>9 · 설정 / 도움말</summary><div class="gd-acc-body">
+          <div class="gd-step"><span class="gd-menu-name">회사정보</span><div class="flex-1 text-[11.5px] text-slate-500">문서·견적서에 표기되는 회사 정보 (상호·주소·연락처)</div><button class="btn btn-secondary btn-sm" onclick="goPage('cfg-company')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">기록 관리·삭제</span><div class="flex-1 text-[11.5px] text-slate-500">잘못 입력된 거래 기록을 유형별로 찾아 삭제 (신중히!)</div><button class="btn btn-secondary btn-sm" onclick="goPage('records-admin')">이동</button></div>
+          <div class="gd-step"><span class="gd-menu-name">운영 가이드</span><div class="flex-1 text-[11.5px] text-slate-500">이 페이지</div><button class="btn btn-secondary btn-sm" onclick="goPage('guide')">이동</button></div>
+        </div></details>
       </div>
 
       <div class="card p-4">
         <h3 class="font-bold text-slate-700 text-sm mb-2">🛡 데이터 안전 5원칙</h3>
         <ol class="text-xs text-slate-600 space-y-1.5 list-decimal pl-5">
-          <li><b>한 번에 한 기기</b>에서만 입력 작업 (동시 작업 시 나중 저장이 먼저 저장을 덮어씀 — 다른 기기 변경이 감지되면 상단에 🔄 알림이 뜹니다)</li>
+          <li><b>한 번에 한 기기</b>에서만 입력 작업 — 동시 작업 시 나중 저장이 먼저 저장을 덮어씁니다. 다른 기기 변경이 감지되면 상단에 🔄 알림이 뜨니 새로고침(F5) 후 작업하세요</li>
           <li>매일 첫 접속 시 <b>자동 백업</b>이 클라우드에 생성됩니다 (30일 보관) — 복구가 필요하면 노즈에게 요청</li>
-          <li><b>전체 초기화 금지</b> — "삭제"를 직접 입력해야 실행되며, 되돌릴 수 없습니다</li>
-          <li>월 1회 <b>리포트/내보내기에서 JSON 수동 백업</b>을 받아 PC에 보관</li>
-          <li>로그인 정보는 공유하지 말 것 — 기기당 최초 1회 로그인 후 자동 유지</li>
+          <li><b>전체 초기화 금지</b> — "삭제"를 직접 입력해야 실행되며, 되돌릴 수 없습니다 (자동 백업본은 유지)</li>
+          <li>월 1회 <b>리포트에서 JSON 수동 백업</b>을 받아 PC·외장하드에 보관</li>
+          <li>로그인 정보는 공유 금지 — 기기당 최초 1회 로그인 후 자동 유지됩니다</li>
         </ol>
       </div>
 
       <div class="card p-4 space-y-2">
         <h3 class="font-bold text-slate-700 text-sm mb-1">🔧 자주 겪는 문제</h3>
-        <details class="gd-acc"><summary>수불부/화면에 데이터가 안 보여요</summary><div class="gd-acc-body text-xs text-slate-600">상단의 <b>유형(원료/포장재/완제품)</b>과 <b>기간</b> 필터를 확인하세요. 기간을 비우면 전체 기간이 조회됩니다.</div></details>
-        <details class="gd-acc"><summary>표준원가/마진율이 0으로 나와요</summary><div class="gd-acc-body text-xs text-slate-600">원료·포장재 마스터에 <b>표준단가</b>가 비어 있으면 0으로 계산됩니다. 마스터에서 단가를 채워주세요.</div></details>
-        <details class="gd-acc"><summary>출고가 안 돼요 (재고는 있는데)</summary><div class="gd-acc-body text-xs text-slate-600">해당 LOT이 <b>HOLD(검사 대기)</b> 상태입니다. 품질 메뉴에서 합격 처리하면 출고할 수 있습니다.</div></details>
-        <details class="gd-acc"><summary>재고 단가와 표준원가가 달라요</summary><div class="gd-acc-body text-xs text-slate-600">정상입니다. 표준원가는 <b>설계 목표</b>(현재 BOM×표준단가), 재고 단가는 <b>실제 결과</b>(생산 당시 실구매가 기준)입니다. 차이가 크면 구매가 인상 또는 배합 변경 신호입니다.</div></details>
+        <details class="gd-acc" open><summary>수불부/화면에 데이터가 안 보여요</summary><div class="gd-acc-body text-xs text-slate-600">상단의 <b>유형(원료/포장재/완제품)</b>과 <b>기간</b> 필터를 확인하세요. 기간을 비우면 전체 기간이 조회됩니다.</div></details>
+        <details class="gd-acc" open><summary>표준원가/마진율이 0으로 나와요</summary><div class="gd-acc-body text-xs text-slate-600">원료·포장재 마스터에 <b>표준단가</b>가 비어 있으면 0으로 계산됩니다. 원료는 <b>원/g</b> 기준으로 채워주세요 (kg당 가격 ÷ 1000).</div></details>
+        <details class="gd-acc" open><summary>출고가 안 돼요 (재고는 있는데)</summary><div class="gd-acc-body text-xs text-slate-600">해당 LOT이 <b>HOLD(검사 대기)</b> 상태입니다. 5·품질 메뉴에서 합격 처리하면 출고할 수 있습니다.</div></details>
+        <details class="gd-acc" open><summary>재고 단가와 표준원가가 달라요</summary><div class="gd-acc-body text-xs text-slate-600">정상입니다. 표준원가는 <b>설계 목표</b>(현재 BOM×표준단가), 재고 단가는 <b>실제 결과</b>(생산 당시 실구매가). 차이가 크면 구매가 인상 또는 배합 변경 신호입니다.</div></details>
+        <details class="gd-acc" open><summary>원료를 kg으로 샀는데 어떻게 입력하나요</summary><div class="gd-acc-body text-xs text-slate-600">발주·입고 화면에서 단위를 <b>kg</b>으로 선택하고 kg 수량·kg당 단가를 그대로 입력하면 시스템이 g 기준으로 자동 환산해 저장합니다.</div></details>
+        <details class="gd-acc" open><summary>아침 메일 리포트가 안 와요</summary><div class="gd-acc-body text-xs text-slate-600">GitHub 저장소 → <b>Actions 탭</b>에서 SHIFTI Daily Report 실행 기록을 확인하세요. 빨간 X면 Secrets(서비스 키·앱 비밀번호) 설정을 점검하고, 노즈에게 화면을 보여주시면 바로 진단해 드립니다.</div></details>
+      </div>
+    </section>
+
+    <section id="page-doc-quote" class="page-section space-y-4">
+      <h2 class="text-lg font-black text-slate-800">견적서 작성 <span class="badge-soft ml-1">QUOTATION</span></h2>
+      <div class="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5">
+        <div class="card p-4 space-y-3 self-start">
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">수신 고객사</label><select id="qt-cust" class="input-field" onchange="renderQuotePreview()"></select></div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">견적일</label><input id="qt-date" type="date" class="input-field" onchange="renderQuotePreview()"></div>
+            <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">유효기간(일)</label><input id="qt-valid" type="number" class="input-field text-right" value="30" oninput="renderQuotePreview()"></div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1"><label class="text-[10.5px] font-bold text-slate-500">품목</label><button onclick="quoteAddRow()" class="btn btn-secondary btn-sm">+ 추가</button></div>
+            <div id="qt-items" class="space-y-1.5"></div>
+          </div>
+          <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고 (납기, 결제조건 등)</label><textarea id="qt-note" class="input-field" rows="2" oninput="renderQuotePreview()" placeholder="예: 납기 발주 후 2주, 부가세 별도 표기"></textarea></div>
+          <div class="flex gap-2 pt-1">
+            <button class="btn btn-primary flex-1" onclick="window.print()">🖨 인쇄 / PDF 저장</button>
+            <button class="btn btn-secondary flex-1" onclick="quoteMail()">✉️ 메일로 보내기</button>
+          </div>
+          <div class="text-[10px] text-slate-400">PDF 첨부가 필요하면 [인쇄 → PDF로 저장] 후 메일에 첨부하세요. [메일로 보내기]는 견적 내용을 본문에 담은 메일 초안을 엽니다.</div>
+        </div>
+        <div id="qt-preview"></div>
       </div>
     </section>
     <section id="page-master-raw" class="page-section space-y-4"><h2 class="text-lg font-black text-slate-800">원료 마스터 (M_RAW)</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-5"><div class="card p-4 space-y-3"><h3 class="font-bold text-slate-700 text-sm border-b border-slate-100 pb-2">원료 등록 / 수정</h3><input type="hidden" id="raw-edit-id"><div class="grid grid-cols-2 gap-2"><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">원료 코드</label><input id="raw-code" class="input-field" placeholder="RM-ETH-99"></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">단위</label><select id="raw-unit" class="input-field"><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="mL">mL</option></select></div></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">원료명</label><input id="raw-name" class="input-field" placeholder="예: Ethanol 99%"></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">INCI명</label><input id="raw-inci" class="input-field" placeholder="예: Alcohol Denat."></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">공급사</label><input id="raw-supplier" class="input-field" placeholder="예: ABC Chemical"></div><div class="grid grid-cols-2 gap-2"><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">유통기한(일)</label><input id="raw-shelf" type="number" class="input-field text-right" value="365"></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">표준단가(원/단위)</label><input id="raw-stdcost" type="number" class="input-field text-right" value="0"></div></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">보관조건</label><input id="raw-storage" class="input-field" placeholder="예: 냉암소 15~25℃"></div><div class="bg-amber-50 border border-amber-200 rounded p-3 space-y-2"><div class="text-[10px] font-bold text-amber-700 uppercase tracking-wide">🌿 향수/화장품 특화</div><div class="grid grid-cols-2 gap-2"><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">IFRA 카테고리</label><select id="raw-ifra" class="input-field text-xs"><option value="">해당없음</option><option value="1">Cat.1</option><option value="2">Cat.2</option><option value="3">Cat.3</option><option value="4">Cat.4 (향수류)</option><option value="5">Cat.5</option><option value="11">Cat.11</option></select></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">IFRA 사용한도(%)</label><input id="raw-ifra-limit" type="number" step="0.01" class="input-field text-right" placeholder="예: 3.5"></div></div><div class="flex items-center gap-2"><input type="checkbox" id="raw-allergen" class="w-3 h-3"><label for="raw-allergen" class="text-[10.5px] font-bold text-slate-600">EU 26 알레르겐 포함</label></div></div><div class="flex gap-2"><button onclick="saveRaw()" class="btn btn-primary flex-1">저장</button><button onclick="resetRawForm()" class="btn btn-secondary px-3">초기화</button></div></div><div class="card md:col-span-2" style="display:flex;flex-direction:column"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">원료 리스트</h3><div class="flex items-center gap-2"><input id="raw-search" class="input-field w-32 text-xs" placeholder="검색..." oninput="renderRaw()"><span class="badge-soft" id="raw-count">0</span></div></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-4">코드</th><th>원료명</th><th>INCI</th><th>단위</th><th class="text-right">표준단가</th><th class="text-center">알레르겐</th><th class="text-center">IFRA</th><th class="text-center pr-4">관리</th></tr></thead><tbody id="tbl-raw"></tbody></table></div></div></div></section>
@@ -621,7 +742,7 @@
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">유통기한</label><input id="gi-exp" type="date" class="input-field"></div>
       </div>
       <div class="grid grid-cols-2 gap-2">
-        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">입고수량</label><input id="gi-qty" type="number" step="0.001" class="input-field text-right" placeholder="0"></div>
+        <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">입고수량 <span class="text-slate-400 font-normal">· kg 선택 시 g 자동환산</span></label><div class="flex gap-1.5"><input id="gi-qty" type="number" step="0.001" class="input-field text-right flex-1" placeholder="0"><select id="gi-unit" class="input-field" style="width:64px"><option value="g">g</option><option value="kg">kg</option><option value="ea">ea</option></select></div></div>
         <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">실입고단가</label><input id="gi-unitcost" type="number" class="input-field text-right" placeholder="0"></div>
       </div>
       <div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">비고</label><input id="gi-note" class="input-field" placeholder="거래명세, 수불 메모"></div>
@@ -1239,7 +1360,7 @@
         </div>
       </div>
       <div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">샘플 수불 목록</h3></div>
-        <div class="scroll-card-lg"><table><thead><tr>
+        <div class="scroll-card-lg"><div class="px-3 py-2 flex items-center gap-2 border-b border-slate-100"><span class="text-[11px] font-bold text-slate-500">상태 필터</span><select id="smp-filter-status" class="input-field text-xs" style="width:110px" onchange="renderSample()"><option value="">전체</option><option>검토중</option><option>승인</option><option>보류</option><option>반려</option><option>재요청</option></select><span class="text-[10px] text-slate-400">· 컬럼 제목 클릭 = 정렬</span></div><table><thead><tr>
           <th class="pl-3 cursor-pointer select-none" onclick="smpSort('date')" title="클릭 정렬">일자<span id="smp-arr-date"></span></th><th>구분</th><th>샘플명</th><th class="text-center cursor-pointer select-none" onclick="smpSort('review')" title="클릭 정렬">검토<span id="smp-arr-review"></span></th><th class="text-center cursor-pointer select-none" onclick="smpSort('revise')" title="클릭 정렬">수정<span id="smp-arr-revise"></span></th><th class="text-center cursor-pointer select-none" onclick="smpSort('security')" title="클릭 정렬">보안<span id="smp-arr-security"></span></th><th class="cursor-pointer select-none" onclick="smpSort('status')" title="클릭 정렬">상태<span id="smp-arr-status"></span></th><th>비고</th><th class="text-right pr-3">관리</th>
         </tr></thead><tbody id="tbl-sample"></tbody></table></div>
       </div>
@@ -1647,6 +1768,7 @@ function addPoItemRow() {
   const packOpts = db.master.M_PACK.map(p => '<option value="PACK-'+p.packId+'">'+p.name+'</option>').join('');
   row.innerHTML = '<select class="input-field flex-1 text-xs po-item"><option value="">품목 선택</option><optgroup label="원료">'+rawOpts+'</optgroup><optgroup label="포장재">'+packOpts+'</optgroup></select>' +
     '<input type="number" class="input-field w-20 text-right po-qty" placeholder="수량">' +
+    '<select class="input-field w-16 text-xs po-unit"><option value="g">g</option><option value="kg">kg</option><option value="ea">ea</option></select>' +
     '<input type="number" class="input-field w-24 text-right po-price" placeholder="단가">' +
     '<button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-red-500 text-lg px-1">×</button>';
   c.appendChild(row);
@@ -1660,9 +1782,12 @@ function savePO() {
   const items = [];
   document.querySelectorAll('.po-item-row').forEach(row => {
     const item = row.querySelector('.po-item')?.value;
-    const qty = Number(row.querySelector('.po-qty')?.value)||0;
-    const price = Number(row.querySelector('.po-price')?.value)||0;
-    if (item && qty > 0) items.push({item, qty, price, amount: qty*price});
+    let qty = Number(row.querySelector('.po-qty')?.value)||0;
+    let price = Number(row.querySelector('.po-price')?.value)||0;
+    const unit = row.querySelector('.po-unit')?.value || 'ea';
+    const dispQty = qty, dispUnit = unit;
+    if (unit === 'kg'){ qty = qty * 1000; price = price / 1000; } /* g 기준으로 저장 */
+    if (item && qty > 0) items.push({item, qty, price, unit:'g', dispQty, dispUnit, amount: qty*price});
   });
   if (!items.length) { toast('발주 품목을 추가하세요','error'); return; }
   const totalAmt = items.reduce((s,i) => s+i.amount, 0);
@@ -2549,6 +2674,8 @@ function renderSample(){
   const tbody=document.getElementById('tbl-sample');
   if(!tbody) return;
   let rows=[...db.txn.T_SAMPLE].reverse();
+  const fs = document.getElementById('smp-filter-status')?.value || '';
+  if(fs) rows = rows.filter(r => (r.status||'검토중') === fs);
   const so=window._smpSort||{};
   if(so.key){
     const k=so.key, d=so.dir||1;
@@ -3643,8 +3770,10 @@ function initNewPage(pageId) {
   function saveGoodsIn(){
     const type = document.getElementById('gi-type')?.value || 'RAW';
     const itemId = num(document.getElementById('gi-item')?.value);
-    const qty = num(document.getElementById('gi-qty')?.value);
-    const unitCost = num(document.getElementById('gi-unitcost')?.value);
+    const giUnit = document.getElementById('gi-unit')?.value || 'g';
+    let qty = num(document.getElementById('gi-qty')?.value);
+    let unitCost = num(document.getElementById('gi-unitcost')?.value);
+    if(giUnit === 'kg'){ qty = qty * 1000; unitCost = unitCost / 1000; } /* kg 입력 → g/원·g 환산 저장 */
     if(!itemId || qty <= 0){ toast('품목과 수량을 확인하세요','error'); return; }
     const master = type === 'RAW' ? findRaw(itemId) : findPack(itemId);
     if(!master){ toast('품목을 찾을 수 없습니다','error'); return; }
@@ -4215,7 +4344,7 @@ function initNewPage(pageId) {
       'allergen-report': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">알레르겐 자동 계산</h2><div class="card p-4 space-y-3"><div class="grid grid-cols-1 md:grid-cols-4 gap-3"><div class="md:col-span-2"><label class="block text-[10.5px] font-bold text-slate-500 mb-1">제품</label><select id="allergen-product2" class="input-field"></select></div><div class="flex items-end"><button class="btn btn-primary w-full" onclick="renderAllergen2()">계산</button></div></div><div id="allergen-result2"></div></div></div>`,
       'safety-stock': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">안전재고 알림</h2><div class="grid grid-cols-1 lg:grid-cols-3 gap-4"><div class="card p-4 space-y-3"><h3 class="font-bold text-sm text-slate-700">기준 등록</h3><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">유형</label><select id="ss-type2" class="input-field"><option value="RAW">원료</option><option value="PACK">포장재</option><option value="FGT">완제품</option></select></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">품목</label><select id="ss-item2" class="input-field"></select></div><div><label class="block text-[10.5px] font-bold text-slate-500 mb-1">최소재고</label><input id="ss-min2" type="number" class="input-field text-right" value="10"></div><button class="btn btn-primary w-full" onclick="saveSafety2()">저장</button></div><div class="card lg:col-span-2"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">부족 품목</h3></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">유형</th><th>품목</th><th class="text-right">현재고</th><th class="text-right">기준재고</th><th class="text-right">부족분</th></tr></thead><tbody id="tbl-safety2"></tbody></table></div></div></div></div>`,
       'channel-sales': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">채널별 매출 분석</h2><div class="card"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">고객 채널 기준</h3></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">채널</th><th>고객수</th><th class="text-right">출고수량</th><th class="text-right">매출</th></tr></thead><tbody id="tbl-channel2"></tbody></table></div></div></div>`,
-      'annual-report': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">연간 생산실적 보고서</h2><div class="grid grid-cols-2 md:grid-cols-4 gap-4"><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">생산 LOT</div><div id="annual-batch-count2" class="text-xl font-black mt-1">0</div></div><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">생산수량</div><div id="annual-batch-qty2" class="text-xl font-black mt-1">0</div></div><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">출고수량</div><div id="annual-sale-qty2" class="text-xl font-black mt-1">0</div></div><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">출고매출</div><div id="annual-revenue2" class="text-xl font-black mt-1">0원</div></div></div><div class="card"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">제품별 생산/출고</h3></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">제품</th><th class="text-right">생산</th><th class="text-right">출고</th><th class="text-right">매출</th></tr></thead><tbody id="tbl-annual2"></tbody></table></div></div></div>`,
+      'annual-report': `<div class="space-y-4"><div class="flex items-center gap-3"><h2 class="text-lg font-black text-slate-800">연간 생산실적 보고서</h2><select id="annual-year2" class="input-field" style="width:110px" onchange="renderAnnualPage()"></select><span id="annual-period2" class="text-[11px] text-slate-400"></span></div><div class="grid grid-cols-2 md:grid-cols-4 gap-4"><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">생산 LOT</div><div id="annual-batch-count2" class="text-xl font-black mt-1">0</div></div><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">생산수량</div><div id="annual-batch-qty2" class="text-xl font-black mt-1">0</div></div><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">출고수량</div><div id="annual-sale-qty2" class="text-xl font-black mt-1">0</div></div><div class="card p-4"><div class="text-[10px] font-bold text-slate-400 uppercase">출고매출</div><div id="annual-revenue2" class="text-xl font-black mt-1">0원</div></div></div><div class="card"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">제품별 생산/출고</h3></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">제품</th><th class="text-right">생산</th><th class="text-right">출고</th><th class="text-right">매출</th></tr></thead><tbody id="tbl-annual2"></tbody></table></div></div><div class="card"><div class="card-header"><h3 class="font-bold text-sm text-slate-700">월별 생산/출고 상세</h3></div><div class="scroll-card-lg"><table><thead><tr><th class="pl-3">월</th><th class="text-right">생산배치</th><th class="text-right">생산수량</th><th class="text-right">출고수량</th><th class="text-right pr-3">매출</th></tr></thead><tbody id="tbl-annual-month2"></tbody></table></div></div></div>`,
       'doc-pspec': `<div class="space-y-4"><h2 class="text-lg font-black text-slate-800">제품표준서</h2><div id="pspec-wrap2" class="space-y-3"></div></div>`
     };
   }
@@ -4794,7 +4923,7 @@ function initNewPage(pageId) {
     const tbody=document.getElementById('tbl-formula2'); if(!tbody) return;
     const rows=[...(db.master.M_FORMULA||[])].reverse();
     document.getElementById('fml2-count').innerText = rows.length;
-    tbody.innerHTML = rows.map(r => `<tr><td class="pl-3 mono text-[11px]">${esc(r.version)}</td><td class="text-xs">${esc(findProduct(r.productId)?.name||'-')}</td><td class="text-xs font-bold">${esc(r.name)}</td><td class="text-xs text-slate-500">${esc(r.note||'-')}</td><td class="text-center pr-3 whitespace-nowrap"><button class="btn btn-secondary btn-sm" onclick="editFormula2('${r.id}')">수정</button> <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626" onclick="deleteFormula2('${r.id}')">삭제</button></td></tr>`).join('') || '<tr><td colspan="5" class="text-center py-4 text-slate-400">포뮬러 없음</td></tr>';
+    tbody.innerHTML = rows.map(r => `<tr><td class="pl-3 mono text-[11px]">${esc(r.version)}</td><td class="text-xs">${esc(findProduct(r.productId)?.name||'-')}</td><td class="text-xs font-bold">${esc(r.name)}</td><td class="text-xs text-slate-500">${esc(r.note||'-')}</td><td class="text-center pr-3 whitespace-nowrap"><button class="btn btn-primary btn-sm" onclick="openFormulaModal('${r.id}')">상세</button> <button class="btn btn-secondary btn-sm" onclick="editFormula2('${r.id}')">수정</button> <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626" onclick="deleteFormula2('${r.id}')">삭제</button></td></tr>`).join('') || '<tr><td colspan="5" class="text-center py-4 text-slate-400">포뮬러 없음</td></tr>';
   }
   function renderMaturationPage(){
     const tbody=document.getElementById('tbl-maturation2'); if(!tbody) return;
@@ -4846,7 +4975,19 @@ function initNewPage(pageId) {
     tbody.innerHTML = rows.map(r => `<tr><td class="pl-3 font-bold">${esc(r.channel)}</td><td>${r.customers.size}</td><td class="text-right">${esc(r.qty)}</td><td class="text-right font-bold">${fmt(r.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="text-center py-4 text-slate-400">출고 데이터 없음</td></tr>';
   }
   function renderAnnualPage(){
-    const year = new Date().getFullYear();
+    /* 연도 선택 옵션 구성 (데이터에 존재하는 연도 + 올해) */
+    const ysel = document.getElementById('annual-year2');
+    const yearsInData = new Set([new Date().getFullYear()]);
+    [...(db.txn.T_BATCH||[]), ...(db.txn.T_SALE||[])].forEach(r => { const y = parseInt(String(r.date||'').slice(0,4)); if(y) yearsInData.add(y); });
+    const sorted = [...yearsInData].sort((a,b)=>b-a);
+    if(ysel && ysel.options.length !== sorted.length){
+      const cur = ysel.value;
+      ysel.innerHTML = sorted.map(y=>`<option value="${y}">${y}년</option>`).join('');
+      if(cur && sorted.includes(Number(cur))) ysel.value = cur;
+    }
+    const year = Number(ysel?.value) || new Date().getFullYear();
+    const period = document.getElementById('annual-period2');
+    if(period) period.textContent = `조회기간 ${year}-01-01 ~ ${year}-12-31`;
     const batchRows = (db.txn.T_BATCH||[]).filter(r => String(r.date||'').startsWith(String(year)));
     const saleRows = (db.txn.T_SALE||[]).filter(r => String(r.date||'').startsWith(String(year)));
     const set=(id,v)=>{const el=document.getElementById(id); if(el) el.innerText=v;};
@@ -4859,7 +5000,14 @@ function initNewPage(pageId) {
     saleRows.forEach(r => { const name=findProduct(r.productId)?.name||'-'; if(!map[name]) map[name]={name, prod:0, sale:0, amount:0}; map[name].sale += n(r.qty); map[name].amount += n(r.amount); });
     const tbody=document.getElementById('tbl-annual2'); if(!tbody) return;
     tbody.innerHTML = Object.values(map).map(r => `<tr><td class="pl-3 font-bold text-xs">${esc(r.name)}</td><td class="text-right">${esc(r.prod)}</td><td class="text-right">${esc(r.sale)}</td><td class="text-right font-bold">${fmt(r.amount)}</td></tr>`).join('') || '<tr><td colspan="4" class="text-center py-4 text-slate-400">연간 데이터 없음</td></tr>';
+    /* 월별 상세 */
+    const mon = Array.from({length:12}, (_,i) => ({ m:i+1, cnt:0, prod:0, sale:0, amount:0 }));
+    batchRows.forEach(r => { const mm = parseInt(String(r.date||'').slice(5,7)); if(mm>=1 && mm<=12){ mon[mm-1].cnt++; mon[mm-1].prod += n(r.qty); } });
+    saleRows.forEach(r => { const mm = parseInt(String(r.date||'').slice(5,7)); if(mm>=1 && mm<=12){ mon[mm-1].sale += n(r.qty); mon[mm-1].amount += n(r.amount) || n(r.qty) * n(findProduct(r.productId)?.salePrice || findProduct(r.productId)?.price); } });
+    const mb = document.getElementById('tbl-annual-month2');
+    if(mb) mb.innerHTML = mon.filter(x => x.cnt || x.prod || x.sale).map(x => `<tr><td class="pl-3 text-xs font-bold">${x.m}월</td><td class="text-right">${x.cnt}건</td><td class="text-right">${fmt(x.prod)}</td><td class="text-right">${fmt(x.sale)}</td><td class="text-right pr-3 font-bold">${fmt(x.amount)}원</td></tr>`).join('') || '<tr><td colspan="5" class="text-center py-4 text-slate-400">해당 연도 데이터 없음</td></tr>';
   }
+  window.renderAnnualPage = renderAnnualPage;
   function renderPspec2(){
     const wrap=document.getElementById('pspec-wrap2'); if(!wrap) return;
     wrap.innerHTML = (db.master.M_PRODUCT||[]).map(p => `<div class="card p-4"><div class="flex items-center justify-between"><div><div class="font-black text-base">${esc(p.name)}</div><div class="text-xs text-slate-500">${esc(p.code||'-')} · ${esc(p.spec||'-')}</div></div><div class="text-right"><div class="text-xs text-slate-400">판매가</div><div class="font-black">${fmt(p.salePrice||0)}</div></div></div><div class="mt-3"><div class="text-[11px] font-bold text-slate-500 mb-2">BOM</div><table><thead><tr><th>유형</th><th>품목</th><th class="text-right">소요량</th></tr></thead><tbody>${(p.bom||[]).map(r => `<tr><td><span class="badge-soft">${esc(r.type)}</span></td><td class="text-xs font-bold">${esc(masterName(r.type,r.itemId))}</td><td class="text-right">${esc(r.qty)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-center py-3 text-slate-400">BOM 없음</td></tr>'}</tbody></table></div></div>`).join('') || '<div class="card p-4 text-slate-400 text-sm">등록된 제품이 없습니다.</div>';
@@ -7291,12 +7439,206 @@ function initNewPage(pageId) {
     if(typeof toast === 'function') toast('BOM 저장 완료 · ' + newBom.length + '개 항목' + (removed > 0 ? ' (' + removed + '개 제거)' : ''), 'success');
     if(typeof saveDB === 'function') saveDB();
   };
+
+
+  /* ── 견적서 v3.7 — 노즈 ── */
+  function _qtCompany(){
+    var c = (window.db && (db.company || (db.config && db.config.company))) || {};
+    return {
+      name: c.name || '주식회사 메디센츠',
+      ceo: c.ceo || '',
+      addr: c.addr || c.address || '경기도 구리시 갈매순환로154 현대테라타워 A동 1038호',
+      tel: c.tel || '070-4365-4807',
+      email: c.email || 'justina0726@gmail.com',
+      bizNo: c.bizNo || c.bizno || ''
+    };
+  }
+  window.fillQuoteSelectors = function(){
+    var cs = document.getElementById('qt-cust');
+    if(cs && cs.options.length <= 1){
+      cs.innerHTML = '<option value="">고객사 선택</option>' + (db.master.M_CUSTOMER||[]).map(function(c){ return '<option value="' + c.customerId + '">' + (window.escH?escH(c.name):c.name) + '</option>'; }).join('');
+    }
+    var dt = document.getElementById('qt-date');
+    if(dt && !dt.value) dt.value = new Date(Date.now() + 9*3600000).toISOString().split('T')[0];
+    if(document.getElementById('qt-items') && !document.querySelector('.qt-row')) quoteAddRow();
+    renderQuotePreview();
+  };
+  window.quoteAddRow = function(){
+    var c = document.getElementById('qt-items'); if(!c) return;
+    var opts = (db.master.M_PRODUCT||[]).map(function(p){
+      return '<option value="' + p.productId + '" data-price="' + (Number(p.salePrice)||Number(p.price)||0) + '">' + (window.escH?escH(p.name):p.name) + '</option>';
+    }).join('');
+    var row = document.createElement('div');
+    row.className = 'flex gap-1.5 items-center qt-row';
+    row.innerHTML = '<select class="input-field flex-1 text-xs qt-item" onchange="var o=this.selectedOptions[0]; var pr=this.parentElement.querySelector(\'.qt-price\'); if(o && !pr.value) pr.value=o.getAttribute(\'data-price\')||\'\'; renderQuotePreview();"><option value="">제품 선택</option>' + opts + '</select>'
+      + '<input type="number" class="input-field w-16 text-right qt-qty" placeholder="수량" oninput="renderQuotePreview()">'
+      + '<input type="number" class="input-field w-24 text-right qt-price" placeholder="단가" oninput="renderQuotePreview()">'
+      + '<button onclick="this.parentElement.remove(); renderQuotePreview();" class="text-slate-400 hover:text-red-500 text-lg px-1">×</button>';
+    c.appendChild(row);
+  };
+  function _qtData(){
+    var custId = document.getElementById('qt-cust')?.value;
+    var cust = (db.master.M_CUSTOMER||[]).find(function(c){ return String(c.customerId) === String(custId); });
+    var items = [];
+    document.querySelectorAll('.qt-row').forEach(function(r){
+      var pid = r.querySelector('.qt-item').value;
+      var qty = Number(r.querySelector('.qt-qty').value)||0;
+      var price = Number(r.querySelector('.qt-price').value)||0;
+      var p = (db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId) === String(pid); });
+      if(p && qty > 0) items.push({ name: p.name, spec: p.spec||'', qty: qty, price: price, amount: qty*price });
+    });
+    var supply = items.reduce(function(s,i){ return s+i.amount; },0);
+    var vat = Math.round(supply * 0.1);
+    return {
+      cust: cust, items: items, supply: supply, vat: vat, total: supply + vat,
+      date: document.getElementById('qt-date')?.value || '',
+      valid: Number(document.getElementById('qt-valid')?.value)||30,
+      note: document.getElementById('qt-note')?.value?.trim() || ''
+    };
+  }
+  window.renderQuotePreview = function(){
+    var host = document.getElementById('qt-preview'); if(!host) return;
+    var q = _qtData(), co = _qtCompany();
+    var e = window.escH || function(v){ return String(v==null?'':v); };
+    var f = function(v){ return Math.round(Number(v)||0).toLocaleString('ko-KR'); };
+    var validUntil = q.date ? new Date(new Date(q.date).getTime() + q.valid*86400000).toISOString().split('T')[0] : '';
+    var rows = q.items.map(function(i, idx){
+      return '<tr><td style="text-align:center">' + (idx+1) + '</td><td>' + e(i.name) + '</td><td style="text-align:center">' + e(i.spec) + '</td><td style="text-align:right">' + f(i.qty) + '</td><td style="text-align:right">' + f(i.price) + '</td><td style="text-align:right;font-weight:700">' + f(i.amount) + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:18px">좌측에서 품목을 추가하세요</td></tr>';
+    host.innerHTML = '<div class="doc-stage"><div class="doc-page">'
+      + '<div style="text-align:center;font-size:26px;font-weight:900;letter-spacing:.5em;margin-bottom:4px">견 적 서</div>'
+      + '<div style="text-align:center;font-size:10px;color:#64748b;margin-bottom:18px">QUOTATION · ' + e(q.date) + '</div>'
+      + '<table style="width:100%;font-size:11px;margin-bottom:14px"><tr>'
+      + '<td style="width:50%;vertical-align:top;padding-right:12px"><div style="font-size:10px;font-weight:800;color:#0d9488;border-bottom:2px solid #0d9488;padding-bottom:3px;margin-bottom:6px">수신 (TO)</div>'
+      +   '<div style="font-size:14px;font-weight:900">' + e(q.cust && q.cust.name || '고객사를 선택하세요') + ' 귀중</div>'
+      +   '<div style="color:#475569;margin-top:3px">' + e(q.cust && (q.cust.contact||'') ) + (q.cust && q.cust.tel ? ' · ' + e(q.cust.tel) : '') + '</div>'
+      +   '<div style="margin-top:8px;color:#475569">유효기간: ' + e(validUntil) + ' 까지 (' + q.valid + '일)</div></td>'
+      + '<td style="width:50%;vertical-align:top;padding-left:12px"><div style="font-size:10px;font-weight:800;color:#0d9488;border-bottom:2px solid #0d9488;padding-bottom:3px;margin-bottom:6px">공급자 (FROM)</div>'
+      +   '<div style="font-size:14px;font-weight:900">' + e(co.name) + '</div>'
+      +   '<div style="color:#475569;margin-top:3px;line-height:1.7">' + e(co.addr) + '<br>TEL ' + e(co.tel) + ' · ' + e(co.email) + (co.bizNo ? '<br>사업자등록번호 ' + e(co.bizNo) : '') + '</div></td>'
+      + '</tr></table>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:11px" border="0">'
+      + '<thead><tr style="background:#f1f5f9">' + ['No','품목','규격','수량','단가','금액'].map(function(h){ return '<th style="border:1px solid #cbd5e1;padding:7px 8px">' + h + '</th>'; }).join('') + '</tr></thead>'
+      + '<tbody>' + rows.replace(/<td/g, '<td style-marker').replace(/<td style-marker style="/g, '<td style="border:1px solid #e2e8f0;padding:7px 8px;').replace(/<td style-marker>/g, '<td style="border:1px solid #e2e8f0;padding:7px 8px">') + '</tbody>'
+      + '<tfoot>'
+      + '<tr><td colspan="5" style="border:1px solid #cbd5e1;padding:7px 8px;text-align:right;font-weight:700">공급가액</td><td style="border:1px solid #cbd5e1;padding:7px 8px;text-align:right;font-weight:700">' + f(q.supply) + '</td></tr>'
+      + '<tr><td colspan="5" style="border:1px solid #cbd5e1;padding:7px 8px;text-align:right">부가세 (10%)</td><td style="border:1px solid #cbd5e1;padding:7px 8px;text-align:right">' + f(q.vat) + '</td></tr>'
+      + '<tr style="background:#f0fdfa"><td colspan="5" style="border:1px solid #0d9488;padding:8px;text-align:right;font-weight:900">합계 (VAT 포함)</td><td style="border:1px solid #0d9488;padding:8px;text-align:right;font-weight:900;color:#0f766e">' + f(q.total) + '원</td></tr>'
+      + '</tfoot></table>'
+      + (q.note ? '<div style="margin-top:12px;font-size:10.5px;color:#475569"><b>비고</b> · ' + e(q.note).replace(/\n/g,'<br>') + '</div>' : '')
+      + '<div style="margin-top:26px;text-align:right;font-size:12px">위와 같이 견적합니다.<br><br><span style="font-size:14px;font-weight:900">' + e(co.name) + '</span> <span style="letter-spacing:.3em">(인)</span></div>'
+      + '</div></div>';
+  };
+  window.quoteMail = function(){
+    var q = _qtData(), co = _qtCompany();
+    if(!q.items.length){ if(typeof toast==='function') toast('품목을 먼저 추가하세요','error'); return; }
+    var f = function(v){ return Math.round(Number(v)||0).toLocaleString('ko-KR'); };
+    var lines = q.items.map(function(i, idx){ return (idx+1) + '. ' + i.name + ' × ' + f(i.qty) + 'ea × ' + f(i.price) + '원 = ' + f(i.amount) + '원'; });
+    var body = '안녕하세요, ' + (q.cust && q.cust.name ? q.cust.name + ' 담당자님' : '담당자님') + '.\n'
+      + co.name + ' 견적 내용을 아래와 같이 안내드립니다.\n\n'
+      + '■ 견적일: ' + q.date + ' (유효기간 ' + q.valid + '일)\n\n'
+      + lines.join('\n') + '\n\n'
+      + '공급가액: ' + f(q.supply) + '원\n부가세(10%): ' + f(q.vat) + '원\n합계: ' + f(q.total) + '원 (VAT 포함)\n\n'
+      + (q.note ? '비고: ' + q.note + '\n\n' : '')
+      + '감사합니다.\n' + co.name + ' 드림\nTEL ' + co.tel + ' · ' + co.email;
+    var to = (q.cust && (q.cust.email||'')) || '';
+    var subject = '[' + co.name + '] 견적서 - ' + (q.cust && q.cust.name || '') + ' (' + q.date + ')';
+    location.href = 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  };
+
+  /* ── 포뮬러 상세 조회/편집 모달 v3.7 ── */
+  window.openFormulaModal = function(fid){
+    var f = ((window.db && db.master.M_FORMULA) || []).find(function(x){ return String(x.id) === String(fid); });
+    if(!f){ if(typeof toast==='function') toast('포뮬러를 찾을 수 없습니다','error'); return; }
+    var old = document.getElementById('fml-modal'); if(old) old.remove();
+    var e = window.escH || function(v){ return String(v==null?'':v); };
+    var p = (db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId) === String(f.productId); });
+    var rawOpts = (db.master.M_RAW||[]).map(function(r){ return '<option value="RAW-'+r.rawId+'">'+e(r.name)+'</option>'; }).join('');
+    var packOpts = (db.master.M_PACK||[]).map(function(r){ return '<option value="PACK-'+r.packId+'">'+e(r.name)+'</option>'; }).join('');
+    function rowHtml(b){
+      b = b || {};
+      var sel = b.type && b.itemId ? b.type + '-' + b.itemId : '';
+      return '<tr class="fml-m-row">'
+        + '<td class="pl-2"><select class="input-field text-xs fml-m-item"><option value="">품목 선택</option><optgroup label="원료">' + rawOpts + '</optgroup><optgroup label="포장재">' + packOpts + '</optgroup></select></td>'
+        + '<td style="width:110px"><input type="number" step="0.001" class="input-field text-right fml-m-qty" value="' + (Number(b.qty)||'') + '"></td>'
+        + '<td style="width:150px"><input type="text" class="input-field text-xs fml-m-note" value="' + e(b.note||'') + '" placeholder="비고"></td>'
+        + '<td class="text-center" style="width:34px"><button class="text-slate-400 hover:text-red-500 text-lg leading-none" onclick="this.closest(\'tr\').remove()">×</button></td></tr>';
+    }
+    var rows = (f.bom||[]).map(rowHtml).join('');
+    var d = document.createElement('div');
+    d.id = 'fml-modal';
+    d.style.cssText = 'position:fixed;inset:0;z-index:9500;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.55);backdrop-filter:blur(3px)';
+    d.innerHTML = '<div style="background:#fff;border-radius:14px;width:min(720px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)">'
+      + '<div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">'
+      +   '<div><div style="font-size:15px;font-weight:900;color:#0f172a">포뮬러 상세 · ' + e(f.name||'') + ' <span style="color:#0d9488">' + e(f.version||'') + '</span></div>'
+      +   '<div style="font-size:11px;color:#64748b;margin-top:2px">연결 제품: ' + e(p && p.name || '-') + ' · 등록 ' + e((f.createdAt||'').split('T')[0]) + (f.updatedAt ? ' · 수정 ' + e(f.updatedAt.split('T')[0]) : '') + '</div></div>'
+      +   '<button onclick="document.getElementById(\'fml-modal\').remove()" style="border:0;background:none;font-size:22px;color:#94a3b8;cursor:pointer;line-height:1">×</button></div>'
+      + '<div style="overflow-y:auto;padding:12px 16px">'
+      +   '<table style="width:100%"><thead><tr><th class="pl-2">성분/품목</th><th>배합비·수량</th><th>비고</th><th></th></tr></thead><tbody id="fml-m-body">' + rows + '</tbody></table>'
+      +   '<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="document.getElementById(\'fml-m-body\').insertAdjacentHTML(\'beforeend\', window._fmlRowTpl)">+ 성분 추가</button>'
+      +   '<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;color:#64748b;margin-bottom:4px">처방 메모 (숙성 조건, 공정 주의사항 등)</div>'
+      +   '<textarea id="fml-m-note" class="input-field" rows="3">' + e(f.note||'') + '</textarea></div>'
+      + '</div>'
+      + '<div style="padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end">'
+      +   '<button class="btn btn-secondary" onclick="document.getElementById(\'fml-modal\').remove()">닫기</button>'
+      +   '<button class="btn btn-primary" onclick="saveFormulaModal(\'' + String(f.id) + '\')">저장</button>'
+      + '</div></div>';
+    window._fmlRowTpl = rowHtml({});
+    document.body.appendChild(d);
+    /* 기존 선택값 반영 */
+    var bomArr = f.bom || [];
+    d.querySelectorAll('.fml-m-row').forEach(function(tr, i){
+      var b = bomArr[i];
+      if(b && b.type && b.itemId) tr.querySelector('.fml-m-item').value = b.type + '-' + b.itemId;
+    });
+  };
+  window.saveFormulaModal = function(fid){
+    var f = ((window.db && db.master.M_FORMULA) || []).find(function(x){ return String(x.id) === String(fid); });
+    var modal = document.getElementById('fml-modal');
+    if(!f || !modal) return;
+    var newBom = [];
+    modal.querySelectorAll('.fml-m-row').forEach(function(tr){
+      var v = tr.querySelector('.fml-m-item').value;
+      var q = Number(tr.querySelector('.fml-m-qty').value) || 0;
+      var note = tr.querySelector('.fml-m-note').value.trim();
+      if(!v || q <= 0) return;
+      var idx = v.indexOf('-');
+      newBom.push({ type: v.slice(0, idx), itemId: Number(v.slice(idx+1)), qty: q, note: note });
+    });
+    f.bom = newBom;
+    f.note = document.getElementById('fml-m-note').value.trim();
+    f.updatedAt = new Date().toISOString();
+    modal.remove();
+    if(typeof toast === 'function') toast('포뮬러 상세 저장 완료 (' + newBom.length + '개 성분)','success');
+    if(typeof logEvent === 'function') logEvent('포뮬러 상세수정: ' + (f.name||'') + ' ' + (f.version||''));
+    if(typeof saveDB === 'function') saveDB();
+  };
 })();
 </script>
 <script>
 /* ── 사이드바 그룹 접기/펼치기 v3.5 — 노즈 ── */
 (function(){
   'use strict';
+  /* 견적 페이지 진입 시 셀렉터 초기화 + 대시보드 수량합계 채움 */
+  var _gp0 = window.goPage;
+  if(typeof _gp0 === 'function'){
+    window.goPage = function(p){ _gp0(p); try{ if(p === 'doc-quote' && window.fillQuoteSelectors) fillQuoteSelectors(); }catch(e){} };
+  }
+  function fillDashSums(){
+    try{
+      var S = window.db && db.stock || {};
+      var sum = function(t){ return (S[t]||[]).reduce(function(x,l){ return x + (Number(l.remaining)||0); }, 0); };
+      var rawG = sum('RAW_LOT');
+      var set = function(id, v){ var el = document.getElementById(id); if(el) el.textContent = v; };
+      set('dash-sum-raw', rawG >= 1000 ? (rawG/1000).toLocaleString('ko-KR', {maximumFractionDigits:1}) + ' kg' : Math.round(rawG).toLocaleString() + ' g');
+      set('dash-sum-pack', Math.round(sum('PACK_LOT')).toLocaleString() + ' ea');
+      set('dash-sum-fgt', Math.round(sum('FGT_LOT')).toLocaleString() + ' ea');
+      set('dash-sum-bulk', Math.round(sum('BULK_LOT')).toLocaleString() + ' ea');
+    }catch(e){}
+  }
+  var _ud0 = window.updateDashboard;
+  window.updateDashboard = function(){ if(typeof _ud0 === 'function') try{ _ud0(); }catch(e){} fillDashSums(); };
+  setTimeout(fillDashSums, 1800);
   var dd = document.getElementById('dash-date');
   if(dd) dd.textContent = new Date().toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
   var KEY = 'shifti_nav_collapsed';
