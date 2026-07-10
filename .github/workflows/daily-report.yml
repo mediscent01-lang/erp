@@ -1,0 +1,21 @@
+name: SHIFTI Daily Report
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # 23:00 UTC = 다음날 08:00 KST
+  workflow_dispatch:         # Actions 탭에서 수동 실행(테스트)용
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install nodemailer@6.9.16
+      - run: node scripts/daily-report.mjs
+        env:
+          SB_SERVICE_KEY: ${{ secrets.SB_SERVICE_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
