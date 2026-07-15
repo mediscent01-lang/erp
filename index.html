@@ -7671,6 +7671,466 @@ function initNewPage(pageId) {
   });
 })();
 </script>
+
+<!-- ══════════════════════════════════════════════════════════════
+  SHIFTI ERP · MES 확장 패치 v4.0 — 노즈 (2026-07-15)
+  Phase 1: 작업지시 상태머신(대기→진행중→완료) + 실적입력 + 자재/생산수율
+  Phase 2: 생산 캘린더(월간) + 간트차트 — 외부 라이브러리 0개
+  설치: index.html의 </body> 바로 위에 이 블록 전체를 붙여넣기.
+  기존 코드는 수정하지 않습니다. (renderWorkOrder/completeWO/initNewPage 래핑)
+  데이터는 기존 T_WORK_ORDER 행 안에 저장되어 클라우드 동기화 그대로 작동.
+═══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var N = function(v, d){ var x = Number(v); return isFinite(x) ? x : (d||0); };
+var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
+var PROC_ORDER = ['조향/벌크배합','숙성','여과','충진','포장','검사'];
+var ST_COLOR = {'대기':'#d97706','진행중':'#2563eb','완료':'#059669','계획':'#64748b','숙성':'#7c3aed','입고예정':'#0d9488'};
+
+/* ════════ 0. 스타일 ════════ */
+var css = document.createElement('style');
+css.textContent = [
+'.mes-modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px}',
+'.mes-modal{background:#fff;border-radius:14px;max-width:520px;width:100%;max-height:90vh;overflow-y:auto;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)}',
+'.mes-kpi{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px}',
+'.mes-kpi .v{font-size:22px;font-weight:900;color:#0f172a}',
+'.mes-kpi .l{font-size:10.5px;font-weight:700;color:#64748b;margin-top:2px}',
+'.mes-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;min-width:640px}',
+'.mes-cal-head{font-size:10.5px;font-weight:800;color:#64748b;text-align:center;padding:4px 0}',
+'.mes-cal-day{background:#fff;border:1px solid #e2e8f0;border-radius:8px;min-height:86px;padding:4px;font-size:10.5px;overflow:hidden}',
+'.mes-cal-day.other{background:#f8fafc;opacity:.5}',
+'.mes-cal-day.today{border-color:#059669;border-width:2px}',
+'.mes-cal-num{font-weight:800;color:#334155;margin-bottom:2px}',
+'.mes-chip{display:block;border-radius:4px;padding:1px 4px;margin-bottom:2px;color:#fff;font-size:9.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}',
+'.mes-gantt{min-width:760px}',
+'.mes-gantt-row{display:grid;align-items:center;gap:0;border-bottom:1px solid #f1f5f9}',
+'.mes-gantt-label{font-size:10.5px;font-weight:700;color:#334155;padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:1px solid #e2e8f0}',
+'.mes-gantt-cell{border-right:1px dashed #f1f5f9;height:30px;position:relative}',
+'.mes-gantt-cell.wk{background:#fafafa}',
+'.mes-gantt-bar{position:absolute;top:6px;height:18px;border-radius:5px;font-size:9px;font-weight:800;color:#fff;padding:2px 5px;white-space:nowrap;overflow:hidden;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.15)}',
+'.mes-tab{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;color:#64748b;background:#f1f5f9}',
+'.mes-tab.on{background:#0f766e;color:#fff}',
+'.mes-yield-bar{height:8px;border-radius:4px;background:#e2e8f0;overflow:hidden}',
+'.mes-yield-bar>div{height:100%;border-radius:4px}',
+'@media(max-width:768px){.mes-kpi .v{font-size:18px}}'
+].join('\n');
+document.head.appendChild(css);
+
+/* ════════ 1. 공통 헬퍼 ════════ */
+function ensureWO(){
+  if(!window.db) return false;
+  db.txn = db.txn || {};
+  db.txn.T_WORK_ORDER = db.txn.T_WORK_ORDER || [];
+  db.txn.T_PROD_PLAN = db.txn.T_PROD_PLAN || [];
+  return true;
+}
+function woPlan(wo){ return (db.txn.T_PROD_PLAN||[]).find(function(p){ return p.id===wo.planId; }); }
+function woProduct(wo){ var p = woPlan(wo); return p && (typeof findProduct==='function') ? findProduct(p.productId) : null; }
+function fmtPct(v){ return (v==null||!isFinite(v)) ? '-' : (Math.round(v*10)/10)+'%'; }
+function ymd(d){ return d.toISOString().split('T')[0]; }
+
+/* 수율 계산: 생산수율 = 양품/(양품+불량), 자재수율 = 산출/실투입, 달성률 = 양품/계획 */
+function calcYields(wo){
+  var r = wo.result; if(!r) return {};
+  var out = N(r.outputQty), def = N(r.defectQty), inp = N(r.inputQty), plan = N(r.planQty);
+  return {
+    prodYield: (out+def) > 0 ? out/(out+def)*100 : null,
+    matYield:  inp > 0 ? out/inp*100 : null,
+    achieve:   plan > 0 ? out/plan*100 : null
+  };
+}
+
+/* ════════ 2. Phase 1 — 작업지시 상태머신 ════════ */
+window.startWO = function(woId){
+  ensureWO();
+  var wo = db.txn.T_WORK_ORDER.find(function(w){ return w.id===woId; });
+  if(!wo) return;
+  wo.status = '진행중';
+  wo.startedAt = new Date().toISOString();
+  if(typeof logEvent==='function') logEvent('작업시작: '+wo.no+' ['+wo.process+']');
+  if(typeof toast==='function') toast('작업 시작: '+wo.no,'success');
+  saveDB(); renderWorkOrder(); renderSchedule();
+};
+
+/* 기존 completeWO를 실적입력 모달로 대체 */
+window.completeWO = function(woId){ openWoResultModal(woId); };
+
+window.openWoResultModal = function(woId){
+  ensureWO();
+  var wo = db.txn.T_WORK_ORDER.find(function(w){ return w.id===woId; });
+  if(!wo) return;
+  var plan = woPlan(wo), prod = woProduct(wo);
+  var planQty = plan ? N(plan.qty) : 0;
+  /* 배합 공정이면 BOM 이론 투입량 자동 계산해 참고값 제공 */
+  var theoTxt = '';
+  if(wo.process==='조향/벌크배합' && prod && prod.bom && typeof bomNeed==='function'){
+    var theo = 0;
+    prod.bom.filter(function(b){ return b.type==='RAW'; }).forEach(function(b){ theo += bomNeed(prod, b, planQty); });
+    if(theo>0) theoTxt = '<div style="font-size:10.5px;color:#0d9488;font-weight:700;margin-top:-4px">BOM 이론투입량: '+theo.toFixed(1)+' g (계획 '+planQty+' 기준)</div>';
+  }
+  var old = wo.result || {};
+  var bg = document.createElement('div');
+  bg.className = 'mes-modal-bg'; bg.id = 'mes-wo-modal';
+  bg.innerHTML =
+  '<div class="mes-modal" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:15px;color:#0f172a">작업 완료 · 실적 입력</div>'+
+    '<div style="font-size:11.5px;color:#64748b;margin:4px 0 14px">'+E(wo.no)+' · '+E(wo.process)+' · '+E(prod?prod.name:'-')+(planQty?' · 계획 '+planQty:'')+'</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+      '<div><label style="font-size:10.5px;font-weight:800;color:#64748b">양품 산출수량 *</label><input id="mesr-out" type="number" step="0.01" class="input-field text-right" value="'+(old.outputQty!=null?old.outputQty:'')+'" placeholder="0"></div>'+
+      '<div><label style="font-size:10.5px;font-weight:800;color:#64748b">불량 수량</label><input id="mesr-def" type="number" step="0.01" class="input-field text-right" value="'+(old.defectQty!=null?old.defectQty:'0')+'"></div>'+
+      '<div><label style="font-size:10.5px;font-weight:800;color:#64748b">실투입량 (자재수율용)</label><input id="mesr-in" type="number" step="0.01" class="input-field text-right" value="'+(old.inputQty!=null?old.inputQty:'')+'" placeholder="선택"></div>'+
+      '<div><label style="font-size:10.5px;font-weight:800;color:#64748b">소요시간 (분)</label><input id="mesr-min" type="number" class="input-field text-right" value="'+(old.durationMin!=null?old.durationMin:'')+'" placeholder="선택"></div>'+
+    '</div>'+ theoTxt +
+    '<div style="margin-top:10px"><label style="font-size:10.5px;font-weight:800;color:#64748b">실적 비고 (이상·손실 사유)</label><input id="mesr-note" class="input-field" value="'+E(old.note||'')+'" placeholder="예: 여과 중 손실 120g"></div>'+
+    '<div id="mesr-preview" style="margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:11.5px;font-weight:700;color:#166534;display:none"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:16px">'+
+      '<button class="btn btn-primary flex-1" onclick="saveWoResult(\''+wo.id+'\')">완료 저장</button>'+
+      '<button class="btn btn-secondary" onclick="closeWoModal()">취소</button>'+
+    '</div>'+
+  '</div>';
+  bg.onclick = closeWoModal;
+  document.body.appendChild(bg);
+  /* 입력 즉시 수율 미리보기 */
+  ['mesr-out','mesr-def','mesr-in'].forEach(function(id){
+    $(id).oninput = function(){
+      var o=N($('mesr-out').value), d=N($('mesr-def').value), i=N($('mesr-in').value);
+      var pv=$('mesr-preview'), rows=[];
+      if(o+d>0) rows.push('생산수율 '+fmtPct(o/(o+d)*100));
+      if(i>0&&o>0) rows.push('자재수율 '+fmtPct(o/i*100));
+      if(planQty>0&&o>0) rows.push('계획달성률 '+fmtPct(o/planQty*100));
+      pv.style.display = rows.length?'block':'none';
+      pv.textContent = rows.join('  ·  ');
+    };
+  });
+};
+window.closeWoModal = function(){ var m=$('mes-wo-modal'); if(m) m.remove(); };
+
+window.saveWoResult = function(woId){
+  ensureWO();
+  var wo = db.txn.T_WORK_ORDER.find(function(w){ return w.id===woId; });
+  if(!wo) return;
+  var out = N($('mesr-out').value);
+  if(out<=0){ if(typeof toast==='function') toast('양품 산출수량을 입력하세요','error'); return; }
+  var plan = woPlan(wo);
+  wo.result = {
+    outputQty: out,
+    defectQty: N($('mesr-def').value),
+    inputQty:  N($('mesr-in').value) || null,
+    durationMin: N($('mesr-min').value) || null,
+    planQty: plan ? N(plan.qty) : null,
+    note: ($('mesr-note').value||'').trim(),
+    completedAt: new Date().toISOString()
+  };
+  wo.status = '완료';
+  var y = calcYields(wo);
+  if(typeof logEvent==='function') logEvent('작업완료: '+wo.no+' 양품 '+out+' / 생산수율 '+fmtPct(y.prodYield));
+  if(typeof toast==='function') toast('완료 · 생산수율 '+fmtPct(y.prodYield),'success');
+  closeWoModal(); saveDB(); renderWorkOrder(); renderSchedule(); renderYieldPage();
+};
+
+/* renderWorkOrder 재정의: 상태별 버튼 + 수율 뱃지 */
+var _origRenderWO = window.renderWorkOrder;
+window.renderWorkOrder = function(){
+  if(!ensureWO()) return;
+  var tbody = $('tbl-workorder');
+  if(!tbody){ if(typeof _origRenderWO==='function') _origRenderWO(); return; }
+  tbody.innerHTML = db.txn.T_WORK_ORDER.slice().reverse().map(function(wo){
+    var prod = woProduct(wo);
+    var st = wo.status||'대기';
+    var badge = '<span class="badge-soft" style="background:'+(ST_COLOR[st]||'#64748b')+'22;color:'+(ST_COLOR[st]||'#64748b')+';font-weight:800">'+E(st)+'</span>';
+    var act = '';
+    if(st==='대기') act = '<button onclick="startWO(\''+wo.id+'\')" class="btn btn-primary btn-sm">▶ 시작</button>';
+    else if(st==='진행중') act = '<button onclick="completeWO(\''+wo.id+'\')" class="btn btn-primary btn-sm" style="background:#059669">✓ 완료·실적</button>';
+    else {
+      var y = calcYields(wo);
+      act = '<span style="font-size:10px;font-weight:800;color:#059669">수율 '+fmtPct(y.prodYield)+'</span> <button onclick="openWoResultModal(\''+wo.id+'\')" class="btn btn-secondary btn-sm">수정</button>';
+    }
+    return '<tr><td class="pl-3 mono text-xs">'+E(wo.no)+'</td><td class="text-xs">'+E(wo.date)+'</td>'+
+      '<td class="text-xs">'+E(prod?prod.name:'-')+'</td><td class="text-xs">'+E(wo.process)+'</td>'+
+      '<td class="text-xs">'+E(wo.worker)+'</td><td class="text-center">'+badge+'</td>'+
+      '<td class="text-right pr-3" style="white-space:nowrap">'+act+'</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">작업지시 없음</td></tr>';
+};
+
+/* ════════ 3. 신규 페이지 주입 (생산 일정 · 수율 분석) ════════ */
+function injectPages(){
+  if($('page-prod-schedule')) return;
+  var host = document.querySelector('#page-work-order');
+  if(!host || !host.parentNode) return;
+
+  var sched = document.createElement('section');
+  sched.id = 'page-prod-schedule';
+  sched.className = 'page-section space-y-4';
+  sched.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'+
+      '<h2 class="text-lg font-black text-slate-800">생산 일정 (캘린더 · 간트)</h2>'+
+      '<div style="display:flex;gap:6px;align-items:center">'+
+        '<span class="mes-tab on" id="mes-tab-cal" onclick="mesTab(\'cal\')">📅 캘린더</span>'+
+        '<span class="mes-tab" id="mes-tab-gantt" onclick="mesTab(\'gantt\')">📊 간트</span>'+
+        '<button class="btn btn-secondary btn-sm" onclick="mesMonth(-1)">◀</button>'+
+        '<span id="mes-month-label" style="font-weight:900;font-size:13px;min-width:86px;text-align:center"></span>'+
+        '<button class="btn btn-secondary btn-sm" onclick="mesMonth(1)">▶</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:10.5px;color:#64748b;font-weight:700">'+
+      '<span style="color:'+ST_COLOR['계획']+'">■</span> 생산계획 '+
+      '<span style="color:'+ST_COLOR['대기']+'">■</span> 지시대기 '+
+      '<span style="color:'+ST_COLOR['진행중']+'">■</span> 진행중 '+
+      '<span style="color:'+ST_COLOR['완료']+'">■</span> 완료 '+
+      '<span style="color:'+ST_COLOR['숙성']+'">■</span> 벌크숙성 '+
+      '<span style="color:'+ST_COLOR['입고예정']+'">■</span> 발주입고예정</div>'+
+    '<div class="card p-3" style="overflow-x:auto"><div id="mes-cal-wrap"></div><div id="mes-gantt-wrap" style="display:none"></div></div>';
+  host.parentNode.insertBefore(sched, host.nextSibling);
+
+  var yld = document.createElement('section');
+  yld.id = 'page-yield';
+  yld.className = 'page-section space-y-4';
+  yld.innerHTML =
+    '<h2 class="text-lg font-black text-slate-800">수율 분석 (자재 · 생산)</h2>'+
+    '<div id="mes-yield-kpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px"></div>'+
+    '<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">'+
+      '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">공정별 평균 수율</h3></div><div class="p-4" id="mes-yield-proc"></div></div>'+
+      '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">월별 생산수율 추이</h3></div><div class="p-4" id="mes-yield-trend"></div></div>'+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">완료 실적 목록</h3><span class="badge-soft" id="mes-yield-count">0</span></div>'+
+      '<div class="scroll-card"><table><thead><tr><th class="pl-3">완료일</th><th>지시번호</th><th>제품</th><th>공정</th>'+
+      '<th class="text-right">계획</th><th class="text-right">양품</th><th class="text-right">불량</th>'+
+      '<th class="text-right">자재수율</th><th class="text-right">생산수율</th><th class="text-right pr-3">달성률</th></tr></thead>'+
+      '<tbody id="mes-yield-tbl"></tbody></table></div></div>';
+  host.parentNode.insertBefore(yld, sched.nextSibling);
+
+  /* 사이드바 메뉴 주입 */
+  var navWo = $('nav-work-order');
+  if(navWo && !$('nav-prod-schedule')){
+    var n1 = document.createElement('div');
+    n1.id='nav-prod-schedule'; n1.className='nav-item'; n1.setAttribute('onclick',"goPage('prod-schedule')");
+    n1.innerHTML = '<i data-lucide="calendar-days" class="w-4 h-4 shrink-0"></i> 생산 일정 🆕';
+    var n2 = document.createElement('div');
+    n2.id='nav-yield'; n2.className='nav-item'; n2.setAttribute('onclick',"goPage('yield')");
+    n2.innerHTML = '<i data-lucide="trending-up" class="w-4 h-4 shrink-0"></i> 수율 분석 🆕';
+    navWo.parentNode.insertBefore(n1, navWo.nextSibling);
+    navWo.parentNode.insertBefore(n2, n1.nextSibling);
+    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+  }
+}
+
+/* ════════ 4. Phase 2 — 캘린더 ════════ */
+var mesCur = new Date(); mesCur.setDate(1);
+window.mesMonth = function(d){ mesCur.setMonth(mesCur.getMonth()+d); renderSchedule(); };
+window.mesTab = function(t){
+  $('mes-tab-cal').classList.toggle('on', t==='cal');
+  $('mes-tab-gantt').classList.toggle('on', t==='gantt');
+  $('mes-cal-wrap').style.display = t==='cal'?'block':'none';
+  $('mes-gantt-wrap').style.display = t==='gantt'?'block':'none';
+};
+
+/* 일정 이벤트 수집: {date, endDate?, label, color, page} */
+function collectEvents(){
+  ensureWO();
+  var ev = [];
+  (db.txn.T_PROD_PLAN||[]).forEach(function(p){
+    var prod = (typeof findProduct==='function') && findProduct(p.productId);
+    ev.push({date:p.date, label:'계획 '+(prod?prod.name:'')+' '+p.qty, color:ST_COLOR['계획'], page:'prod-plan'});
+  });
+  (db.txn.T_WORK_ORDER||[]).forEach(function(w){
+    var prod = woProduct(w);
+    ev.push({date:w.date, label:'['+(w.process||'').slice(0,2)+'] '+(prod?prod.name:w.no), color:ST_COLOR[w.status||'대기'], page:'work-order'});
+  });
+  (db.stock && db.stock.BULK_LOT||[]).forEach(function(b){
+    if(b.mfgDate && b.matureUntil && b.status==='HOLD')
+      ev.push({date:b.mfgDate, endDate:b.matureUntil, label:'숙성 '+b.lotNo, color:ST_COLOR['숙성'], page:'t-bulk', span:true});
+  });
+  (db.txn.T_PO||[]).forEach(function(po){
+    if(po.dueDate && po.status!=='입고완료')
+      ev.push({date:po.dueDate, label:'입고예정 '+po.no, color:ST_COLOR['입고예정'], page:'purchase-order'});
+  });
+  return ev;
+}
+
+function renderCalendar(){
+  var wrap = $('mes-cal-wrap'); if(!wrap) return;
+  var y = mesCur.getFullYear(), m = mesCur.getMonth();
+  $('mes-month-label').textContent = y+'년 '+(m+1)+'월';
+  var first = new Date(y,m,1), start = new Date(first); start.setDate(1-first.getDay());
+  var todayStr = ymd(new Date());
+  var ev = collectEvents();
+  var byDate = {};
+  ev.forEach(function(e){
+    if(e.span && e.endDate){ /* 숙성 기간: 시작·종료일에 표시 */
+      byDate[e.date]=(byDate[e.date]||[]).concat([{label:'▶'+e.label,color:e.color,page:e.page}]);
+      byDate[e.endDate]=(byDate[e.endDate]||[]).concat([{label:'✓숙성완료 '+e.label.replace('숙성 ',''),color:e.color,page:e.page}]);
+    } else byDate[e.date]=(byDate[e.date]||[]).concat([e]);
+  });
+  var html = ['일','월','화','수','목','금','토'].map(function(d){ return '<div class="mes-cal-head">'+d+'</div>'; }).join('');
+  var cur = new Date(start);
+  for(var i=0;i<42;i++){
+    var ds = ymd(cur), other = cur.getMonth()!==m;
+    var items = (byDate[ds]||[]).slice(0,4);
+    var more = (byDate[ds]||[]).length - items.length;
+    html += '<div class="mes-cal-day'+(other?' other':'')+(ds===todayStr?' today':'')+'">'+
+      '<div class="mes-cal-num">'+cur.getDate()+'</div>'+
+      items.map(function(e){ return '<span class="mes-chip" style="background:'+e.color+'" onclick="goPage(\''+e.page+'\')" title="'+E(e.label)+'">'+E(e.label)+'</span>'; }).join('')+
+      (more>0?'<span style="font-size:9px;color:#94a3b8;font-weight:700">+'+more+'건</span>':'')+
+    '</div>';
+    cur.setDate(cur.getDate()+1);
+  }
+  wrap.innerHTML = '<div class="mes-cal">'+html+'</div>';
+}
+
+/* ════════ 5. Phase 2 — 간트차트 ════════ */
+function renderGantt(){
+  var wrap = $('mes-gantt-wrap'); if(!wrap) return;
+  var y = mesCur.getFullYear(), m = mesCur.getMonth();
+  var days = new Date(y, m+1, 0).getDate();
+  var monthStr = y+'-'+String(m+1).padStart(2,'0');
+  var rows = [];
+
+  /* 생산계획 행 + 하위 작업지시 행 (공정 순서 정렬) */
+  (db.txn.T_PROD_PLAN||[]).forEach(function(p){
+    var wos = (db.txn.T_WORK_ORDER||[]).filter(function(w){ return w.planId===p.id; })
+      .sort(function(a,b){ return PROC_ORDER.indexOf(a.process)-PROC_ORDER.indexOf(b.process); });
+    var dates = [p.date].concat(wos.map(function(w){ return w.date; })).filter(Boolean).sort();
+    var inMonth = dates.some(function(d){ return d && d.indexOf(monthStr)===0; });
+    if(!inMonth) return;
+    var prod = (typeof findProduct==='function') && findProduct(p.productId);
+    rows.push({label:'📋 '+(prod?prod.name:p.no)+' ('+p.qty+')', start:dates[0], end:dates[dates.length-1], color:ST_COLOR['계획'], bold:true});
+    wos.forEach(function(w){
+      rows.push({label:'　'+(w.process||'')+(w.worker?' · '+w.worker:''), start:w.date, end:w.date, color:ST_COLOR[w.status||'대기'],
+        tag: w.status==='완료' && w.result ? fmtPct(calcYields(w).prodYield) : (w.status||'')});
+    });
+  });
+  /* 계획 미연결 작업지시 */
+  (db.txn.T_WORK_ORDER||[]).filter(function(w){ return !w.planId && w.date && w.date.indexOf(monthStr)===0; })
+    .forEach(function(w){ rows.push({label:'🔧 '+w.no+' '+(w.process||''), start:w.date, end:w.date, color:ST_COLOR[w.status||'대기'], tag:w.status}); });
+  /* 벌크 숙성 기간 바 */
+  (db.stock && db.stock.BULK_LOT||[]).forEach(function(b){
+    if(!b.mfgDate || !b.matureUntil) return;
+    if(b.mfgDate.indexOf(monthStr)!==0 && b.matureUntil.indexOf(monthStr)!==0 && !(b.mfgDate<monthStr+'-01' && b.matureUntil>monthStr+'-'+days)) return;
+    rows.push({label:'🧪 숙성 '+b.lotNo, start:b.mfgDate, end:b.matureUntil, color:ST_COLOR['숙성'], tag:b.status});
+  });
+
+  if(!rows.length){ wrap.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">이 달의 일정이 없습니다. 생산계획·작업지시를 등록하세요.</div>'; return; }
+
+  var grid = '180px repeat('+days+', minmax(22px,1fr))';
+  var head = '<div class="mes-gantt-row" style="grid-template-columns:'+grid+'"><div class="mes-gantt-label" style="font-weight:900">'+(m+1)+'월</div>';
+  for(var d=1; d<=days; d++){
+    var dow = new Date(y,m,d).getDay();
+    head += '<div class="mes-gantt-cell '+(dow===0||dow===6?'wk':'')+'" style="height:22px;font-size:9px;text-align:center;color:'+(dow===0?'#dc2626':'#94a3b8')+';font-weight:700">'+d+'</div>';
+  }
+  head += '</div>';
+
+  var body = rows.map(function(r){
+    var s = N((r.start||'').split('-')[2]), e2 = N((r.end||'').split('-')[2]);
+    var sm = (r.start||'').slice(0,7), em = (r.end||'').slice(0,7);
+    if(sm < monthStr) s = 1; if(sm > monthStr) s = 0;
+    if(em > monthStr) e2 = days; if(em < monthStr) e2 = 0;
+    var cells = '';
+    for(var d=1; d<=days; d++){
+      var dow = new Date(y,m,d).getDay();
+      var bar = '';
+      if(s>0 && d===Math.min(s,e2||s)){
+        var span = Math.max(1, (e2||s)-s+1);
+        bar = '<div class="mes-gantt-bar" style="left:2px;width:calc('+span+'00% - 4px);background:'+r.color+'" title="'+E(r.label)+'">'+E(r.tag||'')+'</div>';
+      }
+      cells += '<div class="mes-gantt-cell '+(dow===0||dow===6?'wk':'')+'">'+bar+'</div>';
+    }
+    return '<div class="mes-gantt-row" style="grid-template-columns:'+grid+'"><div class="mes-gantt-label" '+(r.bold?'style="font-weight:900;background:#f8fafc"':'')+'>'+E(r.label)+'</div>'+cells+'</div>';
+  }).join('');
+
+  wrap.innerHTML = '<div class="mes-gantt">'+head+body+'</div>';
+}
+
+window.renderSchedule = function(){
+  if(!$('mes-cal-wrap')) return;
+  try{ renderCalendar(); renderGantt(); }catch(e){ console.warn('MES schedule', e); }
+};
+
+/* ════════ 6. Phase 1 — 수율 분석 페이지 ════════ */
+window.renderYieldPage = function(){
+  if(!$('mes-yield-kpi')) return;
+  ensureWO();
+  var done = db.txn.T_WORK_ORDER.filter(function(w){ return w.status==='완료' && w.result; });
+  var ys = done.map(function(w){ return {w:w, y:calcYields(w)}; });
+  function avg(k){ var v = ys.map(function(x){ return x.y[k]; }).filter(function(v){ return v!=null&&isFinite(v); }); return v.length ? v.reduce(function(a,b){return a+b;},0)/v.length : null; }
+  var kpis = [
+    {l:'완료 작업지시', v: done.length+'건'},
+    {l:'평균 생산수율', v: fmtPct(avg('prodYield'))},
+    {l:'평균 자재수율', v: fmtPct(avg('matYield'))},
+    {l:'평균 계획달성률', v: fmtPct(avg('achieve'))},
+    {l:'총 불량수량', v: done.reduce(function(s,w){ return s+N(w.result.defectQty); },0).toLocaleString()}
+  ];
+  $('mes-yield-kpi').innerHTML = kpis.map(function(k){ return '<div class="mes-kpi"><div class="v">'+k.v+'</div><div class="l">'+k.l+'</div></div>'; }).join('');
+
+  /* 공정별 평균 */
+  var byProc = {};
+  ys.forEach(function(x){
+    var p = x.w.process||'기타';
+    (byProc[p] = byProc[p]||[]).push(x.y.prodYield);
+  });
+  $('mes-yield-proc').innerHTML = PROC_ORDER.concat(Object.keys(byProc).filter(function(p){ return PROC_ORDER.indexOf(p)<0; }))
+    .filter(function(p){ return byProc[p]; })
+    .map(function(p){
+      var vals = byProc[p].filter(function(v){ return v!=null; });
+      var a = vals.length ? vals.reduce(function(x,y){return x+y;},0)/vals.length : 0;
+      var col = a>=95?'#059669':a>=85?'#d97706':'#dc2626';
+      return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#334155"><span>'+E(p)+' <span style="color:#94a3b8;font-weight:600">('+vals.length+'건)</span></span><span style="color:'+col+'">'+fmtPct(a)+'</span></div>'+
+        '<div class="mes-yield-bar"><div style="width:'+Math.min(100,a)+'%;background:'+col+'"></div></div></div>';
+    }).join('') || '<div class="text-slate-400 text-sm text-center py-4">완료 실적이 쌓이면 표시됩니다</div>';
+
+  /* 월별 추이 (최근 6개월) */
+  var byMonth = {};
+  ys.forEach(function(x){
+    var ym2 = (x.w.result.completedAt||x.w.date||'').slice(0,7);
+    if(ym2 && x.y.prodYield!=null) (byMonth[ym2]=byMonth[ym2]||[]).push(x.y.prodYield);
+  });
+  var months = Object.keys(byMonth).sort().slice(-6);
+  $('mes-yield-trend').innerHTML = months.length ?
+    '<div style="display:flex;align-items:flex-end;gap:10px;height:130px">'+months.map(function(mm){
+      var vals = byMonth[mm], a = vals.reduce(function(x,y){return x+y;},0)/vals.length;
+      return '<div style="flex:1;text-align:center"><div style="font-size:10px;font-weight:800;color:#0f766e">'+fmtPct(a)+'</div>'+
+        '<div style="background:linear-gradient(180deg,#14b8a6,#0f766e);border-radius:6px 6px 0 0;height:'+Math.max(8,a)+'px;margin:2px auto 0;max-width:44px"></div>'+
+        '<div style="font-size:9.5px;color:#64748b;font-weight:700;margin-top:3px">'+mm.slice(2).replace('-','.')+'</div></div>';
+    }).join('')+'</div>'
+    : '<div class="text-slate-400 text-sm text-center py-4">완료 실적이 쌓이면 표시됩니다</div>';
+
+  /* 실적 목록 */
+  $('mes-yield-count').textContent = done.length;
+  $('mes-yield-tbl').innerHTML = ys.slice().reverse().map(function(x){
+    var w = x.w, r = w.result, prod = woProduct(w);
+    return '<tr><td class="pl-3 text-xs">'+E((r.completedAt||'').slice(0,10))+'</td><td class="mono text-xs">'+E(w.no)+'</td>'+
+      '<td class="text-xs font-bold">'+E(prod?prod.name:'-')+'</td><td class="text-xs">'+E(w.process)+'</td>'+
+      '<td class="text-right text-xs">'+(r.planQty!=null?r.planQty:'-')+'</td>'+
+      '<td class="text-right text-xs font-bold text-emerald-700">'+r.outputQty+'</td>'+
+      '<td class="text-right text-xs '+(N(r.defectQty)>0?'text-red-600 font-bold':'text-slate-400')+'">'+N(r.defectQty)+'</td>'+
+      '<td class="text-right text-xs">'+fmtPct(x.y.matYield)+'</td>'+
+      '<td class="text-right text-xs font-bold">'+fmtPct(x.y.prodYield)+'</td>'+
+      '<td class="text-right pr-3 text-xs">'+fmtPct(x.y.achieve)+'</td></tr>';
+  }).join('') || '<tr><td colspan="10" class="text-center py-4 text-slate-400">완료 실적 없음 — 작업지시를 [시작]→[완료·실적]으로 처리하면 자동 집계됩니다</td></tr>';
+};
+
+/* ════════ 7. 페이지 라우팅 연결 ════════ */
+var _origInit = window.initNewPage;
+window.initNewPage = function(pageId){
+  try{ if(typeof _origInit==='function') _origInit(pageId); }catch(e){}
+  if(pageId==='prod-schedule') renderSchedule();
+  if(pageId==='yield') renderYieldPage();
+  if(pageId==='work-order') renderWorkOrder();
+};
+
+function boot(){
+  injectPages();
+  try{ renderWorkOrder(); }catch(e){}
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
+/* 클라우드 로드가 늦게 끝나는 경우 대비 재시도 */
+setTimeout(boot, 1500);
+setTimeout(function(){ try{ renderWorkOrder(); }catch(e){} }, 3000);
+})();
+</script>
+
 </body>
  
 </html>
