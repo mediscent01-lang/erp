@@ -8416,6 +8416,220 @@ window.initNewPage = function(pageId){
 </script>
 
 
+<!-- ══════════════════════════════════════════════════════════════
+  SHIFTI ERP · 식약처 규제문서 자동출력 패치 v1.0 — 노즈 (2026-07-16)
+  기능:
+   1) 제조관리기록서 — 충진 LOT 선택 → 배합·원료LOT·숙성·충진·QC까지
+      ERP 데이터로 자동 조립 → A4 인쇄/PDF 저장 (CGMP 제15조④ 요건)
+   2) 품질관리기록서 — 생산품검사 기록 선택 → 시험기록서 인쇄 출력
+  설치: index.html의 </body> 바로 위(다른 패치들과 나란히)에 붙여넣기.
+  기존 코드 수정 없음. 데이터는 기존 T_BULK/T_BATCH/T_QC_PROD 그대로 사용.
+═══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
+var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
+var CO = { name:'주식회사 메디센츠', reg:'화장품제조업 등록 제7691호',
+  addr:'경기도 구리시 갈매순환로 154, 현대테라타워 A동 1038호', tel:'070-4365-4807' };
+
+/* ════════ 페이지·메뉴 주입 ════════ */
+function injectUI(){
+  if($('page-mfds-docs')) return;
+  var anchor = $('page-allergen-report') || document.querySelector('.page-section');
+  if(!anchor || !anchor.parentNode) return;
+  var sec = document.createElement('section');
+  sec.id='page-mfds-docs'; sec.className='page-section space-y-4';
+  sec.innerHTML =
+    '<h2 class="text-lg font-black text-slate-800">규제문서 출력 (식약처 의무기록)</h2>'+
+    '<div style="font-size:10.5px;color:#64748b;font-weight:600">화장품법 시행규칙 제11조①2호 — 제조관리기록서·품질관리기록서를 ERP 데이터로 자동 생성해 인쇄(PDF 저장)합니다.</div>'+
+    '<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">'+
+      '<div class="card p-4 space-y-3">'+
+        '<h3 class="font-bold text-slate-700 text-sm">📄 제조관리기록서 (배치기록)</h3>'+
+        '<div style="font-size:10.5px;color:#64748b">충진(생산배치) LOT를 선택하면 배합 원료 LOT·숙성·충진·검사 기록이 자동 조립됩니다.</div>'+
+        '<select id="mfds-batch-sel" class="input-field"></select>'+
+        '<button class="btn btn-primary w-full" onclick="printBatchRecord()">제조관리기록서 인쇄 / PDF</button>'+
+      '</div>'+
+      '<div class="card p-4 space-y-3">'+
+        '<h3 class="font-bold text-slate-700 text-sm">🧪 품질관리기록서 (시험기록)</h3>'+
+        '<div style="font-size:10.5px;color:#64748b">생산품검사(QC) 기록을 선택하면 시험기록서 양식으로 출력됩니다.</div>'+
+        '<select id="mfds-qc-sel" class="input-field"></select>'+
+        '<button class="btn btn-primary w-full" onclick="printQcRecord()">품질관리기록서 인쇄 / PDF</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:10px;color:#94a3b8">※ 인쇄 창에서 "PDF로 저장"을 선택하면 전자문서로 보관됩니다. 보존기간: 최소 5년.</div>';
+  anchor.parentNode.insertBefore(sec, anchor.nextSibling);
+
+  var nav = $('nav-allergen-report');
+  if(nav && !$('nav-mfds-docs')){
+    var n = document.createElement('div');
+    n.id='nav-mfds-docs'; n.className='nav-item'; n.setAttribute('onclick',"goPage('mfds-docs')");
+    n.innerHTML='<i data-lucide="file-check-2" class="w-4 h-4 shrink-0"></i> 규제문서 출력 🆕';
+    nav.parentNode.insertBefore(n, nav.nextSibling);
+    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+  }
+}
+
+function fillSelectors(){
+  var bs = $('mfds-batch-sel');
+  if(bs){
+    bs.innerHTML = '<option value="">충진 LOT 선택</option>' +
+      (db.txn.T_BATCH||[]).slice().reverse().map(function(b){
+        var p = (typeof findProduct==='function') && findProduct(b.productId);
+        return '<option value="'+E(b.id)+'">['+E(b.lotNo)+'] '+E(p?p.name:'')+' / '+E(b.qty)+'ea / '+E(b.date)+'</option>';
+      }).join('');
+  }
+  var qs = $('mfds-qc-sel');
+  if(qs){
+    qs.innerHTML = '<option value="">검사기록 선택</option>' +
+      (db.txn.T_QC_PROD||[]).slice().reverse().map(function(q){
+        var p = (typeof findProduct==='function') && findProduct(q.productId);
+        return '<option value="'+E(q.id)+'">['+E(q.lotNo)+'] '+E(p?p.name:'')+' / '+E(q.result)+' / '+E(q.date)+'</option>';
+      }).join('');
+  }
+}
+
+/* ════════ 인쇄 공통 ════════ */
+var PRINT_CSS =
+'@page{size:A4;margin:14mm}body{font-family:"Noto Sans KR","Malgun Gothic",sans-serif;color:#111;font-size:11px;line-height:1.5}'+
+'h1{font-size:20px;text-align:center;margin:2px 0 2px}'+
+'.co{color:#0f766e;font-weight:800;text-align:center;font-size:12px}'+
+'.sub{text-align:center;color:#555;font-size:10px;margin-bottom:10px}'+
+'table{width:100%;border-collapse:collapse;margin:6px 0}'+
+'th,td{border:1px solid #444;padding:4px 6px;text-align:left;vertical-align:middle}'+
+'th{background:#eef5f2;font-weight:800;text-align:center}'+
+'.r{text-align:right}.c{text-align:center}'+
+'h3{font-size:12.5px;margin:12px 0 4px;border-bottom:2px solid #0f766e;padding-bottom:2px}'+
+'.sign td{height:26px}.small{font-size:9.5px;color:#666}';
+
+window.mfdsPrint = function(title, bodyHtml){
+  var w = window.open('', '_blank');
+  if(!w){ if(typeof toast==='function') toast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.','error'); return; }
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+title+'</title><style>'+PRINT_CSS+'</style></head><body>'+bodyHtml+
+    '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>');
+  w.document.close();
+};
+
+function header(title, docNo){
+  return '<div class="co">'+CO.name+'</div><h1>'+title+'</h1>'+
+    '<div class="sub">'+CO.reg+' · '+CO.addr+' · TEL '+CO.tel+'</div>'+
+    '<table><tr><th style="width:18%">문서번호</th><td style="width:32%">'+E(docNo)+'</td><th style="width:18%">출력일</th><td>'+new Date().toISOString().split('T')[0]+' (ERP 자동생성)</td></tr></table>';
+}
+function signBlock(rows){
+  return '<h3>확인 및 서명</h3><table class="sign">'+rows.map(function(r){
+    return '<tr><th style="width:22%">'+r+'</th><td style="width:45%">(서명)</td><th style="width:12%">일자</th><td></td></tr>';
+  }).join('')+'</table>';
+}
+
+/* ════════ 1. 제조관리기록서 ════════ */
+window.printBatchRecord = function(){
+  var id = $('mfds-batch-sel') && $('mfds-batch-sel').value;
+  var batch = (db.txn.T_BATCH||[]).find(function(b){ return String(b.id)===String(id); });
+  if(!batch){ if(typeof toast==='function') toast('충진 LOT를 선택하세요','error'); return; }
+  var product = (typeof findProduct==='function') && findProduct(batch.productId);
+  var bulk = (db.txn.T_BULK||[]).find(function(b){ return b.lotNo===batch.bulkLotNo; });
+  var bulkStock = (db.stock.BULK_LOT||[]).find(function(b){ return b.lotNo===batch.bulkLotNo; });
+  var qcs = (db.txn.T_QC_PROD||[]).filter(function(q){ return q.lotNo===batch.lotNo; });
+
+  /* 원료 사용 표 (배합 시 LOT 배분 내역) */
+  var matRows = '';
+  ((bulk && bulk.materials)||[]).forEach(function(m, i){
+    var nm = m.type==='PACK'
+      ? ((typeof findPack==='function') && findPack(m.itemId) || {}).name
+      : ((typeof findRaw==='function') && findRaw(m.itemId) || {}).name;
+    var lots = (m.lots||[]).map(function(l){ return E(l.lotNo)+' ('+E(l.take)+')'; }).join('<br>') || '-';
+    matRows += '<tr><td class="c">'+(i+1)+'</td><td>'+E(nm||m.itemId)+'</td><td>'+lots+'</td><td class="r">'+E(m.need)+'</td><td></td></tr>';
+  });
+  /* 포장재 사용 */
+  ((batch.consumedLots)||[]).forEach(function(m){
+    var nm = ((typeof findPack==='function') && findPack(m.itemId) || {}).name;
+    var lots = (m.lots||[]).map(function(l){ return E(l.lotNo)+' ('+E(l.take)+')'; }).join('<br>') || '-';
+    matRows += '<tr><td class="c">포장</td><td>'+E(nm||m.itemId||'')+'</td><td>'+lots+'</td><td class="r">'+E(m.need||'')+'</td><td></td></tr>';
+  });
+  if(!matRows) matRows = '<tr><td colspan="5" class="c small">원료 배분 기록 없음 — 수기 기재</td></tr>';
+
+  /* MES 수율 실적(있으면) */
+  var yieldRow = '';
+  var wo = (db.txn.T_WORK_ORDER||[]).find(function(w){
+    return w.status==='완료' && w.result && w.result.completedAt && (function(){
+      var pl = (db.txn.T_PROD_PLAN||[]).find(function(p){ return p.id===w.planId; });
+      return pl && pl.productId===batch.productId && w.process==='충진';
+    })();
+  });
+  if(wo && wo.result){
+    var out=N(wo.result.outputQty), def=N(wo.result.defectQty);
+    yieldRow = '<tr><th>생산수율(MES)</th><td colspan="3">양품 '+out+' / 불량 '+def+' → '+((out+def)>0?(out/(out+def)*100).toFixed(1):'-')+'%'+(wo.result.durationMin?' · 소요 '+wo.result.durationMin+'분':'')+'</td></tr>';
+  }
+
+  var qcHtml = qcs.length
+    ? qcs.map(function(q){ return '<tr><td>'+E(q.date)+'</td><td>'+E(q.visual||'-')+'</td><td>'+E(q.scent||'-')+'</td><td>'+E(q.volume||'-')+'</td><td class="c"><b>'+E(q.result)+'</b></td><td>'+E(q.inspector||'-')+'</td></tr>'; }).join('')
+    : '<tr><td colspan="6" class="c small">검사기록 없음 — 품질관리기록서 별도 작성</td></tr>';
+
+  var body =
+    header('제조관리기록서', 'MS-BR-'+batch.lotNo) +
+    '<h3>1. 제조 기본정보</h3><table>'+
+    '<tr><th style="width:18%">제품명</th><td style="width:32%">'+E(product?product.name:'')+'</td><th style="width:18%">제품표준서 번호</th><td>MS-PS-________</td></tr>'+
+    '<tr><th>제조번호(LOT)</th><td><b>'+E(batch.lotNo)+'</b></td><th>제조단위</th><td>'+E(batch.qty)+' EA</td></tr>'+
+    '<tr><th>벌크 LOT</th><td>'+E(batch.bulkLotNo)+'</td><th>충진일</th><td>'+E(batch.date)+'</td></tr>'+
+    '</table>'+
+    '<h3>2. 사용 원료·자재 (배합 LOT 배분 내역)</h3>'+
+    '<table><tr><th style="width:7%">No</th><th>원료·자재명</th><th style="width:26%">사용 LOT (수량)</th><th style="width:13%">소요량</th><th style="width:14%">칭량자 확인</th></tr>'+matRows+'</table>'+
+    '<h3>3. 공정 기록</h3><table>'+
+    '<tr><th style="width:18%">배합(조향)일</th><td style="width:32%">'+E(bulk?bulk.date:'-')+'</td><th style="width:18%">배합량(벌크)</th><td>'+E(bulk?bulk.qty:'-')+'</td></tr>'+
+    '<tr><th>숙성 기간</th><td>'+E(bulkStock?bulkStock.mfgDate:'-')+' ~ '+E(bulkStock?bulkStock.matureUntil:'-')+(bulk&&bulk.matureDays?' ('+bulk.matureDays+'일)':'')+'</td><th>충진량/EA</th><td>'+E(batch.bulkPerEa||'-')+'</td></tr>'+
+    yieldRow+
+    '<tr><th>공정 특이사항</th><td colspan="3">'+E(batch.note||bulk&&bulk.note||'')+'&nbsp;</td></tr>'+
+    '</table>'+
+    '<h3>4. 완제품 검사 요약</h3>'+
+    '<table><tr><th>검사일</th><th>성상</th><th>향취</th><th>용량</th><th>판정</th><th>검사자</th></tr>'+qcHtml+'</table>'+
+    signBlock(['제조 작업자','제조책임자','품질관리자 확인'])+
+    '<div class="small">화장품법 시행규칙 제11조①2호 및 CGMP 제15조④에 따른 제조관리기록서 — '+CO.name+' ERP 자동생성본. 보존: 사용기한 경과 후 1년 이상(최소 5년).</div>';
+  mfdsPrint('제조관리기록서 '+batch.lotNo, body);
+};
+
+/* ════════ 2. 품질관리기록서 ════════ */
+window.printQcRecord = function(){
+  var id = $('mfds-qc-sel') && $('mfds-qc-sel').value;
+  var q = (db.txn.T_QC_PROD||[]).find(function(x){ return String(x.id)===String(id); });
+  if(!q){ if(typeof toast==='function') toast('검사기록을 선택하세요','error'); return; }
+  var product = (typeof findProduct==='function') && findProduct(q.productId);
+  var body =
+    header('품질관리기록서 (시험기록서)', 'MS-QC-'+q.id) +
+    '<h3>1. 시험 기본정보</h3><table>'+
+    '<tr><th style="width:18%">시험번호</th><td style="width:32%">'+E(q.id)+'</td><th style="width:18%">시험일자</th><td>'+E(q.date)+'</td></tr>'+
+    '<tr><th>품목 구분</th><td>완제품</td><th>품목명</th><td>'+E(product?product.name:'')+'</td></tr>'+
+    '<tr><th>LOT/제조번호</th><td><b>'+E(q.lotNo)+'</b></td><th>시험자</th><td>'+E(q.inspector||'')+'</td></tr>'+
+    '</table>'+
+    '<h3>2. 시험 항목 및 결과</h3>'+
+    '<table><tr><th style="width:24%">시험항목</th><th style="width:34%">기준</th><th style="width:28%">결과</th><th>판정</th></tr>'+
+    '<tr><td>성상</td><td>표준 성상과 동일</td><td>'+E(q.visual||'')+'</td><td class="c"></td></tr>'+
+    '<tr><td>향취</td><td>표준품과 동일</td><td>'+E(q.scent||'')+'</td><td class="c"></td></tr>'+
+    '<tr><td>충진량</td><td>표기량의 97% 이상</td><td>'+E(q.volume||'')+'</td><td class="c"></td></tr>'+
+    '<tr><td>표시기재</td><td>화장품법 제10조 적합</td><td></td><td class="c"></td></tr>'+
+    '<tr><td>기타</td><td></td><td>'+E(q.memo||'')+'</td><td class="c"></td></tr>'+
+    '</table>'+
+    '<h3>3. 종합판정</h3><table>'+
+    '<tr><th style="width:22%">종합판정</th><td><b style="font-size:13px">'+E(q.result==='OK'?'적합':q.result==='FAIL'?'부적합':'보류')+'</b> ('+E(q.result)+')</td></tr>'+
+    '<tr><th>조치사항</th><td>'+(q.result==='FAIL'?'출고 차단 — 반품/폐기/재작업 평가':'')+'&nbsp;</td></tr>'+
+    '</table>'+
+    signBlock(['시험자','품질관리책임자 판정'])+
+    '<div class="small">화장품법 시행규칙 제11조①2호에 따른 품질관리기록서 — '+CO.name+' ERP 자동생성본. LOT 상태와 연동(적합 시 출하 가능). 보존: 최소 5년.</div>';
+  mfdsPrint('품질관리기록서 '+q.lotNo, body);
+};
+
+/* ════════ 라우팅 ════════ */
+var _init = window.initNewPage;
+window.initNewPage = function(pageId){
+  try{ if(typeof _init==='function') _init(pageId); }catch(e){}
+  if(pageId==='mfds-docs'){ injectUI(); fillSelectors(); }
+};
+function boot(){ injectUI(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot, 1500);
+})();
+</script>
+
 
 </body>
  
