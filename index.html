@@ -8130,6 +8130,257 @@ setTimeout(boot, 1500);
 setTimeout(function(){ try{ renderWorkOrder(); }catch(e){} }, 3000);
 })();
 </script>
+  
+<!-- ══════════════════════════════════════════════════════════════
+  SHIFTI ERP · 알레르겐 프로파일 자동화 패치 v1.0 — 노즈 (2026-07-16)
+  기능:
+   1) 원료별 EU 26 알레르겐 % 프로파일 저장 (M_RAW.allergenProfile, CAS 키)
+   2) 공급사 알레르겐 시트(한빛/에데카 형식) 붙여넣기 → 자동 파싱
+   3) 알레르겐 계산 페이지: 완제품 함량 자동 산출 + 표기의무 판정
+      (leave-on 0.001% / rinse-off 0.01% — EU CPR & 식약처 기준)
+  설치: index.html의 </body> 바로 위(다른 패치들과 나란히)에 붙여넣기.
+  기존 코드 수정 없음 — renderAllergen2를 재정의하여 업그레이드.
+═══════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var N = function(v){ var x = Number(v); return isFinite(x) ? x : 0; };
+var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
+
+/* ── EU 26 알레르겐 레지스트리 (SCCNFP) — CAS를 저장 키로 사용 ── */
+var A26 = [
+ {cas:'127-51-5',  en:'ALPHA-ISOMETHYL IONONE',    ko:'알파-이소메틸 이오논'},
+ {cas:'122-40-7',  en:'AMYL CINNAMAL',              ko:'아밀신남알'},
+ {cas:'101-85-9',  en:'AMYL CINNAMYL ALCOHOL',      ko:'아밀신나밀알코올'},
+ {cas:'105-13-5',  en:'ANISYL ALCOHOL',             ko:'아니스알코올'},
+ {cas:'100-51-6',  en:'BENZYL ALCOHOL',             ko:'벤질알코올'},
+ {cas:'120-51-4',  en:'BENZYL BENZOATE',            ko:'벤질벤조에이트'},
+ {cas:'103-41-3',  en:'BENZYL CINNAMATE',           ko:'벤질신나메이트'},
+ {cas:'118-58-1',  en:'BENZYL SALICYLATE',          ko:'벤질살리실레이트'},
+ {cas:'80-54-6',   en:'LYSMERAL (BMHCA)',           ko:'부틸페닐메틸프로피오날'},
+ {cas:'104-55-2',  en:'CINNAMAL',                   ko:'신남알'},
+ {cas:'104-54-1',  en:'CINNAMYL ALCOHOL',           ko:'신나밀알코올'},
+ {cas:'5392-40-5', en:'CITRAL',                     ko:'시트랄'},
+ {cas:'106-22-9',  en:'CITRONELLOL',                ko:'시트로넬올'},
+ {cas:'91-64-5',   en:'COUMARIN',                   ko:'쿠마린'},
+ {cas:'97-53-0',   en:'EUGENOL',                    ko:'유제놀'},
+ {cas:'90028-67-4',en:'TREEMOSS EXTRACT',           ko:'트리모스추출물'},
+ {cas:'90028-68-5',en:'OAKMOSS EXTRACT',            ko:'오크모스추출물'},
+ {cas:'4602-84-0', en:'FARNESOL',                   ko:'파네솔'},
+ {cas:'106-24-1',  en:'GERANIOL',                   ko:'제라니올'},
+ {cas:'101-86-0',  en:'HEXYL CINNAMAL',             ko:'헥실신남알'},
+ {cas:'107-75-5',  en:'HYDROXYCITRONELLAL',         ko:'하이드록시시트로넬알'},
+ {cas:'31906-04-4',en:'LYRAL (HICC)',               ko:'하이드록시이소헥실 3-사이클로헥센 카복스알데하이드'},
+ {cas:'97-54-1',   en:'ISOEUGENOL',                 ko:'이소유제놀'},
+ {cas:'5989-27-5', en:'d-LIMONENE',                 ko:'리모넨'},
+ {cas:'78-70-6',   en:'LINALOOL',                   ko:'리날룰'},
+ {cas:'111-12-6',  en:'METHYL HEPTINE CARBONATE',   ko:'메틸헵틴카보네이트'}
+];
+var TH_LEAVE = 0.001, TH_RINSE = 0.01; /* 완제품 기준 표기 임계값(%) */
+
+/* ════════ 1. UI 주입 ════════ */
+function injectUI(){
+  /* 원료 마스터: 특화 박스에 프로파일 버튼 */
+  var box = document.querySelector('#page-master-raw .bg-amber-50');
+  if(box && !$('alg-open-btn')){
+    var b = document.createElement('button');
+    b.id='alg-open-btn'; b.className='btn btn-secondary w-full btn-sm';
+    b.style.cssText='margin-top:4px;font-weight:800';
+    b.textContent='🧬 알레르겐 프로파일 관리 (26종 %)';
+    b.onclick=function(){ openAllergenProfileModal($('raw-edit-id') && $('raw-edit-id').value); };
+    box.appendChild(b);
+  }
+  /* 알레르겐 계산 페이지 안내 문구: 본체 템플릿 주입("원본 v2와 동일" 감지)이
+     끝난 뒤에만 갱신해야 함 — 먼저 바꾸면 본체 주입 조건이 깨짐 */
+  var pg = $('page-allergen-report');
+  if(pg && !pg.dataset.algUp && $('allergen-product2')){
+    pg.dataset.algUp='1';
+    var h2 = pg.querySelector('h2');
+    if(h2){
+      var note = document.createElement('div');
+      note.style.cssText='font-size:10.5px;color:#64748b;font-weight:600';
+      note.textContent='원료 프로파일 × BOM 배합비 → 완제품 함량 및 표기의무 자동 판정 (leave-on 0.001% / rinse-off 0.01%)';
+      h2.parentNode.insertBefore(note, h2.nextSibling);
+    }
+  }
+}
+
+/* ════════ 2. 프로파일 편집 모달 ════════ */
+window.openAllergenProfileModal = function(preferRawId){
+  if(!window.db) return;
+  var raws = (db.master.M_RAW||[]);
+  var opts = raws.map(function(r){
+    var has = r.allergenProfile && Object.keys(r.allergenProfile).some(function(k){ return N(r.allergenProfile[k])>0; });
+    return '<option value="'+r.rawId+'"'+(String(r.rawId)===String(preferRawId)?' selected':'')+'>'+(has?'🧬 ':'')+E(r.name)+'</option>';
+  }).join('');
+  var bg = document.createElement('div');
+  bg.id='alg-modal'; bg.className='mes-modal-bg';
+  bg.style.cssText = bg.className ? '' : 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px';
+  if(!document.querySelector('.mes-modal-bg')) bg.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px';
+  bg.innerHTML =
+  '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:92vh;overflow-y:auto;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:15px;color:#0f172a">🧬 알레르겐 프로파일 (EU 26종)</div>'+
+    '<div style="font-size:11px;color:#64748b;margin:4px 0 10px">공급사 성분표의 "Total in Fragrance Oil(%)" 값을 저장합니다.</div>'+
+    '<label style="font-size:10.5px;font-weight:800;color:#64748b">원료 선택</label>'+
+    '<select id="alg-raw-sel" class="input-field" style="margin-bottom:10px">'+opts+'</select>'+
+    '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:10px;margin-bottom:10px">'+
+      '<div style="font-size:10.5px;font-weight:800;color:#0f766e;margin-bottom:4px">📋 공급사 시트 붙여넣기 (한빛/에데카 XLS에서 성분 행 복사 → 붙여넣기 → 해석)</div>'+
+      '<textarea id="alg-paste" class="input-field" rows="3" placeholder="예: LINALOOL	78-70-6	2.0833"></textarea>'+
+      '<button class="btn btn-primary btn-sm w-full" style="margin-top:6px" onclick="parseAllergenPaste()">붙여넣기 해석 → 아래 표 채우기</button>'+
+      '<div id="alg-paste-msg" style="font-size:10.5px;font-weight:700;margin-top:4px"></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 90px;gap:4px;max-height:290px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px">'+
+      A26.map(function(a){
+        return '<div style="font-size:10.5px;font-weight:700;color:#334155;align-self:center">'+E(a.en)+'<span style="color:#94a3b8;font-weight:500"> '+a.cas+'</span></div>'+
+               '<input id="alg-'+a.cas+'" type="number" step="0.0001" min="0" class="input-field text-right" style="padding:3px 6px;font-size:11px" placeholder="0">';
+      }).join('')+
+    '</div>'+
+    '<div style="display:flex;gap:8px;margin-top:14px">'+
+      '<button class="btn btn-primary flex-1" onclick="saveAllergenProfile()">저장</button>'+
+      '<button class="btn btn-secondary" onclick="closeAllergenModal()">닫기</button>'+
+    '</div>'+
+  '</div>';
+  bg.onclick = closeAllergenModal;
+  document.body.appendChild(bg);
+  $('alg-raw-sel').onchange = loadProfileToForm;
+  loadProfileToForm();
+};
+window.closeAllergenModal = function(){ var m=$('alg-modal'); if(m) m.remove(); };
+
+function loadProfileToForm(){
+  var raw = (db.master.M_RAW||[]).find(function(r){ return String(r.rawId)===String($('alg-raw-sel').value); });
+  var p = (raw && raw.allergenProfile) || {};
+  A26.forEach(function(a){ var el=$('alg-'+a.cas); if(el) el.value = N(p[a.cas]) || ''; });
+}
+
+/* 공급사 시트 파싱: 각 행에서 CAS 번호를 앵커로 %값 추출 */
+window.parseAllergenPaste = function(){
+  var txt = ($('alg-paste').value||'');
+  var found = 0, unknown = [];
+  txt.split(/\r?\n/).forEach(function(line){
+    var m = line.match(/(\d{2,7}-\d{2}-\d)\b/);
+    if(!m) return;
+    var cas = m[1];
+    var def = A26.find(function(a){ return a.cas===cas; });
+    var after = line.slice(line.indexOf(cas)+cas.length);
+    var num = after.match(/-?\d+(?:[.,]\d+)?/);
+    if(!def){ if(num && parseFloat(num[0].replace(',','.'))>0) unknown.push(cas); return; }
+    if(!num) return;
+    var v = parseFloat(num[0].replace(',','.'));
+    var el = $('alg-'+cas);
+    if(el && isFinite(v)){ el.value = v || ''; found++; }
+  });
+  var msg = $('alg-paste-msg');
+  msg.style.color = found ? '#0f766e' : '#c0392b';
+  msg.textContent = found
+    ? '✅ '+found+'개 성분 인식 완료. 값 확인 후 [저장]을 누르세요.'+(unknown.length?' (26종 외 CAS 무시: '+unknown.join(', ')+')':'')
+    : '인식된 성분이 없습니다. 성분명·CAS·% 열이 포함되게 복사해 주세요.';
+};
+
+window.saveAllergenProfile = function(){
+  var raw = (db.master.M_RAW||[]).find(function(r){ return String(r.rawId)===String($('alg-raw-sel').value); });
+  if(!raw){ if(typeof toast==='function') toast('원료를 선택하세요','error'); return; }
+  var p = {}, cnt = 0;
+  A26.forEach(function(a){
+    var v = N($('alg-'+a.cas) && $('alg-'+a.cas).value);
+    if(v>0){ p[a.cas]=v; cnt++; }
+  });
+  raw.allergenProfile = p;
+  raw.isAllergen = cnt>0 || !!raw.isAllergen;
+  if(typeof logEvent==='function') logEvent('알레르겐 프로파일 저장: '+raw.name+' ('+cnt+'종)');
+  if(typeof toast==='function') toast(raw.name+' 프로파일 저장 ('+cnt+'종 검출)','success');
+  saveDB(); closeAllergenModal();
+  if(typeof renderRaw==='function') try{ renderRaw(); }catch(e){}
+};
+
+/* ════════ 3. 완제품 알레르겐 계산 + 표기의무 판정 (기존 페이지 업그레이드) ════════ */
+window.renderAllergen2 = function(){
+  var productId = Number($('allergen-product2') && $('allergen-product2').value);
+  var product = (typeof findProduct==='function') && findProduct(productId);
+  var wrap = $('allergen-result2'); if(!wrap) return;
+  if(!product){ wrap.innerHTML='<div class="text-slate-400 text-sm">제품을 선택하세요.</div>'; return; }
+
+  var bomRaws = (product.bom||[]).filter(function(r){ return r.type==='RAW'; });
+  /* ea당 원료 g: ERP 공통 수식(bomNeed, batchQty=1). 기준중량 = 충전량 or 원료합 */
+  var perEa = bomRaws.map(function(r){
+    return { raw: findRaw(r.itemId), g: (typeof bomNeed==='function') ? bomNeed(product, r, 1) : N(r.qty) };
+  });
+  var base = N(product.fillWeight) > 0 ? N(product.fillWeight) : perEa.reduce(function(s,x){ return s+x.g; },0);
+  if(base<=0){ wrap.innerHTML='<div class="text-sm text-slate-500">BOM에 원료가 없습니다.</div>'; return; }
+
+  /* 알레르겐별 합산: Σ (원료비중 × 원료 내 알레르겐%) */
+  var acc = {}, noProfile = [];
+  perEa.forEach(function(x){
+    if(!x.raw) return;
+    var frac = x.g / base; /* 완제품 내 원료 비중 (0~1) */
+    var p = x.raw.allergenProfile;
+    if(p && Object.keys(p).length){
+      Object.keys(p).forEach(function(cas){
+        var add = frac * N(p[cas]);
+        if(add>0){
+          if(!acc[cas]) acc[cas] = {pct:0, from:[]};
+          acc[cas].pct += add;
+          acc[cas].from.push(x.raw.name+' '+(frac*100).toFixed(1)+'%');
+        }
+      });
+    } else if (x.raw.isAllergen){
+      noProfile.push(x.raw.name);
+    }
+  });
+
+  var rows = Object.keys(acc).map(function(cas){
+    var def = A26.find(function(a){ return a.cas===cas; }) || {en:cas, ko:''};
+    var v = acc[cas].pct;
+    return { def:def, pct:v, from:acc[cas].from,
+      leave: v>=TH_LEAVE, rinse: v>=TH_RINSE };
+  }).sort(function(a,b){ return b.pct-a.pct; });
+
+  var mustLeave = rows.filter(function(r){ return r.leave; }).length;
+
+  var html = '';
+  html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
+    kpi(rows.length+'종', '검출 알레르겐') +
+    kpi(mustLeave+'종', 'leave-on 표기의무', mustLeave>0?'#c2410c':'#059669') +
+    kpi((N(product.fillWeight)>0?'충전량 '+product.fillWeight+'g':'원료합 기준'), '기준중량') +
+  '</div>';
+
+  if(noProfile.length){
+    html += '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;font-size:11px;font-weight:700;color:#92400e;margin-bottom:10px">⚠ 프로파일 미입력 알레르겐 원료: '+noProfile.map(E).join(', ')+' — 🧬 버튼으로 공급사 성분표를 등록해야 판정이 완전해집니다.</div>';
+  }
+
+  html += rows.length
+    ? '<table><thead><tr><th class="pl-3">알레르겐 (INCI)</th><th>국문 표시명</th><th class="text-right">완제품 함량(%)</th><th class="text-center">향수·크림 등<br>leave-on ≥0.001%</th><th class="text-center">워시오프<br>rinse-off ≥0.01%</th><th>기여 원료</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        return '<tr><td class="pl-3 font-bold text-xs">'+E(r.def.en)+'<div style="color:#94a3b8;font-weight:500">'+r.def.cas+'</div></td>'+
+          '<td class="text-xs">'+E(r.def.ko)+'</td>'+
+          '<td class="text-right text-xs font-bold">'+r.pct.toFixed(4)+'</td>'+
+          '<td class="text-center">'+(r.leave?'<span style="color:#c2410c;font-weight:900">표기</span>':'<span style="color:#94a3b8">면제</span>')+'</td>'+
+          '<td class="text-center">'+(r.rinse?'<span style="color:#c2410c;font-weight:900">표기</span>':'<span style="color:#94a3b8">면제</span>')+'</td>'+
+          '<td class="text-xs" style="color:#64748b">'+r.from.map(E).join('<br>')+'</td></tr>';
+      }).join('')+'</tbody></table>'
+    : '<div class="text-sm text-slate-500 py-3">검출된 알레르겐이 없습니다.'+(noProfile.length?' (단, 미입력 원료 존재)':'')+'</div>';
+
+  if(mustLeave>0){
+    html += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;margin-top:10px;font-size:11.5px;color:#166534"><b>📋 전성분 표기 문구(leave-on):</b> '+
+      rows.filter(function(r){ return r.leave; }).map(function(r){ return r.def.ko||r.def.en; }).join(', ')+'</div>';
+  }
+  wrap.innerHTML = html;
+
+  function kpi(v,l,c){ return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;min-width:120px"><div style="font-size:16px;font-weight:900;color:'+(c||'#0f172a')+'">'+v+'</div><div style="font-size:10px;font-weight:700;color:#64748b">'+l+'</div></div>'; }
+};
+
+function boot(){ injectUI(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot, 1500);
+var _init = window.initNewPage;
+window.initNewPage = function(pageId){
+  try{ if(typeof _init==='function') _init(pageId); }catch(e){}
+  if(pageId==='master-raw' || pageId==='allergen-report') injectUI();
+};
+})();
+</script>
+
 
 </body>
  
