@@ -8225,9 +8225,12 @@ window.openAllergenProfileModal = function(preferRawId){
     '<label style="font-size:10.5px;font-weight:800;color:#64748b">원료 선택</label>'+
     '<select id="alg-raw-sel" class="input-field" style="margin-bottom:10px">'+opts+'</select>'+
     '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:10px;margin-bottom:10px">'+
-      '<div style="font-size:10.5px;font-weight:800;color:#0f766e;margin-bottom:4px">📋 공급사 시트 붙여넣기 (한빛/에데카 XLS에서 성분 행 복사 → 붙여넣기 → 해석)</div>'+
-      '<textarea id="alg-paste" class="input-field" rows="3" placeholder="예: LINALOOL	78-70-6	2.0833"></textarea>'+
-      '<button class="btn btn-primary btn-sm w-full" style="margin-top:6px" onclick="parseAllergenPaste()">붙여넣기 해석 → 아래 표 채우기</button>'+
+      '<div style="font-size:10.5px;font-weight:800;color:#0f766e;margin-bottom:6px">📂 공급사 알레르겐 성분표(XLS/XLSX)를 그대로 업로드하세요</div>'+
+      '<button class="btn btn-primary btn-sm w-full" onclick="document.getElementById(\'alg-file\').click()">알레르겐 XLS 업로드 → 자동 인식</button>'+
+      '<input type="file" id="alg-file" accept=".xls,.xlsx" style="display:none">'+
+      '<div style="font-size:10px;color:#64748b;margin:8px 0 4px;font-weight:700">또는 시트에서 성분 행 복사 → 붙여넣기:</div>'+
+      '<textarea id="alg-paste" class="input-field" rows="2" placeholder="예: LINALOOL	78-70-6	2.0833"></textarea>'+
+      '<button class="btn btn-secondary btn-sm w-full" style="margin-top:6px" onclick="parseAllergenPaste()">붙여넣기 해석</button>'+
       '<div id="alg-paste-msg" style="font-size:10.5px;font-weight:700;margin-top:4px"></div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:1fr 90px;gap:4px;max-height:290px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px">'+
@@ -8244,6 +8247,7 @@ window.openAllergenProfileModal = function(preferRawId){
   bg.onclick = closeAllergenModal;
   document.body.appendChild(bg);
   $('alg-raw-sel').onchange = loadProfileToForm;
+  $('alg-file').onchange = function(e){ uploadAllergenXls(e.target.files && e.target.files[0]); e.target.value=''; };
   loadProfileToForm();
 };
 window.closeAllergenModal = function(){ var m=$('alg-modal'); if(m) m.remove(); };
@@ -8254,16 +8258,15 @@ function loadProfileToForm(){
   A26.forEach(function(a){ var el=$('alg-'+a.cas); if(el) el.value = N(p[a.cas]) || ''; });
 }
 
-/* 공급사 시트 파싱: 각 행에서 CAS 번호를 앵커로 %값 추출 */
-window.parseAllergenPaste = function(){
-  var txt = ($('alg-paste').value||'');
+/* 공통 파싱 파이프라인: 텍스트 행 배열에서 CAS 앵커로 %값 추출 → 폼 채움 */
+function applyAllergenLines(lines, srcLabel){
   var found = 0, unknown = [];
-  txt.split(/\r?\n/).forEach(function(line){
-    var m = line.match(/(\d{2,7}-\d{2}-\d)\b/);
+  lines.forEach(function(line){
+    var m = String(line).match(/(\d{2,7}-\d{2}-\d)\b/);
     if(!m) return;
     var cas = m[1];
     var def = A26.find(function(a){ return a.cas===cas; });
-    var after = line.slice(line.indexOf(cas)+cas.length);
+    var after = String(line).slice(String(line).indexOf(cas)+cas.length);
     var num = after.match(/-?\d+(?:[.,]\d+)?/);
     if(!def){ if(num && parseFloat(num[0].replace(',','.'))>0) unknown.push(cas); return; }
     if(!num) return;
@@ -8272,10 +8275,41 @@ window.parseAllergenPaste = function(){
     if(el && isFinite(v)){ el.value = v || ''; found++; }
   });
   var msg = $('alg-paste-msg');
-  msg.style.color = found ? '#0f766e' : '#c0392b';
-  msg.textContent = found
-    ? '✅ '+found+'개 성분 인식 완료. 값 확인 후 [저장]을 누르세요.'+(unknown.length?' (26종 외 CAS 무시: '+unknown.join(', ')+')':'')
-    : '인식된 성분이 없습니다. 성분명·CAS·% 열이 포함되게 복사해 주세요.';
+  if(msg){
+    msg.style.color = found ? '#0f766e' : '#c0392b';
+    msg.textContent = found
+      ? '✅ '+(srcLabel||'')+' '+found+'개 성분 인식 완료. 값 확인 후 [저장]을 누르세요.'+(unknown.length?' (26종 외 CAS 무시: '+unknown.join(', ')+')':'')
+      : '인식된 성분이 없습니다. 성분명·CAS·% 열이 포함되어 있는지 확인해 주세요.';
+  }
+  return found;
+}
+
+window.parseAllergenPaste = function(){
+  applyAllergenLines(($('alg-paste').value||'').split(/\r?\n/), '붙여넣기:');
+};
+
+/* XLS/XLSX 직접 업로드: 본체에 이미 로드된 SheetJS(window.XLSX) 사용 */
+window.uploadAllergenXls = function(file){
+  if(!file) return;
+  if(!window.XLSX){
+    var msg=$('alg-paste-msg'); if(msg){ msg.style.color='#c0392b'; msg.textContent='엑셀 파서 로드 실패 — 새로고침 후 다시 시도하거나 붙여넣기 방식을 사용하세요.'; }
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      var wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+      var lines = [];
+      wb.SheetNames.forEach(function(sn){
+        var rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:'', raw:true});
+        rows.forEach(function(r){ lines.push(r.map(function(c){ return c==null?'':String(c); }).join('\t')); });
+      });
+      applyAllergenLines(lines, '파일 "'+file.name+'":');
+    }catch(err){
+      var msg=$('alg-paste-msg'); if(msg){ msg.style.color='#c0392b'; msg.textContent='파일 해석 실패: '+err; }
+    }
+  };
+  reader.readAsArrayBuffer(file);
 };
 
 window.saveAllergenProfile = function(){
@@ -8380,6 +8414,7 @@ window.initNewPage = function(pageId){
 };
 })();
 </script>
+
 
 
 </body>
