@@ -1,10 +1,13 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v1.1 — 노즈 (2026-07-20)
+   SHIFTI ERP 확장 모듈 nose-modules.js v1.3 — 노즈 (2026-07-20)
    포함: ① MES(작업지시·수율·캘린더·간트) ② 알레르겐 프로파일
-         ③ 규제문서 출력 ④ 거래명세서·부가세·QR라벨 ⑤ 문서센터
-   v1.1: 메뉴 자가복구 — 클라우드 로드·화면 갱신으로 메뉴가 늦게 뜨거나
-         사라지는 경우 90초간 3초마다 자동 재주입
-   설치: index.html은 그대로 두고, 이 파일만 저장소에서 통째로 교체
+         ③ 규제문서 출력 ④ 거래명세서·부가세·QR라벨
+         ⑤ 문서센터(단일 관문) ⑥ ☀️ 오늘 할 일 위젯 (대시보드)
+   v1.3: 대시보드 상단 "오늘 할 일" — QC 대기·숙성완료·안전재고 미달·
+         유통기한 임박·작업지시·입고지연·오늘 생산계획을 실시간 집계,
+         카드 클릭 시 해당 화면으로 즉시 이동
+   v1.2: 사이드바 신규 메뉴 3개로 UX 통합 / v1.1: 메뉴 자가복구
+   설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -752,7 +755,10 @@ function injectUI(){
   var sec = document.createElement('section');
   sec.id='page-mfds-docs'; sec.className='page-section space-y-4';
   sec.innerHTML =
-    '<h2 class="text-lg font-black text-slate-800">규제문서 출력 (식약처 의무기록)</h2>'+
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<span onclick="goPage(\'doc-center\')" style="cursor:pointer;font-size:11px;font-weight:800;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:4px 10px">← 문서센터</span>'+
+      '<h2 class="text-lg font-black text-slate-800" style="margin:0">규제문서 출력 (식약처 의무기록)</h2>'+
+    '</div>'+
     '<div style="font-size:10.5px;color:#64748b;font-weight:600">화장품법 시행규칙 제11조①2호 — 제조관리기록서·품질관리기록서를 ERP 데이터로 자동 생성해 인쇄(PDF 저장)합니다.</div>'+
     '<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">'+
       '<div class="card p-4 space-y-3">'+
@@ -770,15 +776,8 @@ function injectUI(){
     '</div>'+
     '<div style="font-size:10px;color:#94a3b8">※ 인쇄 창에서 "PDF로 저장"을 선택하면 전자문서로 보관됩니다. 보존기간: 최소 5년.</div>';
   anchor.parentNode.insertBefore(sec, anchor.nextSibling);
-
-  var nav = $('nav-allergen-report');
-  if(nav && !$('nav-mfds-docs')){
-    var n = document.createElement('div');
-    n.id='nav-mfds-docs'; n.className='nav-item'; n.setAttribute('onclick',"goPage('mfds-docs')");
-    n.innerHTML='<i data-lucide="file-check-2" class="w-4 h-4 shrink-0"></i> 규제문서 출력 🆕';
-    nav.parentNode.insertBefore(n, nav.nextSibling);
-    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
-  }
+  /* v1.2: 별도 사이드바 메뉴 없음 — 문서센터 카탈로그에서 진입 (UX 통합) */
+  var legacyNav = $('nav-mfds-docs'); if(legacyNav) legacyNav.remove();
 }
 
 function fillSelectors(){
@@ -977,7 +976,10 @@ function injectUI(){
   var sec = document.createElement('section');
   sec.id='page-trade-docs'; sec.className='page-section space-y-4';
   sec.innerHTML =
-    '<h2 class="text-lg font-black text-slate-800">거래서류 발행 (명세서 · 부가세 기초)</h2>'+
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<span onclick="goPage(\'doc-center\')" style="cursor:pointer;font-size:11px;font-weight:800;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:4px 10px">← 문서센터</span>'+
+      '<h2 class="text-lg font-black text-slate-800" style="margin:0">거래서류 발행 (명세서 · 부가세 기초)</h2>'+
+    '</div>'+
     '<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">'+
       '<div class="card p-4 space-y-3">'+
         '<h3 class="font-bold text-slate-700 text-sm">🧾 거래명세서 발행</h3>'+
@@ -1006,15 +1008,8 @@ function injectUI(){
       '</div>'+
     '</div>';
   anchor.parentNode.insertBefore(sec, anchor.nextSibling);
-
-  var nav = $('nav-mfds-docs') || $('nav-allergen-report');
-  if(nav && !$('nav-trade-docs')){
-    var n = document.createElement('div');
-    n.id='nav-trade-docs'; n.className='nav-item'; n.setAttribute('onclick',"goPage('trade-docs')");
-    n.innerHTML='<i data-lucide="receipt-text" class="w-4 h-4 shrink-0"></i> 거래서류 발행 🆕';
-    nav.parentNode.insertBefore(n, nav.nextSibling);
-    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
-  }
+  /* v1.2: 별도 사이드바 메뉴 없음 — 문서센터 카탈로그에서 진입 (UX 통합) */
+  var legacyNav = $('nav-trade-docs'); if(legacyNav) legacyNav.remove();
 }
 function fillTd(){
   var cs = $('td-cust');
@@ -1284,14 +1279,25 @@ function docHead(title, sub){
 function ensureLog(){ if(window.db){ db.txn = db.txn||{}; db.txn.T_CHECKLOG = db.txn.T_CHECKLOG||[]; } }
 
 /* ════════ 문서센터 페이지 (카탈로그 UI) ════════ */
-var CATALOG = [
-  {icon:'📦', title:'월간 원자재 수불부', desc:'기초·입고·사용·기말 자동 집계 (원료/포장재)', act:'openLedgerReport()'},
-  {icon:'🏭', title:'생산월보', desc:'배합·충진·QC 실적 월간 요약', act:'openProdMonthly()'},
-  {icon:'📅', title:'연간 생산실적 집계표', desc:'식약처 생산실적 보고(매년 2월) 기초자료', act:'openAnnualReport()'},
-  {icon:'🔍', title:'LOT 추적성 패키지', desc:'제조기록+QC+원료CoA+알레르겐 일괄 출력 (감사·리콜)', act:'openTracePack()'},
-  {icon:'🧼', title:'위생점검일지', desc:'일일 위생점검 입력 + 월별 일지 출력', act:"openCheckLog('위생')"},
-  {icon:'⚙️', title:'설비점검일지', desc:'월 1회 설비점검 입력 + 일지 출력 (기준서 3항 근거)', act:"openCheckLog('설비')"},
-  {icon:'🎓', title:'교육이수 대장', desc:'법정·사내 교육 기록 + 대장 출력', act:"openCheckLog('교육')"}
+/* ════════ 문서센터 페이지 (그룹형 카탈로그 — 모든 문서의 단일 관문) ════════ */
+var CATALOG_GROUPS = [
+  { title:'📆 정기 일지 (기간 선택 → 자동 생성)', items:[
+    {icon:'📦', title:'월간 원자재 수불부', desc:'기초·입고·사용·기말 자동 집계 (원료/포장재)', act:'openLedgerReport()'},
+    {icon:'🏭', title:'생산월보', desc:'배합·충진·QC 실적 월간 요약', act:'openProdMonthly()'},
+    {icon:'📅', title:'연간 생산실적 집계표', desc:'식약처 생산실적 보고(매년 2월) 기초자료', act:'openAnnualReport()'}
+  ]},
+  { title:'🏷 LOT 기록 (식약처 의무·감사 대응)', items:[
+    {icon:'📄', title:'제조·품질관리기록서', desc:'LOT 선택 → 배치기록·시험기록 인쇄', act:"goPage('mfds-docs')"},
+    {icon:'🔍', title:'LOT 추적성 패키지', desc:'제조기록+QC+원료CoA+알레르겐 일괄 출력 (리콜 대응)', act:'openTracePack()'}
+  ]},
+  { title:'🧾 거래 서류', items:[
+    {icon:'🧾', title:'거래명세서 · 부가세 기초', desc:'고객·기간 선택 → 명세서 인쇄, 월별 매출·매입 대사표', act:"goPage('trade-docs')"}
+  ]},
+  { title:'🧼 점검 · 교육 기록', items:[
+    {icon:'🧼', title:'위생점검일지', desc:'일일 위생점검 입력 + 월별 일지 출력', act:"openCheckLog('위생')"},
+    {icon:'⚙️', title:'설비점검일지', desc:'월 1회 설비점검 입력 + 일지 출력 (기준서 3항 근거)', act:"openCheckLog('설비')"},
+    {icon:'🎓', title:'교육이수 대장', desc:'법정·사내 교육 기록 + 대장 출력', act:"openCheckLog('교육')"}
+  ]}
 ];
 function injectUI(){
   if($('page-doc-center')) return;
@@ -1300,22 +1306,26 @@ function injectUI(){
   var sec = document.createElement('section');
   sec.id='page-doc-center'; sec.className='page-section space-y-4';
   sec.innerHTML =
-    '<h2 class="text-lg font-black text-slate-800">문서센터 (기간 일지 · 추적성 · 점검기록)</h2>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">'+
-    CATALOG.map(function(c){
-      return '<div class="card p-4" style="cursor:pointer" onclick="'+c.act+'">'+
-        '<div style="font-size:22px">'+c.icon+'</div>'+
-        '<div style="font-weight:900;font-size:13px;color:#0f172a;margin:4px 0 2px">'+c.title+'</div>'+
-        '<div style="font-size:10.5px;color:#64748b;line-height:1.5">'+c.desc+'</div></div>';
-    }).join('')+'</div>'+
+    '<h2 class="text-lg font-black text-slate-800">📚 문서센터</h2>'+
+    '<div style="font-size:10.5px;color:#64748b;font-weight:600">모든 서류가 여기 있습니다 — 정기 일지 · 식약처 기록 · 거래 서류 · 점검일지를 한 곳에서 출력합니다.</div>'+
+    CATALOG_GROUPS.map(function(g){
+      return '<div style="font-size:12px;font-weight:900;color:#334155;margin:14px 0 6px;border-bottom:2px solid #e2e8f0;padding-bottom:3px">'+g.title+'</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'+
+        g.items.map(function(c){
+          return '<div class="card p-4" style="cursor:pointer" onclick="'+c.act+'">'+
+            '<div style="font-size:20px">'+c.icon+'</div>'+
+            '<div style="font-weight:900;font-size:12.5px;color:#0f172a;margin:3px 0 2px">'+c.title+'</div>'+
+            '<div style="font-size:10.5px;color:#64748b;line-height:1.5">'+c.desc+'</div></div>';
+        }).join('')+'</div>';
+    }).join('')+
     '<div id="dc-panel"></div>';
   anchor.parentNode.insertBefore(sec, anchor.nextSibling);
 
-  var nav = $('nav-trade-docs') || $('nav-mfds-docs') || $('nav-allergen-report');
+  var nav = $('nav-allergen-report');
   if(nav && !$('nav-doc-center')){
     var n = document.createElement('div');
     n.id='nav-doc-center'; n.className='nav-item'; n.setAttribute('onclick',"goPage('doc-center')");
-    n.innerHTML='<i data-lucide="library-big" class="w-4 h-4 shrink-0"></i> 문서센터 🆕';
+    n.innerHTML='<i data-lucide="library-big" class="w-4 h-4 shrink-0"></i> 📚 문서센터';
     nav.parentNode.insertBefore(n, nav.nextSibling);
     try{ if(window.lucide) lucide.createIcons(); }catch(e){}
   }
@@ -1462,12 +1472,12 @@ window.printTracePack = function(){
 
   /* 원료 LOT + CoA 체크 */
   var matRows='';
-  ((bulk&&bulk.materials)||[]).forEach(function(m,i){
+  ((bulk && bulk.materials)||[]).forEach(function(m){
     var raw = m.type!=='PACK' && (typeof findRaw==='function') && findRaw(m.itemId);
     var pk  = m.type==='PACK' && (typeof findPack==='function') && findPack(m.itemId);
     var nm = (raw&&raw.name)||(pk&&pk.name)||m.itemId;
     (m.lots||[{lotNo:'-',take:m.need}]).forEach(function(l){
-      matRows+='<tr><td class="c">'+(++i,'')+E(m.type||'RAW')+'</td><td>'+E(nm)+'</td><td class="c">'+E(l.lotNo)+'</td><td class="r">'+F2(l.take)+'</td><td class="c">□ 보관확인</td></tr>';
+      matRows+='<tr><td class="c">'+E(m.type||'RAW')+'</td><td>'+E(nm)+'</td><td class="c">'+E(l.lotNo)+'</td><td class="r">'+F2(l.take)+'</td><td class="c">□ 보관확인</td></tr>';
     });
   });
   ((batch.consumedLots)||[]).forEach(function(m){
@@ -1613,4 +1623,106 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot, 1500);
 var __dcKeep = setInterval(function(){ try{ injectUI(); }catch(e){} }, 3000);
 setTimeout(function(){ clearInterval(__dcKeep); }, 90000);
+})();
+
+/* ═══════════ 모듈: 오늘 할 일 위젯 패치 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
+var todayStr = function(){ return new Date().toISOString().split('T')[0]; };
+function plusDays(d){ var t=new Date(); t.setDate(t.getDate()+d); return t.toISOString().split('T')[0]; }
+
+/* 안전재고용 현재고 합산 (FAIL 제외) */
+function stockOf(type, itemId){
+  var map = { RAW:['RAW_LOT','rawId'], PACK:['PACK_LOT','packId'], FGT:['FGT_LOT','productId'], BULK:['BULK_LOT','productId'] };
+  var m = map[type]; if(!m || !window.db || !db.stock) return 0;
+  return (db.stock[m[0]]||[]).filter(function(l){ return String(l[m[1]])===String(itemId) && String(l.status||'OK').toUpperCase()!=='FAIL'; })
+    .reduce(function(s,l){ return s+N(l.remaining); },0);
+}
+
+function metrics(){
+  var t = todayStr(), soon = plusDays(30);
+  var qcWait = (db.stock.FGT_LOT||[]).filter(function(l){ return String(l.status||'').toUpperCase()==='HOLD'; }).length;
+  var matured = (db.stock.BULK_LOT||[]).filter(function(l){ return String(l.status||'').toUpperCase()==='HOLD' && l.matureUntil && l.matureUntil<=t && N(l.remaining)>0; }).length;
+  var safety = (db.master.M_SAFETY_STOCK||[]).filter(function(x){ return stockOf(x.type,x.itemId) < N(x.minQty); }).length;
+  var expiring = [].concat(db.stock.RAW_LOT||[], db.stock.PACK_LOT||[]).filter(function(l){
+    return N(l.remaining)>0 && String(l.status||'OK').toUpperCase()!=='FAIL' && l.expDate && l.expDate<=soon;
+  }).length;
+  var woWait = (db.txn.T_WORK_ORDER||[]).filter(function(w){ return (w.status||'대기')==='대기'; }).length;
+  var woRun  = (db.txn.T_WORK_ORDER||[]).filter(function(w){ return w.status==='진행중'; }).length;
+  var poDue = (db.txn.T_PO||[]).filter(function(p){ return p.status!=='입고완료' && p.dueDate && p.dueDate<=t; }).length;
+  var planToday = (db.txn.T_PROD_PLAN||[]).filter(function(p){ return p.date===t && p.status!=='완료'; }).length;
+  return [
+    {n:qcWait,   icon:'🧪', label:'QC 대기 완제품', unit:'LOT', page:'qc-prod',      urgent:qcWait>0},
+    {n:matured,  icon:'🫙', label:'숙성완료 · 충진 가능', unit:'LOT', page:'t-batch', urgent:false},
+    {n:safety,   icon:'📉', label:'안전재고 미달', unit:'품목', page:'safety-stock',  urgent:safety>0},
+    {n:expiring, icon:'⏰', label:'유통기한 30일 임박', unit:'LOT', page:'stock',     urgent:expiring>0},
+    {n:woWait+woRun, icon:'🔧', label:'작업지시 (대기 '+woWait+' · 진행 '+woRun+')', unit:'건', page:'work-order', urgent:false},
+    {n:poDue,    icon:'🚚', label:'입고 예정·지연 발주', unit:'건', page:'purchase-order', urgent:poDue>0},
+    {n:planToday,icon:'📋', label:'오늘 생산계획', unit:'건', page:'prod-schedule',  urgent:false}
+  ];
+}
+
+function render(){
+  var host = $('page-dashboard');
+  if(!host || !window.db) return;
+  var box = $('nose-todo-widget');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'nose-todo-widget';
+    box.style.cssText = 'margin-bottom:14px';
+    host.insertBefore(box, host.firstChild);
+  }
+  var ms = metrics();
+  var total = ms.reduce(function(s,m){ return s+(m.urgent?m.n:0); },0);
+  box.innerHTML =
+    '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">'+
+      '<span style="font-size:14px;font-weight:900;color:#0f172a">☀️ 오늘 할 일</span>'+
+      '<span style="font-size:10.5px;font-weight:700;color:'+(total>0?'#c2410c':'#059669')+'">'+
+        (total>0 ? '긴급 처리 '+total+'건' : '긴급 사항 없음 — 좋은 아침입니다, 주인님')+'</span>'+
+      '<span style="font-size:9.5px;color:#94a3b8;margin-left:auto">'+todayStr()+' · 실시간</span>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">'+
+    ms.map(function(m){
+      var zero = m.n===0;
+      var col = m.urgent ? '#c2410c' : zero ? '#94a3b8' : '#0f766e';
+      var bg  = m.urgent ? '#fff7ed' : '#ffffff';
+      var bd  = m.urgent ? '#fdba74' : '#e2e8f0';
+      return '<div onclick="goPage(\''+m.page+'\')" style="cursor:pointer;background:'+bg+';border:1.5px solid '+bd+';border-radius:12px;padding:10px 12px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between">'+
+          '<span style="font-size:16px">'+m.icon+'</span>'+
+          '<span style="font-size:20px;font-weight:900;color:'+col+'">'+m.n+'<span style="font-size:10px;font-weight:700;color:#94a3b8"> '+m.unit+'</span></span>'+
+        '</div>'+
+        '<div style="font-size:10.5px;font-weight:800;color:#334155;margin-top:3px;line-height:1.35">'+m.label+'</div>'+
+      '</div>';
+    }).join('')+'</div>';
+}
+
+/* 대시보드 진입 시마다 + 데이터 저장 시마다 갱신 */
+var _init = window.initNewPage;
+window.initNewPage = function(pageId){
+  try{ if(typeof _init==='function') _init(pageId); }catch(e){}
+  if(pageId==='dashboard') render();
+};
+/* saveDB 후 자동 갱신 (대시보드가 열려 있을 때) */
+setTimeout(function(){
+  if(typeof window.saveDB==='function' && !window.saveDB.__todoWrap){
+    var _s = window.saveDB;
+    window.saveDB = function(){
+      var r = _s.apply(this, arguments);
+      try{ if($('page-dashboard') && $('page-dashboard').classList.contains('active')) render(); }catch(e){}
+      return r;
+    };
+    window.saveDB.__todoWrap = true;
+  }
+}, 1200);
+
+function boot(){ render(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot, 1500);
+var __todoKeep = setInterval(render, 3000);
+setTimeout(function(){ clearInterval(__todoKeep); }, 90000);
+/* 이후에는 1분 주기로 가볍게 갱신 (날짜·임박 상태 반영) */
+setInterval(function(){ try{ if($('page-dashboard') && $('page-dashboard').classList.contains('active')) render(); }catch(e){} }, 60000);
 })();
