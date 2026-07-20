@@ -1,10 +1,10 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v1.0 — 노즈 (2026-07-17)
+   SHIFTI ERP 확장 모듈 nose-modules.js v1.1 — 노즈 (2026-07-20)
    포함: ① MES(작업지시·수율·캘린더·간트) ② 알레르겐 프로파일
          ③ 규제문서 출력 ④ 거래명세서·부가세·QR라벨 ⑤ 문서센터
-   설치: index.html의 </body> 바로 위에 아래 "한 줄"만 추가
-     <script src="nose-modules.js"></script>
-   업데이트: 이 파일만 새 버전으로 통째 교체 (index.html은 다시 안 건드림)
+   v1.1: 메뉴 자가복구 — 클라우드 로드·화면 갱신으로 메뉴가 늦게 뜨거나
+         사라지는 경우 90초간 3초마다 자동 재주입
+   설치: index.html은 그대로 두고, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -453,7 +453,9 @@ function boot(){
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();
-/* 클라우드 로드가 늦게 끝나는 경우 대비 재시도 */
+/* 클라우드 로드·화면 갱신으로 주입이 밀리거나 지워지는 경우 대비: 90초간 3초마다 자가복구 */
+var __mesKeep = setInterval(injectPages, 3000);
+setTimeout(function(){ clearInterval(__mesKeep); }, 90000);
 setTimeout(boot, 1500);
 setTimeout(function(){ try{ renderWorkOrder(); }catch(e){} }, 3000);
 })();
@@ -724,6 +726,8 @@ window.renderAllergen2 = function(){
 function boot(){ injectUI(); }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 setTimeout(boot, 1500);
+var __algKeep = setInterval(function(){ try{ injectUI(); }catch(e){} }, 3000);
+setTimeout(function(){ clearInterval(__algKeep); }, 90000);
 var _init = window.initNewPage;
 window.initNewPage = function(pageId){
   try{ if(typeof _init==='function') _init(pageId); }catch(e){}
@@ -933,6 +937,8 @@ window.initNewPage = function(pageId){
 function boot(){ injectUI(); }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 setTimeout(boot, 1500);
+var __mfdsKeep = setInterval(function(){ try{ injectUI(); }catch(e){} }, 3000);
+setTimeout(function(){ clearInterval(__mfdsKeep); }, 90000);
 })();
 
 /* ═══════════ 모듈: 거래명세서 발행 + QR LOT 라벨 패치 v1.0 ═══════════ */
@@ -1213,6 +1219,8 @@ function boot(){ injectUI(); checkHash(); watchLabelPreview(); }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 setTimeout(injectUI, 1500);
 setTimeout(watchLabelPreview, 1500);
+var __tqKeep = setInterval(function(){ try{ injectUI(); watchLabelPreview(); }catch(e){} }, 3000);
+setTimeout(function(){ clearInterval(__tqKeep); }, 90000);
 })();
 
 /* ═══════════ 모듈: 문서센터 패치 v1.0 ═══════════ */
@@ -1603,4 +1611,6 @@ window.initNewPage = function(pageId){
 function boot(){ injectUI(); fetchUser(); ensureLog(); }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 setTimeout(boot, 1500);
+var __dcKeep = setInterval(function(){ try{ injectUI(); }catch(e){} }, 3000);
+setTimeout(function(){ clearInterval(__dcKeep); }, 90000);
 })();
