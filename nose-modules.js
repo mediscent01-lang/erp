@@ -1,9 +1,9 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v1.4 — 노즈 (2026-07-20)
+   SHIFTI ERP 확장 모듈 nose-modules.js v1.5 — 노즈 (2026-07-20)
    포함: ① MES ② 알레르겐 ③ 규제문서 ④ 거래명세서·QR
-         ⑤ 문서센터 ⑥ 오늘 할 일 위젯 ⑦ 🏬 위치 재고(창고·인사동)
-   v1.4: 완제품 위치 관리 — 위치별 현황 매트릭스, 창고↔인사동 이관
-         (QC 적합만·이력 기록), 수기 기초재고 등록, 판매 LOT 위치 태그
+         ⑤ 문서센터 ⑥ 오늘 할 일 ⑦ 위치 재고 + LOT 관리
+   v1.5: 재고 새 출발 도구 — LOT 개별 수정(잔량·단가·상태·위치·기한)·
+         삭제, 전체 초기화(자동 백업 다운로드 + 2중 확인, 이력 삭제 옵션)
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -1778,7 +1778,18 @@ function injectUI(){
     '</div>'+
     '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">이동 이력</h3><span class="badge-soft" id="mv-count">0</span></div>'+
       '<div class="scroll-card"><table><thead><tr><th class="pl-3">일자</th><th>LOT</th><th>제품</th><th class="text-right">수량</th><th>이동</th><th>비고</th></tr></thead>'+
-      '<tbody id="mv-history"></tbody></table></div></div>';
+      '<tbody id="mv-history"></tbody></table></div></div>'+
+    '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">🛠 LOT 관리 (수정 · 삭제)</h3>'+
+      '<select id="lm-type" class="input-field" style="width:130px;padding:3px 8px"><option value="RAW_LOT">원료</option><option value="PACK_LOT">포장재</option><option value="BULK_LOT">벌크</option><option value="FGT_LOT" selected>완제품</option></select></div>'+
+      '<div class="scroll-card"><table><thead><tr><th class="pl-3">LOT</th><th>품목</th><th class="text-right">잔량</th><th>상태</th><th>위치/기한</th><th class="text-right pr-3">관리</th></tr></thead>'+
+      '<tbody id="lm-list"></tbody></table></div></div>'+
+    '<div class="card p-4 space-y-2" style="border:1.5px solid #fca5a5;background:#fff7f7">'+
+      '<h3 class="font-bold text-sm" style="color:#b91c1c">⚠️ 전체 초기화 (새 출발)</h3>'+
+      '<div style="font-size:10.5px;color:#7f1d1d">기존 재고를 전부 지우고 실사 수량으로 새로 시작할 때 사용합니다. 실행 전 <b>백업 파일이 자동 다운로드</b>됩니다.</div>'+
+      '<label style="font-size:11px;font-weight:700;display:block"><input type="checkbox" id="wipe-txn"> 재고 이력도 삭제 (입고·배합·충진·이관 기록)</label>'+
+      '<label style="font-size:11px;font-weight:700;display:block"><input type="checkbox" id="wipe-sale"> 판매(출고) 기록도 삭제 — 매출·명세서 이력이 사라집니다</label>'+
+      '<button class="btn w-full" style="background:#dc2626;color:#fff;font-weight:800" onclick="wipeAllStock()">모든 재고 LOT 삭제 후 새로 시작</button>'+
+    '</div>';
   anchor.parentNode.insertBefore(sec, anchor.nextSibling);
 
   var nav = $('nav-safety-stock');
@@ -1790,6 +1801,7 @@ function injectUI(){
     try{ if(window.lucide) lucide.createIcons(); }catch(e){}
   }
   var dir = $('mv-dir'); if(dir) dir.onchange = fillMoveLots;
+  var lm = $('lm-type'); if(lm) lm.onchange = renderLotManager;
 }
 
 /* ════════ 렌더 ════════ */
@@ -1892,6 +1904,120 @@ window.saveInitStock = function(){
   saveDB(); renderLocPage();
 };
 
+/* ════════ LOT 관리: 목록·수정·삭제 ════════ */
+function lotName(key, l){
+  if(key==='RAW_LOT'){ var r=(db.master.M_RAW||[]).find(function(x){return x.rawId===l.rawId;}); return r?r.name:l.rawId; }
+  if(key==='PACK_LOT'){ var p=(db.master.M_PACK||[]).find(function(x){return x.packId===l.packId;}); return p?p.name:l.packId; }
+  var pr=(db.master.M_PRODUCT||[]).find(function(x){return x.productId===l.productId;}); return pr?pr.name:l.productId;
+}
+window.renderLotManager = function(){
+  var tb = $('lm-list'); if(!tb) return;
+  var key = ($('lm-type')||{}).value || 'FGT_LOT';
+  var arr = (db.stock[key]||[]);
+  tb.innerHTML = arr.slice().reverse().map(function(l){
+    var st = String(l.status||'OK').toUpperCase();
+    var stC = st==='OK'?'#059669':st==='FAIL'?'#dc2626':'#d97706';
+    var extra = key==='FGT_LOT' ? (l.location||'창고') : (l.expDate||l.matureUntil||'-');
+    return '<tr><td class="pl-3 mono text-xs">'+E(l.lotNo)+'</td><td class="text-xs">'+E(lotName(key,l))+'</td>'+
+      '<td class="text-right text-xs font-bold">'+N(l.remaining).toLocaleString()+'</td>'+
+      '<td class="text-xs" style="color:'+stC+';font-weight:800">'+E(st)+'</td>'+
+      '<td class="text-xs">'+E(extra)+'</td>'+
+      '<td class="text-right pr-3" style="white-space:nowrap">'+
+        '<button class="btn btn-secondary btn-sm" onclick="openLotEdit(\''+key+'\',\''+E(l.id)+'\')">수정</button> '+
+        '<button class="btn btn-sm" style="background:#fee2e2;color:#b91c1c;font-weight:800" onclick="deleteLot(\''+key+'\',\''+E(l.id)+'\')">삭제</button>'+
+      '</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">LOT 없음</td></tr>';
+};
+window.openLotEdit = function(key, id){
+  var l = (db.stock[key]||[]).find(function(x){ return String(x.id)===String(id); });
+  if(!l) return;
+  var isFgt = key==='FGT_LOT';
+  var bg = document.createElement('div');
+  bg.id='lot-edit-modal';
+  bg.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:960;display:flex;align-items:center;justify-content:center;padding:16px';
+  bg.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:20px" onclick="event.stopPropagation()">'+
+      '<div style="font-weight:900;font-size:14px;color:#0f172a;margin-bottom:2px">LOT 수정</div>'+
+      '<div style="font-size:11px;color:#64748b;margin-bottom:12px">'+E(lotName(key,l))+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<div style="grid-column:1/3"><label style="font-size:10px;font-weight:800;color:#64748b">LOT 번호</label><input id="le-lotno" class="input-field" value="'+E(l.lotNo||'')+'"></div>'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">잔량</label><input id="le-rem" type="number" step="0.01" class="input-field text-right" value="'+N(l.remaining)+'"></div>'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">단가</label><input id="le-cost" type="number" step="0.01" class="input-field text-right" value="'+N(l.unitCost)+'"></div>'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">상태</label><select id="le-status" class="input-field"><option'+(String(l.status||'OK').toUpperCase()==='OK'?' selected':'')+'>OK</option><option'+(String(l.status).toUpperCase()==='HOLD'?' selected':'')+'>HOLD</option><option'+(String(l.status).toUpperCase()==='FAIL'?' selected':'')+'>FAIL</option></select></div>'+
+        (isFgt
+          ? '<div><label style="font-size:10px;font-weight:800;color:#64748b">위치</label><select id="le-loc" class="input-field"><option'+((l.location||'창고')==='창고'?' selected':'')+'>창고</option><option'+(l.location==='인사동'?' selected':'')+'>인사동</option></select></div>'
+          : '<div><label style="font-size:10px;font-weight:800;color:#64748b">'+(key==='BULK_LOT'?'숙성완료일':'유통기한')+'</label><input id="le-exp" type="date" class="input-field" value="'+E(l.expDate||l.matureUntil||'')+'"></div>')+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-top:14px">'+
+        '<button class="btn btn-primary flex-1" onclick="saveLotEdit(\''+key+'\',\''+E(l.id)+'\')">저장</button>'+
+        '<button class="btn btn-secondary" onclick="document.getElementById(\'lot-edit-modal\').remove()">취소</button>'+
+      '</div>'+
+    '</div>';
+  bg.onclick=function(){ bg.remove(); };
+  document.body.appendChild(bg);
+};
+window.saveLotEdit = function(key, id){
+  var l = (db.stock[key]||[]).find(function(x){ return String(x.id)===String(id); });
+  if(!l) return;
+  var before = l.lotNo+'/'+l.remaining+'/'+(l.status||'OK');
+  l.lotNo = ($('le-lotno').value||'').trim() || l.lotNo;
+  l.remaining = N($('le-rem').value);
+  if(N(l.qty) < l.remaining) l.qty = l.remaining;
+  l.unitCost = N($('le-cost').value);
+  l.status = $('le-status').value;
+  if($('le-loc')) l.location = $('le-loc').value;
+  if($('le-exp')){ if(key==='BULK_LOT') l.matureUntil = $('le-exp').value; else l.expDate = $('le-exp').value; }
+  if(typeof logEvent==='function') logEvent('LOT 수정('+key+'): '+before+' → '+l.lotNo+'/'+l.remaining+'/'+l.status);
+  if(typeof toast==='function') toast('LOT 수정 완료','success');
+  var m=$('lot-edit-modal'); if(m) m.remove();
+  saveDB(); renderLotManager(); renderLocPage();
+};
+window.deleteLot = function(key, id){
+  var arr = db.stock[key]||[];
+  var i = arr.findIndex(function(x){ return String(x.id)===String(id); });
+  if(i<0) return;
+  var l = arr[i];
+  if(!window.confirm('['+l.lotNo+'] 잔량 '+N(l.remaining)+' — 이 LOT를 삭제할까요?\n삭제하면 되돌릴 수 없습니다.')) return;
+  arr.splice(i,1);
+  if(typeof logEvent==='function') logEvent('LOT 삭제('+key+'): '+l.lotNo+' 잔량 '+N(l.remaining));
+  if(typeof toast==='function') toast('삭제 완료: '+l.lotNo,'success');
+  saveDB(); renderLotManager(); renderLocPage();
+};
+
+/* ════════ 전체 초기화 (백업 → 2중 확인 → 삭제) ════════ */
+function downloadBackup(){
+  try{
+    var data = JSON.stringify(db, null, 1);
+    var blob = new Blob([data], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'erp-backup-' + new Date().toISOString().replace(/[:.]/g,'-').slice(0,19) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    return true;
+  }catch(e){ return false; }
+}
+window.wipeAllStock = function(){
+  ensure();
+  var cnt = ['RAW_LOT','PACK_LOT','BULK_LOT','FGT_LOT'].reduce(function(s,k){ return s+(db.stock[k]||[]).length; },0);
+  if(!window.confirm('⚠️ 재고 LOT '+cnt+'건을 전부 삭제합니다.\n실행 전 백업 파일이 다운로드됩니다. 계속할까요?')) return;
+  var backed = downloadBackup();
+  if(!window.confirm((backed?'백업 파일이 다운로드되었습니다.\n':'⚠️ 백업 다운로드에 실패했습니다!\n')+'정말로 모든 재고를 삭제하고 새로 시작할까요?\n이 작업은 되돌릴 수 없습니다.')) return;
+  db.stock.RAW_LOT=[]; db.stock.PACK_LOT=[]; db.stock.BULK_LOT=[]; db.stock.FGT_LOT=[];
+  var wiped = ['재고 LOT '+cnt+'건'];
+  if($('wipe-txn') && $('wipe-txn').checked){
+    var t=(db.txn.T_GOODS_IN||[]).length+(db.txn.T_BULK||[]).length+(db.txn.T_BATCH||[]).length+(db.txn.T_STOCK_MOVE||[]).length;
+    db.txn.T_GOODS_IN=[]; db.txn.T_BULK=[]; db.txn.T_BATCH=[]; db.txn.T_STOCK_MOVE=[];
+    wiped.push('재고 이력 '+t+'건');
+  }
+  if($('wipe-sale') && $('wipe-sale').checked){
+    wiped.push('판매기록 '+(db.txn.T_SALE||[]).length+'건');
+    db.txn.T_SALE=[];
+  }
+  if(typeof logEvent==='function') logEvent('⚠️ 재고 전체 초기화: '+wiped.join(', '));
+  if(typeof toast==='function') toast('초기화 완료 — '+wiped.join(', ')+' 삭제. 이제 수기 기초재고/입고로 새로 등록하세요.','success');
+  saveDB(); renderLotManager(); renderLocPage();
+};
+
 /* ════════ 판매 화면 LOT 목록에 위치 태그 ════════ */
 function decorateSaleLots(){
   var el = $('sale-lot2'); if(!el) return;
@@ -1910,7 +2036,7 @@ function decorateSaleLots(){
 var _init = window.initNewPage;
 window.initNewPage = function(pageId){
   try{ if(typeof _init==='function') _init(pageId); }catch(e){}
-  if(pageId==='loc-stock'){ injectUI(); renderLocPage(); }
+  if(pageId==='loc-stock'){ injectUI(); renderLocPage(); renderLotManager(); }
   if(pageId==='t-sale'){ setTimeout(decorateSaleLots, 200); }
 };
 function boot(){ injectUI(); ensure(); }
