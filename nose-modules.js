@@ -1,9 +1,11 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v1.5 — 노즈 (2026-07-20)
+   SHIFTI ERP 확장 모듈 nose-modules.js v1.6 — 노즈 (2026-07-20)
    포함: ① MES ② 알레르겐 ③ 규제문서 ④ 거래명세서·QR
-         ⑤ 문서센터 ⑥ 오늘 할 일 ⑦ 위치 재고 + LOT 관리
-   v1.5: 재고 새 출발 도구 — LOT 개별 수정(잔량·단가·상태·위치·기한)·
-         삭제, 전체 초기화(자동 백업 다운로드 + 2중 확인, 이력 삭제 옵션)
+         ⑤ 문서센터 ⑥ 오늘 할 일 ⑦ 위치 재고 + LOT 관리 + 일괄등록
+   v1.6: 📋 일괄 기초재고 등록 — 엑셀 실사표(제품명+수량) 붙여넣기 →
+         한/영 제품 자동 매칭(더그레잇→The Great 등) → 미리보기 →
+         한 번에 등록. 미등록 제품은 신규 생성 옵션.
+   v1.5: LOT 수정·삭제, 전체 초기화(백업+2중확인)
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -1776,6 +1778,16 @@ function injectUI(){
         '<button class="btn btn-secondary w-full" onclick="saveInitStock()">기초재고 등록</button>'+
       '</div>'+
     '</div>'+
+    '<div class="card p-4 space-y-2" style="border:1.5px solid #7fb8a4">'+
+      '<h3 class="font-bold text-slate-700 text-sm">📋 일괄 기초재고 등록 (엑셀·실사표 붙여넣기)</h3>'+
+      '<div style="font-size:10px;color:#64748b">엑셀에서 "제품명 + 수량" 열을 복사해 붙여넣으세요. 제품 마스터와 자동 매칭됩니다. (예: 시프트아이_더그레잇 30ml → The Great 30ml)</div>'+
+      '<div class="grid grid-cols-2 gap-2">'+
+        '<select id="bulk-init-loc" class="input-field"><option>창고</option><option>인사동</option></select>'+
+        '<button class="btn btn-primary" onclick="parseBulkInit()">붙여넣기 해석 → 미리보기</button>'+
+      '</div>'+
+      '<textarea id="bulk-init-paste" class="input-field" rows="5" placeholder="시프트아이_더그레잇 30ml	5"></textarea>'+
+      '<div id="bulk-init-preview"></div>'+
+    '</div>'+
     '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">이동 이력</h3><span class="badge-soft" id="mv-count">0</span></div>'+
       '<div class="scroll-card"><table><thead><tr><th class="pl-3">일자</th><th>LOT</th><th>제품</th><th class="text-right">수량</th><th>이동</th><th>비고</th></tr></thead>'+
       '<tbody id="mv-history"></tbody></table></div></div>'+
@@ -2016,6 +2028,83 @@ window.wipeAllStock = function(){
   if(typeof logEvent==='function') logEvent('⚠️ 재고 전체 초기화: '+wiped.join(', '));
   if(typeof toast==='function') toast('초기화 완료 — '+wiped.join(', ')+' 삭제. 이제 수기 기초재고/입고로 새로 등록하세요.','success');
   saveDB(); renderLotManager(); renderLocPage();
+};
+
+/* ════════ 일괄 기초재고: 붙여넣기 해석 + 한/영 제품 매칭 ════════ */
+var ALIAS = { '더그레잇':'thegreat','그레잇':'thegreat','레드타라':'redtara','바이올렛힐':'violethill','선릿윈도우':'sunlitwindow','시크릿가든':'secretgarden','아리랑':'arirang','앤':'anne','어반포레스트':'urbanforest','포기스터디':'foggystudy','포기스터디':'foggystudy','후엠아이':'whoami','말괄량이':'말괄량이' };
+function normN(s){ return String(s||'').toLowerCase().replace(/시프트아이|shifti|시프티/g,'').replace(/[\s_\-·.]/g,''); }
+function sizeOf(s){ var m = String(s||'').match(/(\d+)\s*ml/i); return m ? m[1] : ''; }
+function matchProduct(rawName){
+  var nn = normN(rawName).replace(/\d+ml/i,''); var sz = sizeOf(rawName);
+  var alias = '';
+  Object.keys(ALIAS).forEach(function(k){ if(nn.indexOf(normN(k))>=0) alias = ALIAS[k]; });
+  var best = null;
+  (db.master.M_PRODUCT||[]).forEach(function(p){
+    var pn = normN(p.name); var psz = sizeOf(p.name);
+    var nameHit = (alias && pn.indexOf(alias)>=0) || (nn && (pn.indexOf(nn)>=0 || nn.indexOf(pn.replace(/\d+ml/i,''))>=0 && pn.replace(/\d+ml/i,'').length>1));
+    if(!nameHit) return;
+    if(sz && psz && sz!==psz) return;           /* 용량 불일치 배제 */
+    var score = (sz && psz && sz===psz ? 2 : 1) + (alias && pn.indexOf(alias)>=0 ? 2 : 0);
+    if(!best || score>best.score) best = {p:p, score:score};
+  });
+  return best ? best.p : null;
+}
+var bulkRows = [];
+window.parseBulkInit = function(){
+  ensure();
+  var txt = ($('bulk-init-paste').value||'');
+  bulkRows = [];
+  txt.split(/\r?\n/).forEach(function(line){
+    if(!line.trim()) return;
+    var cols = line.split(/\t|\s{2,}/).map(function(c){ return c.trim(); }).filter(Boolean);
+    if(cols.length<2){ /* "이름 수량" 공백 1개 케이스: 끝 숫자 분리 */
+      var m = line.trim().match(/^(.*?)[\s]+(\d+)$/); if(m) cols=[m[1],m[2]]; else return;
+    }
+    var qty = N(cols[cols.length-1].replace(/,/g,''));
+    var name = cols.slice(0,-1).join(' ');
+    if(!name) return;
+    bulkRows.push({ name:name, qty:qty, match: matchProduct(name), create:false, skip: qty<=0 });
+  });
+  var pv = $('bulk-init-preview'); if(!pv) return;
+  if(!bulkRows.length){ pv.innerHTML='<div style="font-size:11px;color:#c0392b;font-weight:700">인식된 행이 없습니다. "제품명 [탭] 수량" 형식으로 붙여넣어 주세요.</div>'; return; }
+  var prodOpts = (db.master.M_PRODUCT||[]).map(function(p){ return '<option value="'+E(p.productId)+'">'+E(p.name)+'</option>'; }).join('');
+  pv.innerHTML =
+    '<table style="width:100%;font-size:11px"><tr><th style="text-align:left">입력명</th><th>수량</th><th style="text-align:left">매칭 제품</th></tr>'+
+    bulkRows.map(function(r,i){
+      var sel = r.skip
+        ? '<span style="color:#94a3b8">0개 — 제외</span>'
+        : '<select id="bi-sel-'+i+'" class="input-field" style="padding:2px 6px;font-size:11px">'+
+            '<option value="__new__"'+(r.match?'':' selected')+'>➕ 신규 제품으로 생성: '+E(r.name)+'</option>'+
+            prodOpts.replace('value="'+(r.match?E(r.match.productId):'')+'"','value="'+(r.match?E(r.match.productId):'')+'" selected')+
+          '</select>';
+      return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(r.name)+'</td><td style="text-align:right;font-weight:800">'+r.qty+'</td><td>'+sel+'</td></tr>';
+    }).join('')+'</table>'+
+    '<div style="font-size:10.5px;color:#64748b;margin-top:6px">'+bulkRows.filter(function(r){return !r.skip;}).length+'개 품목 · 총 '+bulkRows.reduce(function(s,r){return s+(r.skip?0:r.qty);},0).toLocaleString()+' EA — 매칭이 틀린 행은 드롭다운으로 고친 뒤 등록하세요.</div>'+
+    '<button class="btn btn-primary w-full" style="margin-top:6px" onclick="commitBulkInit()">위 내용대로 일괄 등록</button>';
+};
+window.commitBulkInit = function(){
+  ensure();
+  var loc = $('bulk-init-loc').value || '창고';
+  var done=0, created=0, tot=0;
+  bulkRows.forEach(function(r,i){
+    if(r.skip) return;
+    var sel = $('bi-sel-'+i); if(!sel) return;
+    var pid = sel.value;
+    if(pid==='__new__'){
+      pid = Date.now()+i;
+      db.master.M_PRODUCT.push({ productId: pid, name: r.name, bom: [] });
+      created++;
+    } else { pid = isNaN(Number(pid)) ? pid : Number(pid); }
+    var lotNo = 'INIT-'+TODAY().replace(/-/g,'').slice(2)+'-'+String(i+1).padStart(2,'0');
+    db.stock.FGT_LOT.push({ id: genId('FGT'), lotNo: lotNo, productId: pid, qty: r.qty, remaining: r.qty, unitCost: 0, status:'OK', location: loc, note:'일괄 기초재고' });
+    db.txn.T_STOCK_MOVE.push({ id: genId('MV'), date: TODAY(), lotNo: lotNo, productId: pid, qty: r.qty, from:'(기초등록)', to: loc, note:'일괄 기초재고' });
+    done++; tot+=r.qty;
+  });
+  if(typeof logEvent==='function') logEvent('일괄 기초재고: '+done+'품목 '+tot+'EA @'+loc+(created?' (신규제품 '+created+'개 생성)':''));
+  if(typeof toast==='function') toast('일괄 등록 완료: '+done+'품목 '+tot.toLocaleString()+'EA ('+loc+')'+(created?' · 신규 제품 '+created+'개':''),'success');
+  $('bulk-init-paste').value=''; $('bulk-init-preview').innerHTML='';
+  bulkRows=[];
+  saveDB(); renderLocPage(); renderLotManager();
 };
 
 /* ════════ 판매 화면 LOT 목록에 위치 태그 ════════ */
