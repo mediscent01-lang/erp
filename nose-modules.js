@@ -1,11 +1,9 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v1.6 — 노즈 (2026-07-20)
-   포함: ① MES ② 알레르겐 ③ 규제문서 ④ 거래명세서·QR
-         ⑤ 문서센터 ⑥ 오늘 할 일 ⑦ 위치 재고 + LOT 관리 + 일괄등록
-   v1.6: 📋 일괄 기초재고 등록 — 엑셀 실사표(제품명+수량) 붙여넣기 →
-         한/영 제품 자동 매칭(더그레잇→The Great 등) → 미리보기 →
-         한 번에 등록. 미등록 제품은 신규 생성 옵션.
-   v1.5: LOT 수정·삭제, 전체 초기화(백업+2중확인)
+   SHIFTI ERP 확장 모듈 nose-modules.js v1.7 — 노즈 (2026-07-20)
+   v1.7: 대시보드 수정 — ① "상위 5 SKU" 차트가 등록순 앞 5개만 그리던
+         본체 버그를 수량 상위 5개 정렬로 교정 (283개 재고가 이제 보임)
+         ② 일괄 기초재고에 원가 열(3번째) 지원 → 재고자산 KPI 반영
+   v1.6: 일괄 기초재고(붙여넣기·한/영 매칭) / v1.5: LOT 수정·삭제·초기화
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -1663,6 +1661,30 @@ function metrics(){
   ];
 }
 
+/* ── 본체 버그 수정: 완제품 분포 차트가 '등록순 앞 5개'만 그리던 것을
+     '수량 상위 5개' 정렬로 재구성 (Chart.js 재빌드) ── */
+function fixStockChart(){
+  try{
+    var canvas = $('stockChart');
+    if(!canvas || !window.Chart || !window.db) return;
+    var agg = {};
+    (db.stock.FGT_LOT||[]).forEach(function(l){
+      if(String(l.status||'OK').toUpperCase()==='FAIL') return;
+      var p = (typeof findProduct==='function') && findProduct(l.productId);
+      var k = p ? p.name : String(l.productId);
+      agg[k] = (agg[k]||0) + N(l.remaining);
+    });
+    var top = Object.keys(agg).sort(function(a,b){ return agg[b]-agg[a]; }).slice(0,5);
+    var prev = (Chart.getChart && Chart.getChart(canvas)) || null;
+    if(prev) prev.destroy();
+    new Chart(canvas.getContext('2d'), {
+      type:'bar',
+      data:{ labels: top, datasets:[{ label:'재고수량', data: top.map(function(k){return agg[k];}), backgroundColor:'#0f766e' }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+    });
+  }catch(e){}
+}
+
 function render(){
   var host = $('page-dashboard');
   if(!host || !window.db) return;
@@ -1702,7 +1724,7 @@ function render(){
 var _init = window.initNewPage;
 window.initNewPage = function(pageId){
   try{ if(typeof _init==='function') _init(pageId); }catch(e){}
-  if(pageId==='dashboard') render();
+  if(pageId==='dashboard'){ render(); setTimeout(fixStockChart, 350); }
 };
 /* saveDB 후 자동 갱신 (대시보드가 열려 있을 때) */
 setTimeout(function(){
@@ -1710,7 +1732,7 @@ setTimeout(function(){
     var _s = window.saveDB;
     window.saveDB = function(){
       var r = _s.apply(this, arguments);
-      try{ if($('page-dashboard') && $('page-dashboard').classList.contains('active')) render(); }catch(e){}
+      try{ if($('page-dashboard') && $('page-dashboard').classList.contains('active')){ render(); setTimeout(fixStockChart, 250); } }catch(e){}
       return r;
     };
     window.saveDB.__todoWrap = true;
@@ -2060,10 +2082,12 @@ window.parseBulkInit = function(){
     if(cols.length<2){ /* "이름 수량" 공백 1개 케이스: 끝 숫자 분리 */
       var m = line.trim().match(/^(.*?)[\s]+(\d+)$/); if(m) cols=[m[1],m[2]]; else return;
     }
-    var qty = N(cols[cols.length-1].replace(/,/g,''));
-    var name = cols.slice(0,-1).join(' ');
+    var nums = cols.filter(function(c){ return /^[\d,]+(\.\d+)?$/.test(c); });
+    var qty = N((nums[0]||cols[cols.length-1]||'').replace(/,/g,''));
+    var cost = nums.length>1 ? N(nums[1].replace(/,/g,'')) : 0;   /* 선택: 3번째 열 = 원가/EA */
+    var name = cols.filter(function(c){ return !/^[\d,]+(\.\d+)?$/.test(c); }).join(' ');
     if(!name) return;
-    bulkRows.push({ name:name, qty:qty, match: matchProduct(name), create:false, skip: qty<=0 });
+    bulkRows.push({ name:name, qty:qty, cost:cost, match: matchProduct(name), create:false, skip: qty<=0 });
   });
   var pv = $('bulk-init-preview'); if(!pv) return;
   if(!bulkRows.length){ pv.innerHTML='<div style="font-size:11px;color:#c0392b;font-weight:700">인식된 행이 없습니다. "제품명 [탭] 수량" 형식으로 붙여넣어 주세요.</div>'; return; }
@@ -2096,7 +2120,7 @@ window.commitBulkInit = function(){
       created++;
     } else { pid = isNaN(Number(pid)) ? pid : Number(pid); }
     var lotNo = 'INIT-'+TODAY().replace(/-/g,'').slice(2)+'-'+String(i+1).padStart(2,'0');
-    db.stock.FGT_LOT.push({ id: genId('FGT'), lotNo: lotNo, productId: pid, qty: r.qty, remaining: r.qty, unitCost: 0, status:'OK', location: loc, note:'일괄 기초재고' });
+    db.stock.FGT_LOT.push({ id: genId('FGT'), lotNo: lotNo, productId: pid, qty: r.qty, remaining: r.qty, unitCost: N(r.cost)||0, status:'OK', location: loc, note:'일괄 기초재고' });
     db.txn.T_STOCK_MOVE.push({ id: genId('MV'), date: TODAY(), lotNo: lotNo, productId: pid, qty: r.qty, from:'(기초등록)', to: loc, note:'일괄 기초재고' });
     done++; tot+=r.qty;
   });
