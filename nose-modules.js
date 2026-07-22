@@ -1,12 +1,9 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v1.3 — 노즈 (2026-07-20)
-   포함: ① MES(작업지시·수율·캘린더·간트) ② 알레르겐 프로파일
-         ③ 규제문서 출력 ④ 거래명세서·부가세·QR라벨
-         ⑤ 문서센터(단일 관문) ⑥ ☀️ 오늘 할 일 위젯 (대시보드)
-   v1.3: 대시보드 상단 "오늘 할 일" — QC 대기·숙성완료·안전재고 미달·
-         유통기한 임박·작업지시·입고지연·오늘 생산계획을 실시간 집계,
-         카드 클릭 시 해당 화면으로 즉시 이동
-   v1.2: 사이드바 신규 메뉴 3개로 UX 통합 / v1.1: 메뉴 자가복구
+   SHIFTI ERP 확장 모듈 nose-modules.js v1.4 — 노즈 (2026-07-20)
+   포함: ① MES ② 알레르겐 ③ 규제문서 ④ 거래명세서·QR
+         ⑤ 문서센터 ⑥ 오늘 할 일 위젯 ⑦ 🏬 위치 재고(창고·인사동)
+   v1.4: 완제품 위치 관리 — 위치별 현황 매트릭스, 창고↔인사동 이관
+         (QC 적합만·이력 기록), 수기 기초재고 등록, 판매 LOT 위치 태그
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -1725,4 +1722,201 @@ var __todoKeep = setInterval(render, 3000);
 setTimeout(function(){ clearInterval(__todoKeep); }, 90000);
 /* 이후에는 1분 주기로 가볍게 갱신 (날짜·임박 상태 반영) */
 setInterval(function(){ try{ if($('page-dashboard') && $('page-dashboard').classList.contains('active')) render(); }catch(e){} }, 60000);
+})();
+
+/* ═══════════ 모듈: 위치 재고(창고·인사동) 패치 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
+var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
+var LOCS = ['창고','인사동'];
+var locOf = function(l){ return l.location || '창고'; };
+var TODAY = function(){ return new Date().toISOString().split('T')[0]; };
+function ensure(){ if(window.db){ db.txn = db.txn||{}; db.txn.T_STOCK_MOVE = db.txn.T_STOCK_MOVE||[]; } }
+function genId(p){ return (typeof generateId==='function') ? generateId(p) : p+'-'+Date.now()+Math.floor(Math.random()*999); }
+
+/* ════════ 페이지 주입 ════════ */
+function injectUI(){
+  if($('page-loc-stock')) return;
+  var anchor = $('page-safety-stock') || document.querySelector('.page-section');
+  if(!anchor || !anchor.parentNode) return;
+  var sec = document.createElement('section');
+  sec.id='page-loc-stock'; sec.className='page-section space-y-4';
+  sec.innerHTML =
+    '<h2 class="text-lg font-black text-slate-800">🏬 위치 재고 (창고 · 인사동)</h2>'+
+    '<div style="font-size:10.5px;color:#64748b;font-weight:600">완제품 재고를 위치별로 관리합니다. 이관은 QC 적합(OK) LOT만 가능합니다.</div>'+
+    '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">위치별 재고 현황</h3></div>'+
+      '<div class="scroll-card"><table><thead><tr><th class="pl-3">제품</th><th class="text-right">🏭 창고</th><th class="text-right">🏬 인사동</th><th class="text-right pr-3">합계</th></tr></thead>'+
+      '<tbody id="loc-matrix"></tbody></table></div></div>'+
+    '<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">'+
+      '<div class="card p-4 space-y-2">'+
+        '<h3 class="font-bold text-slate-700 text-sm">🔄 재고 이관</h3>'+
+        '<select id="mv-dir" class="input-field"><option value="창고>인사동">창고 → 인사동 (매장 출고)</option><option value="인사동>창고">인사동 → 창고 (회수)</option></select>'+
+        '<select id="mv-lot" class="input-field"></select>'+
+        '<div class="grid grid-cols-2 gap-2">'+
+          '<input id="mv-qty" type="number" min="1" class="input-field text-right" placeholder="이관 수량">'+
+          '<input id="mv-date" type="date" class="input-field" value="'+TODAY()+'">'+
+        '</div>'+
+        '<input id="mv-note" class="input-field" placeholder="비고 (예: 위탁 납품 7월분)">'+
+        '<button class="btn btn-primary w-full" onclick="doStockMove()">이관 실행</button>'+
+      '</div>'+
+      '<div class="card p-4 space-y-2">'+
+        '<h3 class="font-bold text-slate-700 text-sm">✍️ 수기 기초재고 등록</h3>'+
+        '<div style="font-size:10px;color:#64748b">인사동 등에 이미 나가 있는 기존 재고를 생산이력 없이 등록합니다. (최초 정리용)</div>'+
+        '<select id="init-prod" class="input-field"></select>'+
+        '<div class="grid grid-cols-2 gap-2">'+
+          '<select id="init-loc" class="input-field"><option>인사동</option><option>창고</option></select>'+
+          '<input id="init-qty" type="number" min="1" class="input-field text-right" placeholder="수량(EA)">'+
+        '</div>'+
+        '<div class="grid grid-cols-2 gap-2">'+
+          '<input id="init-lot" class="input-field" placeholder="LOT번호 (모르면 비움)">'+
+          '<input id="init-cost" type="number" class="input-field text-right" placeholder="원가/EA (선택)">'+
+        '</div>'+
+        '<button class="btn btn-secondary w-full" onclick="saveInitStock()">기초재고 등록</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">이동 이력</h3><span class="badge-soft" id="mv-count">0</span></div>'+
+      '<div class="scroll-card"><table><thead><tr><th class="pl-3">일자</th><th>LOT</th><th>제품</th><th class="text-right">수량</th><th>이동</th><th>비고</th></tr></thead>'+
+      '<tbody id="mv-history"></tbody></table></div></div>';
+  anchor.parentNode.insertBefore(sec, anchor.nextSibling);
+
+  var nav = $('nav-safety-stock');
+  if(nav && !$('nav-loc-stock')){
+    var n = document.createElement('div');
+    n.id='nav-loc-stock'; n.className='nav-item'; n.setAttribute('onclick',"goPage('loc-stock')");
+    n.innerHTML='<i data-lucide="store" class="w-4 h-4 shrink-0"></i> 🏬 위치 재고';
+    nav.parentNode.insertBefore(n, nav.nextSibling);
+    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+  }
+  var dir = $('mv-dir'); if(dir) dir.onchange = fillMoveLots;
+}
+
+/* ════════ 렌더 ════════ */
+function renderLocPage(){
+  ensure();
+  var mx = $('loc-matrix'); if(!mx) return;
+  var agg = {};
+  (db.stock.FGT_LOT||[]).forEach(function(l){
+    if(String(l.status||'OK').toUpperCase()==='FAIL' || N(l.remaining)<=0) return;
+    var k = l.productId;
+    if(!agg[k]) agg[k] = {'창고':0,'인사동':0};
+    agg[k][locOf(l)] = (agg[k][locOf(l)]||0) + N(l.remaining);
+  });
+  var keys = Object.keys(agg);
+  mx.innerHTML = keys.map(function(pid){
+    var p = (typeof findProduct==='function') && findProduct(isNaN(Number(pid))?pid:Number(pid));
+    var a = agg[pid], tot = N(a['창고'])+N(a['인사동']);
+    return '<tr><td class="pl-3 text-xs font-bold">'+E(p?p.name:pid)+'</td>'+
+      '<td class="text-right text-xs">'+N(a['창고']).toLocaleString()+'</td>'+
+      '<td class="text-right text-xs" style="color:#0f766e;font-weight:800">'+N(a['인사동']).toLocaleString()+'</td>'+
+      '<td class="text-right pr-3 text-xs font-bold">'+tot.toLocaleString()+'</td></tr>';
+  }).join('') || '<tr><td colspan="4" class="text-center py-4 text-slate-400">완제품 재고 없음</td></tr>';
+
+  fillMoveLots();
+  var ps = $('init-prod');
+  if(ps) ps.innerHTML = '<option value="">제품 선택</option>' + (db.master.M_PRODUCT||[]).map(function(p){
+    return '<option value="'+E(p.productId)+'">'+E(p.name)+'</option>';
+  }).join('');
+
+  var hist = db.txn.T_STOCK_MOVE.slice().reverse().slice(0,30);
+  var mc = $('mv-count'); if(mc) mc.textContent = db.txn.T_STOCK_MOVE.length;
+  var hv = $('mv-history');
+  if(hv) hv.innerHTML = hist.map(function(m){
+    var p = (typeof findProduct==='function') && findProduct(m.productId);
+    return '<tr><td class="pl-3 text-xs">'+E(m.date)+'</td><td class="mono text-xs">'+E(m.lotNo)+'</td>'+
+      '<td class="text-xs">'+E(p?p.name:'')+'</td><td class="text-right text-xs font-bold">'+N(m.qty).toLocaleString()+'</td>'+
+      '<td class="text-xs">'+E(m.from)+' → <b>'+E(m.to)+'</b></td><td class="text-xs" style="color:#64748b">'+E(m.note||'')+'</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">이동 이력 없음</td></tr>';
+}
+function fillMoveLots(){
+  var el = $('mv-lot'); if(!el) return;
+  var from = (($('mv-dir')||{}).value||'창고>인사동').split('>')[0];
+  el.innerHTML = '<option value="">이관할 LOT 선택 ('+from+' 재고)</option>' +
+    (db.stock.FGT_LOT||[]).filter(function(l){
+      return locOf(l)===from && N(l.remaining)>0 && String(l.status||'OK').toUpperCase()==='OK';
+    }).map(function(l){
+      var p = (typeof findProduct==='function') && findProduct(l.productId);
+      return '<option value="'+E(l.id)+'">['+E(l.lotNo)+'] '+E(p?p.name:'')+' / 잔량 '+E(l.remaining)+'</option>';
+    }).join('');
+}
+
+/* ════════ 이관 실행 ════════ */
+window.doStockMove = function(){
+  ensure();
+  var dir = $('mv-dir').value.split('>'), from = dir[0], to = dir[1];
+  var src = (db.stock.FGT_LOT||[]).find(function(l){ return String(l.id)===String($('mv-lot').value); });
+  var qty = N($('mv-qty').value);
+  if(!src){ if(typeof toast==='function') toast('LOT를 선택하세요','error'); return; }
+  if(qty<=0){ if(typeof toast==='function') toast('수량을 입력하세요','error'); return; }
+  if(String(src.status||'OK').toUpperCase()!=='OK'){ if(typeof toast==='function') toast('QC 적합(OK) LOT만 이관할 수 있습니다','error'); return; }
+  if(qty > N(src.remaining)){ if(typeof toast==='function') toast('잔량 부족: 현재 '+src.remaining,'error'); return; }
+  src.remaining = N(src.remaining) - qty;
+  var dest = (db.stock.FGT_LOT||[]).find(function(l){
+    return l.lotNo===src.lotNo && String(l.productId)===String(src.productId) && locOf(l)===to;
+  });
+  if(dest){ dest.remaining = N(dest.remaining) + qty; dest.qty = N(dest.qty) + qty; }
+  else {
+    db.stock.FGT_LOT.push({
+      id: genId('FGT'), lotNo: src.lotNo, productId: src.productId,
+      qty: qty, remaining: qty, unitCost: src.unitCost, expDate: src.expDate,
+      status: 'OK', location: to, note: '이관('+from+'→'+to+')'
+    });
+  }
+  var rec = { id: genId('MV'), date: $('mv-date').value||TODAY(), lotNo: src.lotNo, productId: src.productId,
+    qty: qty, from: from, to: to, note: ($('mv-note').value||'').trim() };
+  db.txn.T_STOCK_MOVE.push(rec);
+  if(typeof logEvent==='function') logEvent('재고이관: '+src.lotNo+' '+qty+'EA '+from+'→'+to);
+  if(typeof toast==='function') toast(qty+'EA 이관 완료 ('+from+' → '+to+')','success');
+  $('mv-qty').value=''; $('mv-note').value='';
+  saveDB(); renderLocPage();
+};
+
+/* ════════ 수기 기초재고 ════════ */
+window.saveInitStock = function(){
+  ensure();
+  var pid = $('init-prod').value, qty = N($('init-qty').value), loc = $('init-loc').value;
+  if(!pid){ if(typeof toast==='function') toast('제품을 선택하세요','error'); return; }
+  if(qty<=0){ if(typeof toast==='function') toast('수량을 입력하세요','error'); return; }
+  var lotNo = ($('init-lot').value||'').trim() || ('INIT-'+TODAY().replace(/-/g,'').slice(2)+'-'+Math.floor(Math.random()*90+10));
+  db.stock.FGT_LOT.push({
+    id: genId('FGT'), lotNo: lotNo, productId: isNaN(Number(pid))?pid:Number(pid),
+    qty: qty, remaining: qty, unitCost: N($('init-cost').value)||0,
+    status: 'OK', location: loc, note: '수기 기초재고 등록'
+  });
+  db.txn.T_STOCK_MOVE.push({ id: genId('MV'), date: TODAY(), lotNo: lotNo, productId: isNaN(Number(pid))?pid:Number(pid),
+    qty: qty, from: '(기초등록)', to: loc, note: '수기 기초재고' });
+  if(typeof logEvent==='function') logEvent('기초재고 등록: '+lotNo+' '+qty+'EA @'+loc);
+  if(typeof toast==='function') toast('기초재고 등록 완료: '+lotNo+' ('+loc+')','success');
+  $('init-qty').value=''; $('init-lot').value=''; $('init-cost').value='';
+  saveDB(); renderLocPage();
+};
+
+/* ════════ 판매 화면 LOT 목록에 위치 태그 ════════ */
+function decorateSaleLots(){
+  var el = $('sale-lot2'); if(!el) return;
+  for(var i=0;i<el.options.length;i++){
+    var op = el.options[i];
+    if(!op.value || op.dataset.locTag) continue;
+    var lot = (db.stock.FGT_LOT||[]).find(function(l){ return String(l.id)===String(op.value); });
+    if(lot){
+      op.text = op.text + (locOf(lot)==='인사동' ? '  🏬인사동' : '  🏭창고');
+      op.dataset.locTag='1';
+    }
+  }
+}
+
+/* ════════ 라우팅·부트 ════════ */
+var _init = window.initNewPage;
+window.initNewPage = function(pageId){
+  try{ if(typeof _init==='function') _init(pageId); }catch(e){}
+  if(pageId==='loc-stock'){ injectUI(); renderLocPage(); }
+  if(pageId==='t-sale'){ setTimeout(decorateSaleLots, 200); }
+};
+function boot(){ injectUI(); ensure(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot, 1500);
+var __locKeep = setInterval(function(){ try{ injectUI(); }catch(e){} }, 3000);
+setTimeout(function(){ clearInterval(__locKeep); }, 90000);
+setInterval(function(){ try{ decorateSaleLots(); }catch(e){} }, 2000);
 })();
