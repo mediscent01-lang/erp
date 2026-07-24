@@ -1,9 +1,12 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v2.3 — 노즈 (2026-07-20)
-   v2.3: 📖 운영가이드 업데이트 — [사용 가이드] 페이지 상단에 확장 모듈
-         운영가이드 주입 (하루·월·연 운영 리듬, 위치재고 5단계, QR 현장
-         사용, 생산·수율, 알레르겐, 문서센터, 필수 준수사항) + 인쇄/PDF
-   v2.2: 피킹 리스트 + QR 스캔 액션 / v2.1: 순환 실사 / v2.0: 부자재 위치
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.0 — 노즈 (2026-07-20)
+   v3.0: 🧪 AI 조향 코파일럿 — 컨셉 정의 → 처방 제안(노즈 요청문 자동
+         생성) → ERP 실시간 검증 → 시제품 발행
+         검증: 재고 가용성·최대 생산가능수량 / 실원가(가중평균) /
+               IFRA 한도 / EU26 알레르겐 표기판정 / 천연유래 지수 /
+               배합비 100% 정합 → 통과 시 제품·BOM 자동 등록 +
+               시제품 생산계획·작업지시 발행
+   v2.3: 운영가이드 / v2.2: 피킹·QR액션 / v2.1: 순환실사
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -2798,4 +2801,245 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot, 1500);
 var __gKeep = setInterval(injectGuide, 3000);
 setTimeout(function(){ clearInterval(__gKeep); }, 90000);
+})();
+
+/* ═══════════ 모듈: AI 조향 코파일럿 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
+var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
+var F = function(v){ return Math.round(N(v)).toLocaleString(); };
+var TODAY = function(){ return new Date().toISOString().split('T')[0]; };
+var TH_LEAVE = 0.001;
+var A26MAP = {'127-51-5':'알파-이소메틸이오논','122-40-7':'아밀신남알','101-85-9':'아밀신나밀알코올','105-13-5':'아니스알코올','100-51-6':'벤질알코올','120-51-4':'벤질벤조에이트','103-41-3':'벤질신나메이트','118-58-1':'벤질살리실레이트','80-54-6':'부틸페닐메틸프로피오날','104-55-2':'신남알','104-54-1':'신나밀알코올','5392-40-5':'시트랄','106-22-9':'시트로넬올','91-64-5':'쿠마린','97-53-0':'유제놀','90028-67-4':'트리모스추출물','90028-68-5':'오크모스추출물','4602-84-0':'파네솔','106-24-1':'제라니올','101-86-0':'헥실신남알','107-75-5':'하이드록시시트로넬알','31906-04-4':'하이드록시이소헥실','97-54-1':'이소유제놀','5989-27-5':'리모넨','78-70-6':'리날룰','111-12-6':'메틸헵틴카보네이트'};
+
+/* ════════ 페이지 주입 ════════ */
+function injectUI(){
+  if($('page-perfume-ai')) return;
+  var anchor = $('page-allergen-report') || $('page-doc-center') || document.querySelector('.page-section');
+  if(!anchor || !anchor.parentNode) return;
+  var sec = document.createElement('section');
+  sec.id='page-perfume-ai'; sec.className='page-section space-y-4';
+  sec.innerHTML =
+    '<h2 class="text-lg font-black text-slate-800">🧪 AI 조향 코파일럿</h2>'+
+    '<div style="font-size:10.5px;color:#64748b;font-weight:600">컨셉 → 처방 제안 → ERP 실시간 검증(재고·원가·IFRA·알레르겐) → 시제품 작업지시 발행. 향의 조화는 마지막에 사람이 시향으로 판단합니다.</div>'+
+    '<div class="card p-4 space-y-2">'+
+      '<h3 class="font-bold text-slate-700 text-sm">1️⃣ 컨셉 정의</h3>'+
+      '<div class="grid grid-cols-2 xl:grid-cols-4 gap-2">'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">감정·상태</label><select id="pf-emotion" class="input-field"><option>불안 완화</option><option>집중</option><option>활력</option><option>휴식·수면</option><option>회복</option><option>자존감·기분전환</option></select></div>'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">계열</label><select id="pf-family" class="input-field"><option>우디</option><option>플로럴</option><option>시트러스</option><option>오리엔탈</option><option>그린·허벌</option><option>머스크</option></select></div>'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">목표 원가 (원/EA)</label><input id="pf-cost" type="number" class="input-field text-right" value="8000"></div>'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">충전량 (g/EA)</label><input id="pf-fill" type="number" class="input-field text-right" value="30"></div>'+
+      '</div>'+
+      '<div class="grid grid-cols-2 gap-2">'+
+        '<input id="pf-note" class="input-field" placeholder="추가 요구 (예: 발효주정, 천연유래 98% 이상, 오크모스 제외)">'+
+        '<button class="btn btn-secondary" onclick="copyPfPrompt()">📋 노즈용 요청문 복사</button>'+
+      '</div>'+
+      '<div style="font-size:10px;color:#64748b">요청문을 복사해 노즈에게 붙여넣으면 처방을 만들어 드립니다. 받은 처방을 아래에 붙여넣으세요.</div>'+
+    '</div>'+
+    '<div class="card p-4 space-y-2">'+
+      '<h3 class="font-bold text-slate-700 text-sm">2️⃣ 처방 입력 (원료명 [탭] 배합비%)</h3>'+
+      '<textarea id="pf-formula" class="input-field" rows="6" placeholder="Ethanol 99%	78&#10;AnnE Fragrance Oil	12&#10;DPG	10"></textarea>'+
+      '<button class="btn btn-primary w-full" onclick="validateFormula()">⚗️ ERP 검증 실행</button>'+
+    '</div>'+
+    '<div id="pf-result"></div>';
+  anchor.parentNode.insertBefore(sec, anchor.nextSibling);
+
+  var nav = $('nav-allergen-report');
+  if(nav && !$('nav-perfume-ai')){
+    var n = document.createElement('div');
+    n.id='nav-perfume-ai'; n.className='nav-item'; n.setAttribute('onclick',"goPage('perfume-ai')");
+    n.innerHTML='<i data-lucide="flask-conical" class="w-4 h-4 shrink-0"></i> 🧪 AI 조향 코파일럿';
+    nav.parentNode.insertBefore(n, nav);
+    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+  }
+}
+
+/* ════════ 요청문 생성 ════════ */
+window.copyPfPrompt = function(){
+  var raws = (db.master.M_RAW||[]).map(function(r){
+    var st = stockOfRaw(r.rawId);
+    return '- '+r.name+' (INCI '+(r.inci||'-')+', 재고 '+F(st)+'g, 단가 '+F(r.stdCost?r.stdCost/1000:0)+'원/g'+(r.ifraLimit?', IFRA한도 '+r.ifraLimit+'%':'')+')';
+  }).join('\n');
+  var txt =
+'노즈, SHIFTI 신제품 처방을 제안해줘.\n\n'+
+'[컨셉]\n- 감정·상태: '+$('pf-emotion').value+'\n- 계열: '+$('pf-family').value+
+'\n- 목표 원가: '+$('pf-cost').value+'원/EA\n- 충전량: '+$('pf-fill').value+'g\n'+
+($('pf-note').value?'- 추가 요구: '+$('pf-note').value+'\n':'')+
+'\n[사용 가능 원료 — 우리 창고 재고]\n'+raws+
+'\n\n[요청]\n위 원료만 사용해 후보 처방 3개를 제안해줘. 각 처방은 "원료명[탭]배합비%" 형식으로, 합계 100%가 되게. '+
+'처방마다 예상 원가와 향의 구조(탑/미들/베이스)를 한 줄로 설명해줘.';
+  try{
+    navigator.clipboard.writeText(txt);
+    if(typeof toast==='function') toast('요청문을 복사했습니다. 노즈 대화창에 붙여넣으세요.','success');
+  }catch(e){
+    var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); if(typeof toast==='function') toast('요청문 복사 완료','success'); }catch(e2){}
+    ta.remove();
+  }
+};
+
+function stockOfRaw(rawId){
+  return (db.stock.RAW_LOT||[]).filter(function(l){
+    return String(l.rawId)===String(rawId) && String(l.status||'OK').toUpperCase()!=='FAIL';
+  }).reduce(function(s,l){ return s+N(l.remaining); },0);
+}
+function costOfRaw(r){
+  /* 실재고 가중평균 우선, 없으면 표준원가(kg 기준 → g 환산) */
+  var lots = (db.stock.RAW_LOT||[]).filter(function(l){ return String(l.rawId)===String(r.rawId) && N(l.remaining)>0 && String(l.status||'OK').toUpperCase()!=='FAIL'; });
+  var q=0,v=0;
+  lots.forEach(function(l){ q+=N(l.remaining); v+=N(l.remaining)*N(l.unitCost); });
+  if(q>0 && v>0) return v/q;                 /* 원/g */
+  if(N(r.stdCost)>0) return N(r.stdCost)/1000; /* stdCost는 kg 기준 */
+  return 0;
+}
+function findRawByName(name){
+  var nn = String(name||'').toLowerCase().replace(/[\s_\-·.]/g,'');
+  var best=null;
+  (db.master.M_RAW||[]).forEach(function(r){
+    var pn = String(r.name||'').toLowerCase().replace(/[\s_\-·.]/g,'');
+    if(!pn) return;
+    if(pn===nn){ best={r:r,s:3}; return; }
+    if((pn.indexOf(nn)>=0 || nn.indexOf(pn)>=0) && (!best||best.s<2)) best={r:r,s:2};
+    var code = String(r.code||'').toLowerCase().replace(/[\s_\-]/g,'');
+    if(code && code===nn && (!best||best.s<3)) best={r:r,s:3};
+  });
+  return best?best.r:null;
+}
+
+/* ════════ 검증 엔진 ════════ */
+var lastValid = null;
+window.validateFormula = function(){
+  var fill = N($('pf-fill').value)||30;
+  var target = N($('pf-cost').value);
+  var lines = ($('pf-formula').value||'').split(/\r?\n/);
+  var rows = [], sum = 0, unknown = [];
+  lines.forEach(function(line){
+    if(!line.trim()) return;
+    var cols = line.split(/\t|\s{2,}/).map(function(c){ return c.trim(); }).filter(Boolean);
+    if(cols.length<2){ var m=line.trim().match(/^(.*?)[\s]+([\d.]+)\s*%?$/); if(m) cols=[m[1],m[2]]; else return; }
+    var pct = N(String(cols[cols.length-1]).replace(/[%,]/g,''));
+    var name = cols.slice(0,-1).join(' ');
+    if(!name || pct<=0) return;
+    var raw = findRawByName(name);
+    if(!raw) unknown.push(name);
+    rows.push({ name:name, pct:pct, raw:raw });
+    sum += pct;
+  });
+  var box = $('pf-result');
+  if(!rows.length){ box.innerHTML='<div class="card p-4" style="color:#c0392b;font-size:12px;font-weight:700">처방을 인식하지 못했습니다. "원료명 [탭] 배합비%" 형식으로 입력하세요.</div>'; return; }
+
+  /* 계산 */
+  var costPerEa=0, natNum=0, natDen=0, alg={}, ifraFlags=[], stockFlags=[], maxEa=Infinity;
+  rows.forEach(function(r){
+    var gPerEa = fill * r.pct/100;
+    r.gPerEa = gPerEa;
+    if(r.raw){
+      var cg = costOfRaw(r.raw);
+      r.cost = gPerEa*cg; costPerEa += r.cost;
+      var st = stockOfRaw(r.raw.rawId);
+      r.stock = st;
+      var canEa = gPerEa>0 ? Math.floor(st/gPerEa) : Infinity;
+      r.canEa = canEa;
+      if(canEa < maxEa) maxEa = canEa;
+      if(st <= 0) stockFlags.push(r.raw.name+' 재고 없음');
+      /* IFRA */
+      var lim = N(r.raw.ifraLimit);
+      if(lim>0 && r.pct > lim) ifraFlags.push(r.raw.name+' '+r.pct+'% > 한도 '+lim+'%');
+      /* 알레르겐 */
+      var p = r.raw.allergenProfile;
+      if(p){ Object.keys(p).forEach(function(cas){ alg[cas]=(alg[cas]||0)+(r.pct/100)*N(p[cas]); }); }
+      else if(r.raw.isAllergen) r.algUnknown = true;
+      /* 천연유래 */
+      var ni = r.raw.naturalIndex!=null ? N(r.raw.naturalIndex) : (/ethanol|alcohol|주정/i.test(r.raw.name)?100:null);
+      if(ni!=null){ natNum += r.pct*ni; natDen += r.pct; }
+    }
+  });
+  if(!isFinite(maxEa)) maxEa = 0;
+  var algRows = Object.keys(alg).filter(function(c){ return alg[c]>0; }).sort(function(a,b){ return alg[b]-alg[a]; });
+  var mustLabel = algRows.filter(function(c){ return alg[c]>=TH_LEAVE; });
+  var natIdx = natDen>0 ? natNum/natDen : null;
+  var sumOk = Math.abs(sum-100) < 0.5;
+  var costOk = target<=0 || costPerEa <= target;
+  var pass = sumOk && !unknown.length && !ifraFlags.length && !stockFlags.length;
+  lastValid = { rows:rows, fill:fill, costPerEa:costPerEa, maxEa:maxEa, pass:pass, mustLabel:mustLabel, alg:alg };
+
+  function kpi(v,l,c){ return '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px"><div style="font-size:17px;font-weight:900;color:'+(c||'#0f172a')+'">'+v+'</div><div style="font-size:10px;font-weight:700;color:#64748b">'+l+'</div></div>'; }
+  function flag(txt, ok){ return '<div style="font-size:11.5px;font-weight:700;color:'+(ok?'#059669':'#c2410c')+';padding:3px 0">'+(ok?'✅ ':'⚠️ ')+txt+'</div>'; }
+
+  box.innerHTML =
+    '<div class="card p-4 space-y-3" style="border:2px solid '+(pass?'#7fb8a4':'#fca5a5')+'">'+
+      '<h3 class="font-bold text-slate-700 text-sm">3️⃣ ERP 검증 결과 '+(pass?'<span style="color:#059669">— 통과</span>':'<span style="color:#c2410c">— 확인 필요</span>')+'</h3>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'+
+        kpi('₩'+F(costPerEa), '원가/EA (충전 '+fill+'g)', costOk?'#0f172a':'#c2410c')+
+        kpi(F(maxEa)+' EA', '현재 재고로 생산가능', maxEa>0?'#0f172a':'#c2410c')+
+        kpi(sum.toFixed(1)+'%', '배합비 합계', sumOk?'#0f172a':'#c2410c')+
+        kpi(natIdx!=null?natIdx.toFixed(1)+'%':'-', '천연유래(지수 입력분 '+natDen.toFixed(0)+'% 기준)')+
+        kpi(mustLabel.length+'종', '알레르겐 표기의무', mustLabel.length?'#c2410c':'#059669')+
+      '</div>'+
+      '<div>'+
+        flag('배합비 합계 100% '+(sumOk?'정합':'불일치 ('+sum.toFixed(1)+'%)'), sumOk)+
+        (unknown.length?flag('미등록 원료: '+unknown.map(E).join(', ')+' — 원료 마스터에 먼저 등록하세요', false):flag('모든 원료가 마스터에 등록됨', true))+
+        (ifraFlags.length?flag('IFRA 한도 초과: '+ifraFlags.map(E).join(' / '), false):flag('IFRA 한도 이내', true))+
+        (stockFlags.length?flag('재고 부족: '+stockFlags.map(E).join(', '), false):flag('전 원료 재고 보유', true))+
+        (target>0?flag('목표 원가 '+F(target)+'원 대비 '+(costOk?'충족':'초과 (+'+F(costPerEa-target)+'원)'), costOk):'')+
+      '</div>'+
+      '<table style="width:100%;font-size:11px"><tr><th style="text-align:left">원료</th><th>배합비</th><th>g/EA</th><th>원가/EA</th><th>재고(g)</th><th>가능수량</th></tr>'+
+      rows.map(function(r){
+        return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(r.raw?r.raw.name:r.name)+(r.raw?'':' <b style="color:#c0392b">(미등록)</b>')+(r.algUnknown?' <span style="color:#b8860b">알레르겐 프로파일 미입력</span>':'')+'</td>'+
+          '<td style="text-align:right">'+r.pct+'%</td><td style="text-align:right">'+r.gPerEa.toFixed(2)+'</td>'+
+          '<td style="text-align:right">'+(r.raw?F(r.cost):'-')+'</td>'+
+          '<td style="text-align:right">'+(r.raw?F(r.stock):'-')+'</td>'+
+          '<td style="text-align:right;font-weight:800;color:'+(r.raw&&r.canEa<=0?'#c2410c':'#0f172a')+'">'+(r.raw?(isFinite(r.canEa)?F(r.canEa):'-'):'-')+'</td></tr>';
+      }).join('')+'</table>'+
+      (algRows.length?'<div style="background:#f8fafc;border-radius:8px;padding:8px 10px;font-size:11px">'+
+        '<b>알레르겐 판정</b> (완제품 기준)<br>'+
+        algRows.map(function(c){ return (A26MAP[c]||c)+' '+alg[c].toFixed(4)+'%'+(alg[c]>=TH_LEAVE?' <b style="color:#c2410c">표기</b>':' <span style="color:#94a3b8">면제</span>'); }).join(' · ')+
+        (mustLabel.length?'<br><b>전성분 표기 문구:</b> '+mustLabel.map(function(c){ return A26MAP[c]||c; }).join(', '):'')+
+      '</div>':'')+
+      '<div class="grid grid-cols-2 gap-2">'+
+        '<input id="pf-name" class="input-field" placeholder="제품명 (예: 시프트아이_고요 30ml)">'+
+        '<button class="btn btn-primary" onclick="createTrialProduct()">🧾 제품·BOM 등록 + 시제품 지시 발행</button>'+
+      '</div>'+
+      '<div style="font-size:10px;color:#94a3b8">※ 검증은 재고·원가·규제 적합성만 판단합니다. 향의 조화·확산력·잔향은 시제품 시향으로 확인하세요.</div>'+
+    '</div>';
+};
+
+/* ════════ 제품·BOM 등록 + 시제품 작업지시 ════════ */
+window.createTrialProduct = function(){
+  if(!lastValid){ return; }
+  var name = ($('pf-name').value||'').trim();
+  if(!name){ if(typeof toast==='function') toast('제품명을 입력하세요','error'); return; }
+  var missing = lastValid.rows.filter(function(r){ return !r.raw; });
+  if(missing.length){ if(typeof toast==='function') toast('미등록 원료가 있어 등록할 수 없습니다: '+missing[0].name,'error'); return; }
+  var pid = Date.now();
+  var bom = lastValid.rows.map(function(r){ return { type:'RAW', itemId:r.raw.rawId, qty:r.pct }; });
+  db.master.M_PRODUCT.push({ productId: pid, name: name, fillWeight: lastValid.fill, bom: bom, costing:{lossRate:0}, note:'AI 조향 코파일럿 생성' });
+
+  db.txn = db.txn||{};
+  db.txn.T_PROD_PLAN = db.txn.T_PROD_PLAN||[];
+  db.txn.T_WORK_ORDER = db.txn.T_WORK_ORDER||[];
+  var trialQty = Math.max(1, Math.min(10, lastValid.maxEa||1));
+  var planId = (typeof generateId==='function')?generateId('PLAN'):'PLAN'+Date.now();
+  db.txn.T_PROD_PLAN.push({ id:planId, no:'PP-TRIAL-'+TODAY().replace(/-/g,'').slice(2), productId:pid, qty:trialQty, date:TODAY(), status:'계획', note:'시제품(AI 코파일럿)' });
+  var woId = (typeof generateId==='function')?generateId('WO'):'WO'+Date.now();
+  db.txn.T_WORK_ORDER.push({ id:woId, no:'WO-TRIAL-'+TODAY().replace(/-/g,'').slice(2), planId:planId, date:TODAY(), worker:'', process:'조향/벌크배합', status:'대기', note:'시제품 시향용' });
+
+  if(typeof logEvent==='function') logEvent('AI 조향: 제품 등록 '+name+' + 시제품 지시 '+trialQty+'EA');
+  if(typeof toast==='function') toast(name+' 등록 완료 · 시제품 '+trialQty+'EA 작업지시 발행됨 (작업지시 화면에서 시작)','success');
+  saveDB();
+};
+
+/* ════════ 라우팅·부트 ════════ */
+var _init = window.initNewPage;
+window.initNewPage = function(pageId){
+  try{ if(typeof _init==='function') _init(pageId); }catch(e){}
+  if(pageId==='perfume-ai') injectUI();
+};
+function boot(){ injectUI(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot, 1500);
+var __pfKeep = setInterval(injectUI, 3000);
+setTimeout(function(){ clearInterval(__pfKeep); }, 90000);
 })();
