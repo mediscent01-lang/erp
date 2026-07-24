@@ -1,12 +1,9 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v2.2 — 노즈 (2026-07-20)
-   v2.2: WMS 로드맵 ②③ 통합 — 📋 피킹 리스트 + QR 스캔 액션
-     · 피킹: 품목·수량 입력 → 창고 재고에서 FIFO로 꺼낼 LOT 자동 배정,
-       부족분 경고, 인쇄(작업자·인수자 서명란), 체크 후 [확정]하면
-       인사동 보충은 자동 이관 실행 / 고객 출고는 리스트 발행·기록
-     · QR 스캔 퀵뷰에 [🔄 이관하기] [🔢 실사 입력] 버튼 — 폰으로 라벨을
-       찍으면 해당 LOT가 채워진 폼으로 바로 진입 (현장 단말기화)
-   v2.1: 순환 실사 / v2.0: 부자재 위치 확장
+   SHIFTI ERP 확장 모듈 nose-modules.js v2.3 — 노즈 (2026-07-20)
+   v2.3: 📖 운영가이드 업데이트 — [사용 가이드] 페이지 상단에 확장 모듈
+         운영가이드 주입 (하루·월·연 운영 리듬, 위치재고 5단계, QR 현장
+         사용, 생산·수율, 알레르겐, 문서센터, 필수 준수사항) + 인쇄/PDF
+   v2.2: 피킹 리스트 + QR 스캔 액션 / v2.1: 순환 실사 / v2.0: 부자재 위치
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -2700,4 +2697,105 @@ setTimeout(boot, 1500);
 var __locKeep = setInterval(function(){ try{ injectUI(); }catch(e){} }, 3000);
 setTimeout(function(){ clearInterval(__locKeep); }, 90000);
 setInterval(function(){ try{ decorateSaleLots(); }catch(e){} }, 2000);
+})();
+
+/* ═══════════ 모듈: 운영가이드 업데이트 패치 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+
+var GUIDE_HTML =
+'<div id="nose-guide-v22" class="card p-4 space-y-3" style="border:2px solid #0f766e;background:#f7fbfa">'+
+  '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+    '<h3 class="font-bold text-sm" style="color:#0f766e;margin:0">🆕 확장 모듈 운영가이드 (v2.2)</h3>'+
+    '<span style="font-size:9.5px;font-weight:800;color:#fff;background:#0f766e;border-radius:6px;padding:2px 7px">노즈 모듈</span>'+
+    '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="printNoseGuide()">📄 인쇄 / PDF</button>'+
+  '</div>'+
+
+  '<div class="gd-sec"><b>📅 하루 · 한 달 운영 리듬</b>'+
+    '<div class="gd-step"><span class="gd-num">매일</span><div class="flex-1"><b>대시보드 ☀️ 오늘 할 일</b> — 긴급 카드(주황)부터 처리. 카드를 누르면 해당 화면으로 바로 이동합니다. 아래 <b>📦 재고 스냅샷</b>에서 원료·부자재·벌크·완제품(창고/인사동) 수량과 금액을 확인하세요.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">주간</span><div class="flex-1"><b>피킹·출고</b> — 인사동 보충은 📋 피킹 리스트로, 위탁 판매분은 판매(출고) 등록으로. 매장 정산서를 받으면 그 수량만큼 인사동 LOT을 골라 출고 처리합니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">월말</span><div class="flex-1"><b>실사 + 서류</b> — 🔢 순환 실사로 창고→부자재→인사동 순으로 세고 확정. 그다음 📚 문서센터에서 수불부·생산월보를 출력해 보관합니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">연 1회</span><div class="flex-1"><b>2월 말 식약처 생산실적 보고</b> — 문서센터 → 연간 생산실적 집계표 출력 후 대한화장품협회에 보고. 책임판매관리자 법정교육(8시간)은 교육이수 대장에 기록.</div></div>'+
+  '</div>'+
+
+  '<div class="gd-sec"><b>🏬 위치 재고 (창고 · 인사동)</b>'+
+    '<div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>기초 등록</b> — 실사표를 엑셀에서 복사해 <b>📋 일괄 기초재고 등록</b>에 붙여넣기(형식: 품명 [탭] 수량 [탭] 원가). 유형(완제품/원료/포장재)과 위치를 먼저 고르세요. <b>원료는 g 단위</b>로 입력합니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>이관</b> — 창고↔인사동 이동. QC 적합(OK) LOT만 이관되며 이력이 자동 기록됩니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>피킹 리스트</b> — 보낼 품목·수량을 넣으면 꺼낼 LOT을 FIFO로 배정. 인쇄해 들고 담고, [피킹 완료 → 확정]하면 인사동 보충은 자동 이관됩니다. (고객 출고는 리스트만 발행 — 차감은 판매 화면에서)</div></div>'+
+    '<div class="gd-step"><span class="gd-num">4</span><div class="flex-1"><b>순환 실사</b> — 유형·위치 선택 → 시트 열기 → 실물 수량 입력(빈칸은 장부와 동일) → 확정. 부족분은 오래된 LOT부터 차감, 초과분은 ADJ LOT으로 생성됩니다. 실사기록서는 이력 링크에서 인쇄하세요.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">5</span><div class="flex-1"><b>LOT 수정·삭제</b> — 🛠 LOT 관리에서 잔량·단가·상태·위치·기한을 고치거나 삭제. 전체 초기화는 백업 자동 다운로드 후 2중 확인을 거칩니다.</div></div>'+
+  '</div>'+
+
+  '<div class="gd-sec"><b>📱 QR 라벨 현장 사용</b>'+
+    '<div class="gd-step"><span class="gd-num">1</span><div class="flex-1">재고 라벨 출력 시 QR이 자동으로 붙습니다. 라벨을 자재·박스에 부착하세요.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">2</span><div class="flex-1">폰 카메라로 QR을 찍으면 ERP가 열리며 <b>잔량·유통기한·QC 상태</b> 카드가 표시됩니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">3</span><div class="flex-1">카드의 <b>[🔄 이관하기]</b>는 그 LOT이 채워진 이관 폼으로, <b>[🔢 실사 입력]</b>은 해당 품목 실사 시트로 바로 연결됩니다.</div></div>'+
+  '</div>'+
+
+  '<div class="gd-sec"><b>🔧 생산 · 수율</b>'+
+    '<div class="gd-step"><span class="gd-num">1</span><div class="flex-1"><b>작업지시</b>를 발행하면 대기 상태. [▶ 시작] → 진행중 → [✓ 완료·실적]에서 양품·불량·실투입량을 입력하면 <b>생산수율·자재수율·계획달성률</b>이 자동 계산됩니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">2</span><div class="flex-1"><b>생산 일정</b>에서 월간 캘린더·간트로 계획, 작업지시, 숙성기간, 발주 입고예정일을 한눈에 봅니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">3</span><div class="flex-1"><b>수율 분석</b>에서 공정별 평균 수율과 월별 추이를 확인. 수율이 떨어지면 원인 공정을 바로 찾을 수 있습니다.</div></div>'+
+  '</div>'+
+
+  '<div class="gd-sec"><b>🧬 알레르겐 · 규제</b>'+
+    '<div class="gd-step"><span class="gd-num">1</span><div class="flex-1">원료 마스터 → <b>[🧬 알레르겐 프로파일 관리]</b> → 공급사 알레르겐 XLS를 그대로 업로드하면 EU 26종 %가 자동 인식됩니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">2</span><div class="flex-1">알레르겐 계산 화면에서 제품을 고르면 <b>완제품 함량과 표기의무(leave-on 0.001%)</b>가 판정되고, 전성분 표기 문구가 생성됩니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">3</span><div class="flex-1">MSDS·IFRA 인증서 등 문서 원본은 드라이브에 보관하고 ERP 문서관리에 등록 정보만 남기세요.</div></div>'+
+  '</div>'+
+
+  '<div class="gd-sec"><b>📚 문서센터 — 모든 서류의 단일 관문</b>'+
+    '<div class="gd-step"><span class="gd-num">정기</span><div class="flex-1">월간 원자재 수불부 · 생산월보 · 연간 생산실적 집계표</div></div>'+
+    '<div class="gd-step"><span class="gd-num">LOT</span><div class="flex-1">제조·품질관리기록서(CGMP) · 제조기록서(간이) · 품질검사성적서 · 제품표준서 · <b>LOT 추적성 패키지</b>(감사·리콜 대응 일괄 출력)</div></div>'+
+    '<div class="gd-step"><span class="gd-num">거래</span><div class="flex-1">거래명세서(부가세 포함/별도/면세) · 부가세 신고 기초자료 · 출고기록서 · 견적서</div></div>'+
+    '<div class="gd-step"><span class="gd-num">점검</span><div class="flex-1">위생점검일지 · 설비점검일지 · 교육이수 대장 — 입력하면 월별 일지로 출력됩니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">서명</span><div class="flex-1">모든 출력물 하단에 <b>작성 계정·출력일시</b> 전자 스탬프가 자동으로 찍히며, 승인자 서명란이 포함됩니다. 보존기간 5년.</div></div>'+
+  '</div>'+
+
+  '<div class="gd-sec"><b>⚠️ 꼭 지킬 것</b>'+
+    '<div class="gd-step"><span class="gd-num">!</span><div class="flex-1"><b>제품 충전량(fillWeight) 변경 금지</b> — 값이 있으면 BOM 수량을 %로, 없으면 절대량(g)으로 해석합니다. 도중에 바꾸면 원료 소요량이 통째로 달라집니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">!</span><div class="flex-1"><b>단위는 g 기준 통일</b> — 입고·BOM·실사 모두 g. kg으로 섞으면 재고와 소요량이 어긋납니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">!</span><div class="flex-1"><b>기록 없으면 서류도 없습니다</b> — 배합·충진·검사·이관을 ERP에 그때그때 입력해야 제조기록서·수불부·추적성 패키지가 채워집니다.</div></div>'+
+    '<div class="gd-step"><span class="gd-num">!</span><div class="flex-1"><b>전체 초기화 전 백업 파일 보관</b> — 자동 다운로드되는 JSON을 지우지 마세요.</div></div>'+
+  '</div>'+
+
+  '<div style="font-size:10px;color:#94a3b8">확장 모듈은 nose-modules.js 파일 하나로 관리됩니다. 업데이트 시 이 파일만 교체하면 되며, index.html은 수정하지 않습니다.</div>'+
+'</div>';
+
+function injectGuide(){
+  var page = $('page-guide');
+  if(!page || $('nose-guide-v22')) return;
+  var wrap = document.createElement('div');
+  wrap.innerHTML = GUIDE_HTML;
+  var target = page.querySelector('.card') || page.firstElementChild;
+  if(target && target.parentNode) target.parentNode.insertBefore(wrap.firstChild, target);
+  else page.appendChild(wrap.firstChild);
+}
+
+window.printNoseGuide = function(){
+  var el = $('nose-guide-v22'); if(!el) return;
+  var css = '@page{size:A4;margin:14mm}body{font-family:"Noto Sans KR","Malgun Gothic",sans-serif;font-size:11px;line-height:1.6;color:#111}'+
+    'h1{font-size:19px;text-align:center;margin-bottom:2px}.sub{text-align:center;color:#666;font-size:10px;margin-bottom:12px}'+
+    '.gd-sec{margin:12px 0;page-break-inside:avoid}.gd-sec>b{display:block;font-size:12.5px;color:#0f766e;border-bottom:2px solid #0f766e;padding-bottom:2px;margin-bottom:5px}'+
+    '.gd-step{display:flex;gap:8px;padding:3px 0;border-bottom:1px dotted #ddd}'+
+    '.gd-num{min-width:44px;font-weight:800;color:#0f766e;font-size:10px}button{display:none}';
+  var body = '<h1>SHIFTI ERP 운영가이드</h1><div class="sub">주식회사 메디센츠 · 확장 모듈 v2.2 · 출력 '+new Date().toISOString().split('T')[0]+'</div>' + el.innerHTML;
+  var w2 = window.open('', '_blank');
+  if(!w2){ if(typeof toast==='function') toast('팝업이 차단되었습니다','error'); return; }
+  w2.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>SHIFTI ERP 운영가이드</title><style>'+css+'</style></head><body>'+body+
+    '<script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script></body></html>');
+  w2.document.close();
+};
+
+var _init = window.initNewPage;
+window.initNewPage = function(pageId){
+  try{ if(typeof _init==='function') _init(pageId); }catch(e){}
+  if(pageId==='guide') injectGuide();
+};
+function boot(){ injectGuide(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot, 1500);
+var __gKeep = setInterval(injectGuide, 3000);
+setTimeout(function(){ clearInterval(__gKeep); }, 90000);
 })();
