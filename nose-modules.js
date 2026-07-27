@@ -1,12 +1,12 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.0 — 노즈 (2026-07-20)
-   v3.0: 🧪 AI 조향 코파일럿 — 컨셉 정의 → 처방 제안(노즈 요청문 자동
-         생성) → ERP 실시간 검증 → 시제품 발행
-         검증: 재고 가용성·최대 생산가능수량 / 실원가(가중평균) /
-               IFRA 한도 / EU26 알레르겐 표기판정 / 천연유래 지수 /
-               배합비 100% 정합 → 통과 시 제품·BOM 자동 등록 +
-               시제품 생산계획·작업지시 발행
-   v2.3: 운영가이드 / v2.2: 피킹·QR액션 / v2.1: 순환실사
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.2 — 노즈 (2026-07-20)
+   v3.2: 📅 주간 정산 모드 — 금요일 5분 루틴
+         한 표에 [이번주 생산][매장 보낸 수][창고 실물][매장 실물]
+         [원료 실물]만 적고 버튼 1회 → 생산·BOM차감·LOT·원가·이관·
+         판매계상·재고조정이 순서대로 자동 반영.
+         매장 감소분은 판매/테스터·파손 중 선택 처리.
+         빈칸은 "변동 없음", 부족분은 가능한 만큼 처리 후 경고.
+   v3.1: 간편 기록 / v3.0: AI 조향 코파일럿
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -3042,4 +3042,409 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot, 1500);
 var __pfKeep = setInterval(injectUI, 3000);
 setTimeout(function(){ clearInterval(__pfKeep); }, 90000);
+})();
+
+/* ═══════════ 모듈: 간편 기록 모드 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
+var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
+var F = function(v){ return Math.round(N(v)).toLocaleString(); };
+var TODAY = function(){ return new Date().toISOString().split('T')[0]; };
+function genId(p){ return (typeof generateId==='function') ? generateId(p) : p+'-'+Date.now()+Math.floor(Math.random()*999); }
+function ensure(){ if(window.db){ db.txn=db.txn||{}; db.txn.T_STOCK_MOVE=db.txn.T_STOCK_MOVE||[]; db.txn.T_QUICK=db.txn.T_QUICK||[]; } }
+
+function injectUI(){
+  if($('page-quick-log')) return;
+  var anchor = $('page-dashboard') || document.querySelector('.page-section');
+  if(!anchor || !anchor.parentNode) return;
+  var sec = document.createElement('section');
+  sec.id='page-quick-log'; sec.className='page-section space-y-4';
+  sec.innerHTML =
+    '<h2 class="text-lg font-black text-slate-800">⚡ 간편 기록 (주간 정리)</h2>'+
+    '<div style="font-size:10.5px;color:#64748b;font-weight:600">평일엔 안 적어도 됩니다. 주말에 여기서 한 번에 정리하면 뒤에서 LOT·원가·수불부·제조기록이 자동으로 채워집니다.</div>'+
+    '<div class="card p-4 space-y-2">'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<span class="mes-tab on" id="ql-tab-week" onclick="qlTab(\'week\')">📅 주간정산</span>'+
+        '<span class="mes-tab" id="ql-tab-prod" onclick="qlTab(\'prod\')">🏭 생산</span>'+
+        '<span class="mes-tab" id="ql-tab-move" onclick="qlTab(\'move\')">🚚 매장출고</span>'+
+        '<span class="mes-tab" id="ql-tab-sale" onclick="qlTab(\'sale\')">💰 판매</span>'+
+        '<input id="ql-date" type="date" class="input-field" style="width:150px;margin-left:auto" value="'+TODAY()+'">'+
+      '</div>'+
+      '<div id="ql-desc" style="font-size:10.5px;color:#0f766e;font-weight:700"></div>'+
+      '<div id="ql-body"></div>'+
+    '</div>'+
+    '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">최근 간편 기록</h3></div>'+
+      '<div class="scroll-card"><table><thead><tr><th class="pl-3">일자</th><th>구분</th><th>내용</th><th class="text-right pr-3">비고</th></tr></thead><tbody id="ql-history"></tbody></table></div></div>';
+  anchor.parentNode.insertBefore(sec, anchor.nextSibling);
+
+  var navD = $('nav-dashboard');
+  if(navD && !$('nav-quick-log')){
+    var n=document.createElement('div');
+    n.id='nav-quick-log'; n.className='nav-item'; n.setAttribute('onclick',"goPage('quick-log')");
+    n.innerHTML='<i data-lucide="zap" class="w-4 h-4 shrink-0"></i> ⚡ 간편 기록';
+    navD.parentNode.insertBefore(n, navD.nextSibling);
+    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+  }
+}
+
+var qlMode='week';
+window.qlTab=function(m){
+  qlMode=m;
+  ['week','prod','move','sale'].forEach(function(k){ var t=$('ql-tab-'+k); if(t) t.classList.toggle('on', k===m); });
+  renderQl();
+};
+
+/* ════════ 주간 정산: 세고 → 넣고 → 한 번에 반영 ════════ */
+function weekProducts(){
+  var ids={};
+  (db.stock.FGT_LOT||[]).forEach(function(l){ if(N(l.remaining)>0 && String(l.status||'OK').toUpperCase()!=='FAIL') ids[l.productId]=1; });
+  (db.master.M_PRODUCT||[]).forEach(function(p){ if(p.bom && p.bom.length) ids[p.productId]=1; });
+  return Object.keys(ids).map(function(id){
+    var p=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(id); });
+    return { pid: isNaN(Number(id))?id:Number(id), name:p?p.name:id,
+      wh: fgtStock(id,'창고').reduce(function(s,l){return s+N(l.remaining);},0),
+      st: fgtStock(id,'인사동').reduce(function(s,l){return s+N(l.remaining);},0),
+      price: N(p&&p.price)||0 };
+  }).sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
+}
+function weekRaws(){
+  var ids={};
+  (db.stock.RAW_LOT||[]).forEach(function(l){ if(N(l.remaining)>0 && String(l.status||'OK').toUpperCase()!=='FAIL') ids[l.rawId]=1; });
+  return Object.keys(ids).map(function(id){
+    var r=(db.master.M_RAW||[]).find(function(x){ return String(x.rawId)===String(id); });
+    return { rid: isNaN(Number(id))?id:Number(id), name:r?r.name:id,
+      book:(db.stock.RAW_LOT||[]).filter(function(l){ return String(l.rawId)===String(id) && String(l.status||'OK').toUpperCase()!=='FAIL'; })
+        .reduce(function(s,l){ return s+N(l.remaining); },0) };
+  }).sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
+}
+var wkP=[], wkR=[];
+function renderWeek(){
+  wkP=weekProducts(); wkR=weekRaws();
+  var h =
+  '<div style="font-size:10.5px;color:#0f766e;font-weight:700;margin-bottom:6px">① 이번 주 만든 수량과 매장에 보낸 수량을 적고 ② 지금 실물을 세어 적으세요. 빈칸은 "변동 없음"으로 처리됩니다.</div>'+
+  '<div style="overflow-x:auto"><table style="width:100%;min-width:660px;font-size:11px">'+
+  '<tr><th style="text-align:left">제품</th><th style="width:12%">이번주<br>생산</th><th style="width:12%">매장으로<br>보낸 수</th>'+
+  '<th style="width:14%">창고 실물<br><span style="font-weight:500;color:#94a3b8">장부</span></th>'+
+  '<th style="width:14%">매장 실물<br><span style="font-weight:500;color:#94a3b8">장부</span></th>'+
+  '<th style="width:13%">판매단가</th></tr>'+
+  wkP.map(function(p,i){
+    return '<tr style="border-top:1px solid #e2e8f0"><td style="font-weight:700">'+E(p.name)+'</td>'+
+      '<td><input id="wk-prod-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="0"></td>'+
+      '<td><input id="wk-move-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="0"></td>'+
+      '<td><input id="wk-cw-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="'+p.wh+'"></td>'+
+      '<td><input id="wk-cs-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="'+p.st+'"></td>'+
+      '<td><input id="wk-pr-'+i+'" type="number" class="input-field text-right" style="padding:3px 5px" placeholder="'+(p.price||'단가')+'"></td></tr>';
+  }).join('')+'</table></div>'+
+  (wkR.length?
+  '<div style="font-size:10.5px;color:#0f766e;font-weight:700;margin:10px 0 4px">③ 원료 실물 (g) — 생산 반영 후 남은 양을 적으면 손실까지 정리됩니다</div>'+
+  '<div style="overflow-x:auto"><table style="width:100%;font-size:11px"><tr><th style="text-align:left">원료</th><th style="width:22%">현재 장부(g)</th><th style="width:26%">실물(g)</th></tr>'+
+  wkR.map(function(r,i){
+    return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(r.name)+'</td><td style="text-align:right;color:#64748b">'+F(r.book)+'</td>'+
+      '<td><input id="wk-raw-'+i+'" type="number" step="0.01" class="input-field text-right" style="padding:3px 5px" placeholder="'+Math.round(r.book)+'"></td></tr>';
+  }).join('')+'</table></div>':'')+
+  '<div class="grid grid-cols-2 gap-2" style="margin-top:10px">'+
+    '<select id="wk-cause" class="input-field"><option value="판매">매장 감소분 = 판매로 처리</option><option value="조정">매장 감소분 = 테스터·파손(매출 없음)</option></select>'+
+    '<input id="wk-worker" class="input-field" placeholder="작성자">'+
+  '</div>'+
+  '<button class="btn btn-primary w-full" style="margin-top:8px" onclick="commitWeek()">📅 주간 정산 실행 (생산·출고·판매·조정 한 번에)</button>'+
+  '<div id="ql-msg" style="font-size:11px;font-weight:700;margin-top:6px"></div>';
+  return h;
+}
+window.commitWeek=function(){
+  ensure();
+  var date=$('ql-date').value||TODAY();
+  var cause=$('wk-cause').value;
+  var log=[], warn=[];
+  db.txn.T_BULK=db.txn.T_BULK||[]; db.txn.T_BATCH=db.txn.T_BATCH||[]; db.txn.T_SALE=db.txn.T_SALE||[];
+
+  wkP.forEach(function(p,i){
+    var prodQ=N(($('wk-prod-'+i)||{}).value), moveQ=N(($('wk-move-'+i)||{}).value);
+    var prod=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(p.pid); });
+
+    /* 1) 생산 반영 */
+    if(prodQ>0 && prod){
+      var matCost=0, rawUse=[], packUse=[], shortage=[];
+      (prod.bom||[]).forEach(function(bm){
+        var need=(typeof bomNeed==='function')?bomNeed(prod,bm,prodQ):N(bm.qty)*prodQ;
+        var key=bm.type==='PACK'?'PACK_LOT':'RAW_LOT', idk=bm.type==='PACK'?'packId':'rawId';
+        var lots=(db.stock[key]||[]).filter(function(x){ return String(x[idk])===String(bm.itemId)&&N(x.remaining)>0&&String(x.status||'OK').toUpperCase()!=='FAIL'; })
+          .sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+        var rest=need, picked=[];
+        lots.forEach(function(x){ if(rest<=0) return; var t=Math.min(N(x.remaining),rest); x.remaining=N(x.remaining)-t; matCost+=t*N(x.unitCost); rest-=t; picked.push({lotNo:x.lotNo,qty:t,take:t}); });
+        if(picked.length){ var rec={type:bm.type||'RAW',itemId:bm.itemId,need:need,lots:picked}; if(bm.type==='PACK') packUse.push(rec); else rawUse.push(rec); }
+        if(rest>0) shortage.push((bm.type==='PACK'?'포장재':'원료')+' 부족 '+Math.round(rest*100)/100);
+      });
+      var lotNo='LOT-'+String(date).replace(/-/g,'').slice(2)+'-'+String(i+1).padStart(2,'0');
+      db.stock.FGT_LOT.push({id:genId('FGT'),lotNo:lotNo,productId:p.pid,qty:prodQ,remaining:prodQ,
+        unitCost:Math.round(matCost/prodQ),status:'OK',location:'창고',dateIn:date,note:'주간정산 생산'});
+      var bulkLot='BLK-'+lotNo.slice(4);
+      if(rawUse.length) db.txn.T_BULK.push({id:genId('BULK'),date:date,lotNo:bulkLot,productId:p.pid,qty:prodQ,materials:rawUse,note:'주간정산'});
+      db.txn.T_BATCH.push({id:genId('BATCH'),date:date,lotNo:lotNo,productId:p.pid,qty:prodQ,bulkLotNo:bulkLot,consumedLots:packUse,note:'주간정산'});
+      db.txn.T_STOCK_MOVE.push({id:genId('MV'),date:date,lotNo:lotNo,productId:p.pid,qty:prodQ,from:'(생산)',to:'창고',note:'주간정산'});
+      log.push(p.name+' 생산 '+prodQ);
+      if(shortage.length) warn.push(p.name+': '+shortage.join(', '));
+    }
+
+    /* 2) 매장 출고(이관) 반영 */
+    if(moveQ>0){
+      var lots2=fgtStock(p.pid,'창고').sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+      var rest2=moveQ, moved=0;
+      lots2.forEach(function(src){
+        if(rest2<=0) return;
+        var t=Math.min(N(src.remaining),rest2); src.remaining=N(src.remaining)-t; rest2-=t; moved+=t;
+        var d=(db.stock.FGT_LOT||[]).find(function(x){ return x.lotNo===src.lotNo&&String(x.productId)===String(src.productId)&&(x.location||'창고')==='인사동'; });
+        if(d){ d.remaining=N(d.remaining)+t; d.qty=N(d.qty)+t; }
+        else db.stock.FGT_LOT.push({id:genId('FGT'),lotNo:src.lotNo,productId:src.productId,qty:t,remaining:t,unitCost:src.unitCost,expDate:src.expDate,status:'OK',location:'인사동',note:'주간정산 이관'});
+        db.txn.T_STOCK_MOVE.push({id:genId('MV'),date:date,lotNo:src.lotNo,productId:src.productId,qty:t,from:'창고',to:'인사동',note:'주간정산'});
+      });
+      if(moved>0) log.push(p.name+' 매장출고 '+moved);
+      if(rest2>0) warn.push(p.name+': 창고 부족 '+rest2+' 미이관');
+    }
+
+    /* 3) 매장 실물 대비 감소 → 판매(또는 조정) */
+    var csEl=$('wk-cs-'+i);
+    if(csEl && csEl.value!==''){
+      var actual=N(csEl.value);
+      var book=fgtStock(p.pid,'인사동').reduce(function(s,l){return s+N(l.remaining);},0);
+      var diff=book-actual;
+      if(diff>0){
+        var price=N(($('wk-pr-'+i)||{}).value)||p.price||0;
+        var lots3=fgtStock(p.pid,'인사동').sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+        var rest3=diff;
+        lots3.forEach(function(src){
+          if(rest3<=0) return;
+          var t=Math.min(N(src.remaining),rest3); src.remaining=N(src.remaining)-t; rest3-=t;
+          if(cause==='판매'){
+            db.txn.T_SALE.push({id:genId('SALE'),date:date,customerId:null,productId:p.pid,lotNo:src.lotNo,qty:t,unitPrice:price,amount:t*price,note:'주간정산(인사동)'});
+          } else {
+            db.txn.T_STOCK_MOVE.push({id:genId('MV'),date:date,lotNo:src.lotNo,productId:p.pid,qty:t,from:'인사동',to:'(테스터·파손)',note:'주간정산 조정'});
+          }
+        });
+        log.push(p.name+' 매장 '+(cause==='판매'?'판매':'조정')+' '+diff+(cause==='판매'&&price?' ₩'+F(diff*price):''));
+        if(cause==='판매' && !price) warn.push(p.name+': 판매단가 미입력 (매출 0원 기록)');
+      } else if(diff<0){
+        db.stock.FGT_LOT.push({id:genId('FGT'),lotNo:'ADJ-'+String(date).replace(/-/g,'').slice(2),productId:p.pid,qty:-diff,remaining:-diff,unitCost:0,status:'OK',location:'인사동',dateIn:date,note:'주간정산 실사 증가'});
+        log.push(p.name+' 매장 실사 +'+(-diff));
+      }
+    }
+
+    /* 4) 창고 실물 대비 조정 */
+    var cwEl=$('wk-cw-'+i);
+    if(cwEl && cwEl.value!==''){
+      var act2=N(cwEl.value);
+      var book2=fgtStock(p.pid,'창고').reduce(function(s,l){return s+N(l.remaining);},0);
+      var d2=book2-act2;
+      if(d2>0){
+        var lots4=fgtStock(p.pid,'창고').sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+        var r4=d2;
+        lots4.forEach(function(src){ if(r4<=0) return; var t=Math.min(N(src.remaining),r4); src.remaining=N(src.remaining)-t; r4-=t; });
+        log.push(p.name+' 창고 조정 -'+d2);
+      } else if(d2<0){
+        db.stock.FGT_LOT.push({id:genId('FGT'),lotNo:'ADJ-'+String(date).replace(/-/g,'').slice(2),productId:p.pid,qty:-d2,remaining:-d2,unitCost:0,status:'OK',location:'창고',dateIn:date,note:'주간정산 실사 증가'});
+        log.push(p.name+' 창고 조정 +'+(-d2));
+      }
+    }
+  });
+
+  /* 5) 원료 실물 조정 */
+  wkR.forEach(function(r,i){
+    var el=$('wk-raw-'+i); if(!el || el.value==='') return;
+    var act=N(el.value);
+    var book=(db.stock.RAW_LOT||[]).filter(function(l){ return String(l.rawId)===String(r.rid)&&String(l.status||'OK').toUpperCase()!=='FAIL'; })
+      .reduce(function(s,l){ return s+N(l.remaining); },0);
+    var d=book-act;
+    if(Math.abs(d)<0.001) return;
+    if(d>0){
+      var lots=(db.stock.RAW_LOT||[]).filter(function(l){ return String(l.rawId)===String(r.rid)&&N(l.remaining)>0; })
+        .sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+      var rest=d;
+      lots.forEach(function(l){ if(rest<=0) return; var t=Math.min(N(l.remaining),rest); l.remaining=N(l.remaining)-t; rest-=t; });
+      log.push(r.name+' 원료 조정 -'+Math.round(d*100)/100+'g');
+    } else {
+      db.stock.RAW_LOT.push({id:genId('RAW'),rawId:r.rid,lotNo:'ADJ-'+String(date).replace(/-/g,'').slice(2),qty:-d,remaining:-d,unitCost:0,status:'OK',dateIn:date,note:'주간정산 실사 증가'});
+      log.push(r.name+' 원료 조정 +'+Math.round(-d*100)/100+'g');
+    }
+  });
+
+  db.txn.T_QUICK.push({id:genId('QL'),date:date,mode:'week',summary:log.join(' / '),warn:warn.join(' / '),worker:($('wk-worker')||{}).value||''});
+  if(typeof logEvent==='function') logEvent('주간정산: '+log.length+'건 반영');
+  var summaryHtml = log.length?('✅ '+log.map(E).join('<br>✅ ')+(warn.length?'<br>⚠️ '+warn.map(E).join('<br>⚠️ '):'')):'변동 사항이 없습니다.';
+  if(typeof toast==='function') toast('주간 정산 완료 — '+log.length+'건 반영'+(warn.length?' (확인 '+warn.length+')':''),'success');
+  saveDB();
+  var b=$('ql-body'); if(b) b.innerHTML=renderWeek();
+  var m2=$('ql-msg');   /* 표 재생성 후 요약을 다시 표시 */
+  if(m2){ m2.style.color=warn.length?'#c2410c':'#0f766e'; m2.innerHTML=summaryHtml; }
+  renderQlHistory();
+};
+
+function prodOpts(){
+  return (db.master.M_PRODUCT||[]).map(function(p){ return '<option value="'+E(p.productId)+'">'+E(p.name)+'</option>'; }).join('');
+}
+function fgtStock(pid, loc){
+  return (db.stock.FGT_LOT||[]).filter(function(l){
+    return String(l.productId)===String(pid) && String(l.status||'OK').toUpperCase()!=='FAIL' && N(l.remaining)>0 && (!loc || (l.location||'창고')===loc);
+  });
+}
+
+function renderQl(){
+  var b=$('ql-body'), d=$('ql-desc'); if(!b) return;
+  var opts = prodOpts();
+  if(qlMode==='week'){
+    d.textContent='금요일 정산 — 세고, 넣고, 한 번에 반영합니다.';
+    b.innerHTML = renderWeek();
+    renderQlHistory();
+    return;
+  }
+  if(qlMode==='prod'){
+    d.textContent='이번 주에 만든 완제품을 적으세요. 원료는 BOM대로 자동 차감되고 LOT·원가가 자동 계산됩니다.';
+    b.innerHTML = rowsUI('생산 수량(EA)') ;
+  } else if(qlMode==='move'){
+    d.textContent='매장(인사동)으로 보낸 수량을 적으세요. 창고에서 오래된 LOT부터 자동 이관됩니다.';
+    b.innerHTML = rowsUI('보낸 수량(EA)');
+  } else {
+    d.textContent='팔린 수량을 적으세요. 위탁 정산서 기준으로 한 번에 입력하면 됩니다.';
+    b.innerHTML =
+      '<div class="grid grid-cols-2 gap-2" style="margin-bottom:6px">'+
+        '<select id="ql-loc" class="input-field"><option value="인사동">인사동 매장 판매</option><option value="창고">창고 직접 출고</option></select>'+
+        '<select id="ql-cust" class="input-field">'+
+          '<option value="">고객 선택 (선택)</option>'+
+          (db.master.M_CUSTOMER||[]).map(function(c){ return '<option value="'+E(c.customerId)+'">'+E(c.name)+'</option>'; }).join('')+
+        '</select>'+
+      '</div>'+ rowsUI('판매 수량(EA)', true);
+  }
+  function rowsUI(label, withPrice){
+    var head = '<table style="width:100%;font-size:11.5px"><tr><th style="text-align:left">제품</th><th style="width:26%">'+label+'</th>'+(withPrice?'<th style="width:24%">판매단가</th>':'')+'</tr>';
+    var rows = '';
+    for(var i=0;i<8;i++){
+      rows += '<tr style="border-top:1px solid #e2e8f0"><td><select id="ql-p-'+i+'" class="input-field" style="padding:3px 6px;font-size:11px"><option value="">— 선택 —</option>'+opts+'</select></td>'+
+        '<td><input id="ql-q-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 6px" placeholder="0"></td>'+
+        (withPrice?'<td><input id="ql-c-'+i+'" type="number" class="input-field text-right" style="padding:3px 6px" placeholder="단가"></td>':'')+'</tr>';
+    }
+    return head+rows+'</table>'+
+      '<button class="btn btn-primary w-full" style="margin-top:8px" onclick="commitQuick()">✅ 기록 저장 (자동 처리)</button>'+
+      '<div id="ql-msg" style="font-size:11px;font-weight:700;margin-top:6px"></div>';
+  }
+  renderQlHistory();
+}
+
+window.commitQuick=function(){
+  ensure();
+  var date = $('ql-date').value || TODAY();
+  var lines=[];
+  for(var i=0;i<8;i++){
+    var p=$('ql-p-'+i), q=$('ql-q-'+i);
+    if(!p||!q||!p.value||N(q.value)<=0) continue;
+    var price = $('ql-c-'+i) ? N($('ql-c-'+i).value) : 0;
+    lines.push({ pid: isNaN(Number(p.value))?p.value:Number(p.value), qty:N(q.value), price:price });
+  }
+  if(!lines.length){ if(typeof toast==='function') toast('입력된 행이 없습니다','error'); return; }
+  var msgs=[], warn=[];
+
+  lines.forEach(function(l){
+    var prod=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(l.pid); });
+    var nm = prod?prod.name:l.pid;
+
+    if(qlMode==='prod'){
+      /* 원료 BOM 차감 + 거래기록(T_BULK/T_BATCH) 생성 → 수불부·추적성 자동 반영 */
+      var matCost=0, shortage=[], rawUse=[], packUse=[];
+      ((prod&&prod.bom)||[]).forEach(function(bm){
+        var need = (typeof bomNeed==='function') ? bomNeed(prod, bm, l.qty) : N(bm.qty)*l.qty;
+        var key = bm.type==='PACK'?'PACK_LOT':'RAW_LOT';
+        var idk = bm.type==='PACK'?'packId':'rawId';
+        var lots=(db.stock[key]||[]).filter(function(x){ return String(x[idk])===String(bm.itemId) && N(x.remaining)>0 && String(x.status||'OK').toUpperCase()!=='FAIL'; })
+          .sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+        var rest=need, picked=[];
+        lots.forEach(function(x){
+          if(rest<=0) return;
+          var take=Math.min(N(x.remaining), rest);
+          x.remaining=N(x.remaining)-take; matCost += take*N(x.unitCost); rest-=take;
+          picked.push({ lotNo:x.lotNo, qty:take, take:take });
+        });
+        if(picked.length){
+          var rec={ type:bm.type||'RAW', itemId:bm.itemId, need:need, lots:picked };
+          if(bm.type==='PACK') packUse.push(rec); else rawUse.push(rec);
+        }
+        if(rest>0){ shortage.push((bm.type==='PACK'?'포장재':'원료')+' 부족 '+Math.round(rest*100)/100); }
+      });
+      var lotNo='LOT-'+String(date).replace(/-/g,'').slice(2)+'-'+String(Math.floor(Math.random()*90+10));
+      db.stock.FGT_LOT.push({ id:genId('FGT'), lotNo:lotNo, productId:l.pid, qty:l.qty, remaining:l.qty,
+        unitCost: l.qty>0 ? Math.round(matCost/l.qty) : 0, status:'OK', location:'창고', dateIn:date, note:'간편 생산기록' });
+      /* 거래기록: 벌크(원료 소모) + 충진(포장재 소모·생산) */
+      db.txn.T_BULK = db.txn.T_BULK||[];
+      db.txn.T_BATCH = db.txn.T_BATCH||[];
+      var bulkLot = 'BLK-'+lotNo.slice(4);
+      if(rawUse.length) db.txn.T_BULK.push({ id:genId('BULK'), date:date, lotNo:bulkLot, productId:l.pid, qty:l.qty, materials:rawUse, note:'간편 기록' });
+      db.txn.T_BATCH.push({ id:genId('BATCH'), date:date, lotNo:lotNo, productId:l.pid, qty:l.qty, bulkLotNo:bulkLot, consumedLots:packUse, note:'간편 기록' });
+      db.txn.T_STOCK_MOVE.push({ id:genId('MV'), date:date, lotNo:lotNo, productId:l.pid, qty:l.qty, from:'(생산)', to:'창고', note:'간편 기록' });
+      msgs.push(nm+' '+l.qty+'EA 생산('+lotNo+')');
+      if(shortage.length) warn.push(nm+': '+shortage.join(', '));
+
+    } else if(qlMode==='move'){
+      var lots2=fgtStock(l.pid,'창고').sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+      var rest2=l.qty, moved=0;
+      lots2.forEach(function(src){
+        if(rest2<=0) return;
+        var take=Math.min(N(src.remaining), rest2);
+        src.remaining=N(src.remaining)-take; rest2-=take; moved+=take;
+        var dest=(db.stock.FGT_LOT||[]).find(function(x){ return x.lotNo===src.lotNo && String(x.productId)===String(src.productId) && (x.location||'창고')==='인사동'; });
+        if(dest){ dest.remaining=N(dest.remaining)+take; dest.qty=N(dest.qty)+take; }
+        else db.stock.FGT_LOT.push({ id:genId('FGT'), lotNo:src.lotNo, productId:src.productId, qty:take, remaining:take,
+          unitCost:src.unitCost, expDate:src.expDate, status:'OK', location:'인사동', note:'간편 이관' });
+        db.txn.T_STOCK_MOVE.push({ id:genId('MV'), date:date, lotNo:src.lotNo, productId:src.productId, qty:take, from:'창고', to:'인사동', note:'간편 기록' });
+      });
+      msgs.push(nm+' '+moved+'EA 매장출고');
+      if(rest2>0) warn.push(nm+': 창고 재고 부족 '+rest2+'EA 미처리');
+
+    } else {
+      var loc=$('ql-loc')?$('ql-loc').value:'인사동';
+      var cust=$('ql-cust')?$('ql-cust').value:'';
+      var lots3=fgtStock(l.pid,loc).sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+      var rest3=l.qty, sold=0;
+      db.txn.T_SALE=db.txn.T_SALE||[];
+      lots3.forEach(function(src){
+        if(rest3<=0) return;
+        var take=Math.min(N(src.remaining), rest3);
+        src.remaining=N(src.remaining)-take; rest3-=take; sold+=take;
+        db.txn.T_SALE.push({ id:genId('SALE'), date:date, customerId:cust||null, productId:l.pid, lotNo:src.lotNo,
+          qty:take, unitPrice:l.price, amount:take*l.price, note:'간편 기록('+loc+')' });
+      });
+      msgs.push(nm+' '+sold+'EA 판매'+(l.price?' ₩'+F(sold*l.price):''));
+      if(rest3>0) warn.push(nm+': '+loc+' 재고 부족 '+rest3+'EA 미처리');
+    }
+  });
+
+  db.txn.T_QUICK.push({ id:genId('QL'), date:date, mode:qlMode, summary:msgs.join(' / '), warn:warn.join(' / ') });
+  if(typeof logEvent==='function') logEvent('간편기록('+qlMode+'): '+msgs.join(', '));
+  var m=$('ql-msg');
+  if(m){
+    m.style.color = warn.length?'#c2410c':'#0f766e';
+    m.innerHTML = '✅ '+msgs.map(E).join('<br>✅ ') + (warn.length?'<br>⚠️ '+warn.map(E).join('<br>⚠️ '):'');
+  }
+  if(typeof toast==='function') toast('기록 저장 완료'+(warn.length?' (확인 필요 '+warn.length+'건)':''),'success');
+  for(var j=0;j<8;j++){ var pp=$('ql-p-'+j), qq=$('ql-q-'+j); if(pp) pp.value=''; if(qq) qq.value=''; }
+  saveDB();
+  renderQlHistory();
+};
+
+function renderQlHistory(){
+  var t=$('ql-history'); if(!t) return;
+  var list=((db.txn&&db.txn.T_QUICK)||[]).slice(-15).reverse();
+  t.innerHTML = list.map(function(q){
+    return '<tr><td class="pl-3 text-xs">'+E(q.date)+'</td><td class="text-xs">'+(q.mode==='prod'?'🏭 생산':q.mode==='move'?'🚚 출고':'💰 판매')+'</td>'+
+      '<td class="text-xs">'+E(q.summary)+'</td><td class="text-right pr-3 text-xs" style="color:#c2410c">'+E(q.warn||'')+'</td></tr>';
+  }).join('') || '<tr><td colspan="4" class="text-center py-4 text-slate-400">기록 없음 — 이번 주 만든 것부터 적어보세요</td></tr>';
+}
+
+var _init=window.initNewPage;
+window.initNewPage=function(p){
+  try{ if(typeof _init==='function') _init(p); }catch(e){}
+  if(p==='quick-log'){ injectUI(); ensure(); renderQl(); }
+};
+function boot(){ injectUI(); ensure(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot,1500);
+var __qlKeep=setInterval(injectUI,3000);
+setTimeout(function(){ clearInterval(__qlKeep); },90000);
 })();
