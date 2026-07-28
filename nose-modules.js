@@ -1,11 +1,13 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.8 — 노즈 (2026-07-20)
-   v3.8: 주간정산 화면 가독성 개선
-     · 입력칸 글자 15px·높이 40px(모바일 터치 대응), 표 13.5px
-     · 장부 수량을 흐린 placeholder 대신 초록 배지로 항상 표시
-     · 제품명 굵게, 헤더 대비 강화, 결과 요약 13px
-   v3.7: 완제품·부자재 분리 / v3.6: 마스터 재고관리
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.8 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.9 — 노즈 (2026-07-20)
+   v3.9: 🩺 데이터 점검 — 버튼 하나로 데이터 품질 스캔
+     치명: 원료 단가 미입력 / BOM 미설정 / 배합비 합계≠100% /
+           마스터 없는 재고 LOT / 알레르겐 프로파일 미입력
+     주의: 포장재 단가 / 판매단가 / 포장재 의심 제품 / IFRA 한도
+     참고: 유통기한 미입력 / 재고 0 제품 / 비표준 LOT 번호
+     항목별 영향 설명 + [수정하러 가기] 바로가기 제공
+   v3.8: 주간정산 가독성 / v3.7: 완제품·부자재 분리
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.9 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -3922,4 +3924,165 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot,1600);
 var __mpKeep=setInterval(boot,3000);
 setTimeout(function(){ clearInterval(__mpKeep); },90000);
+})();
+
+/* ═══════════ 모듈: 데이터 점검 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var N=function(v){var x=Number(v);return isFinite(x)?x:0;};
+var E=function(v){return (typeof escH==='function')?escH(v):String(v==null?'':v);};
+var F=function(v){return Math.round(N(v)).toLocaleString();};
+var PACKWORD=/병|캡|박스|상자|백|펌프|라벨|스티커|튜브|용기|마개|카톤|파우치|리본|쇼핑/;
+
+function scan(){
+  var R=[];
+  var M=db.master||{}, S=db.stock||{};
+  function add(sev,title,items,impact,page,fix){
+    if(!items.length) return;
+    R.push({sev:sev,title:title,items:items,impact:impact,page:page,fix:fix});
+  }
+  /* 1. 원료·포장재 단가 0 */
+  var noCostRaw=(M.M_RAW||[]).filter(function(r){
+    var lots=(S.RAW_LOT||[]).filter(function(l){return String(l.rawId)===String(r.rawId)&&N(l.remaining)>0;});
+    var hasLotCost=lots.some(function(l){return N(l.unitCost)>0;});
+    return !hasLotCost && !N(r.stdCost);
+  }).map(function(r){return r.name;});
+  add('치명','원료 단가 미입력',noCostRaw,'제품 원가·조향 코파일럿 검증이 실제보다 낮게 계산됩니다','master-raw');
+
+  var noCostPack=(M.M_PACK||[]).filter(function(p){
+    var lots=(S.PACK_LOT||[]).filter(function(l){return String(l.packId)===String(p.packId)&&N(l.remaining)>0;});
+    return lots.length>0 && !lots.some(function(l){return N(l.unitCost)>0;}) && !N(p.stdCost);
+  }).map(function(p){return p.name;});
+  add('주의','포장재 단가 미입력',noCostPack,'완제품 원가에 포장비가 빠집니다','master-pack');
+
+  /* 2. BOM 미설정 / 배합비 합계 이상 */
+  var noBom=(M.M_PRODUCT||[]).filter(function(p){return !(p.bom&&p.bom.length);}).map(function(p){return p.name;});
+  add('치명','BOM 미설정 제품',noBom,'생산 기록 시 원료가 차감되지 않고 원가가 0이 됩니다','master-product');
+
+  var badBom=(M.M_PRODUCT||[]).filter(function(p){
+    if(!(p.bom&&p.bom.length)||!N(p.fillWeight)) return false;
+    var sum=p.bom.filter(function(b){return b.type==='RAW';}).reduce(function(s,b){return s+N(b.qty);},0);
+    return sum>0 && Math.abs(sum-100)>0.5;
+  }).map(function(p){
+    var sum=p.bom.filter(function(b){return b.type==='RAW';}).reduce(function(s,b){return s+N(b.qty);},0);
+    return p.name+' ('+sum.toFixed(1)+'%)';
+  });
+  add('치명','BOM 배합비 합계 ≠ 100%',badBom,'충전량 기준 제품은 원료 소요량이 어긋납니다','master-product');
+
+  /* 3. 판매단가 미설정 */
+  var noPrice=(M.M_PRODUCT||[]).filter(function(p){
+    var hasStock=(S.FGT_LOT||[]).some(function(l){return String(l.productId)===String(p.productId)&&N(l.remaining)>0;});
+    return hasStock && !N(p.price);
+  }).map(function(p){return p.name;});
+  add('주의','판매단가 미설정',noPrice,'주간정산에서 매장 감소분이 매출 0원으로 기록됩니다','master-product');
+
+  /* 4. 포장재로 의심되는 제품 */
+  var suspect=(M.M_PRODUCT||[]).filter(function(p){return PACKWORD.test(String(p.name||''));}).map(function(p){return p.name;});
+  add('주의','제품으로 등록된 포장재 의심',suspect,'완제품 재고·품절 알림이 부풀려집니다 (이름·LOT 정리에서 이동)','loc-stock');
+
+  /* 5. 마스터 없는 재고(고아 LOT) */
+  var orphan=[];
+  (S.FGT_LOT||[]).forEach(function(l){ if(N(l.remaining)>0 && !(M.M_PRODUCT||[]).some(function(p){return String(p.productId)===String(l.productId);})) orphan.push('완제품 '+l.lotNo); });
+  (S.RAW_LOT||[]).forEach(function(l){ if(N(l.remaining)>0 && !(M.M_RAW||[]).some(function(p){return String(p.rawId)===String(l.rawId);})) orphan.push('원료 '+l.lotNo); });
+  (S.PACK_LOT||[]).forEach(function(l){ if(N(l.remaining)>0 && !(M.M_PACK||[]).some(function(p){return String(p.packId)===String(l.packId);})) orphan.push('포장재 '+l.lotNo); });
+  add('치명','마스터에 없는 재고 LOT',orphan,'화면·수불부에서 이름이 표시되지 않고 집계가 어긋납니다','loc-stock');
+
+  /* 6. 알레르겐 프로파일 미입력 */
+  var noAlg=(M.M_RAW||[]).filter(function(r){
+    return r.isAllergen && !(r.allergenProfile&&Object.keys(r.allergenProfile).length);
+  }).map(function(r){return r.name;});
+  add('치명','알레르겐 프로파일 미입력',noAlg,'전성분 표기 판정이 불완전해 표시 위반 위험이 있습니다','master-raw');
+
+  /* 7. IFRA 한도 미설정 향료 */
+  var noIfra=(M.M_RAW||[]).filter(function(r){
+    return /fragrance|향료|오일|oil|HPD/i.test(String(r.name||'')+String(r.inci||'')) && !N(r.ifraLimit);
+  }).map(function(r){return r.name;});
+  add('주의','IFRA 사용한도 미설정',noIfra,'조향 코파일럿이 한도 초과를 잡아내지 못합니다','master-raw');
+
+  /* 8. 유통기한 없는 원료 LOT */
+  var noExp=(S.RAW_LOT||[]).filter(function(l){return N(l.remaining)>0 && !l.expDate;}).length;
+  add('참고','유통기한 미입력 원료 LOT',noExp?[noExp+'건']:[],'유통기한 임박 알림이 작동하지 않습니다','master-raw');
+
+  /* 9. 완제품 재고 0 (품절) */
+  var zero=(M.M_PRODUCT||[]).filter(function(p){
+    return !(S.FGT_LOT||[]).some(function(l){return String(l.productId)===String(p.productId)&&N(l.remaining)>0;});
+  }).map(function(p){return p.name;});
+  add('참고','재고 0 제품',zero,'생산 계획 또는 단종 검토가 필요합니다','quick-log');
+
+  /* 10. LOT 번호 비표준 */
+  var badLot=(S.FGT_LOT||[]).filter(function(l){ return N(l.remaining)>0 && !/^[A-Z0-9]+-\d{6}-\d{2}$/.test(String(l.lotNo||'')); }).length;
+  add('참고','비표준 LOT 번호',badLot?[badLot+'건']:[],'추적 시 식별이 어렵습니다 (이름·LOT 정리에서 재부여)','loc-stock');
+
+  return R;
+}
+
+var SEV={'치명':{c:'#dc2626',bg:'#fef2f2',bd:'#fca5a5'},'주의':{c:'#c2410c',bg:'#fff7ed',bd:'#fdba74'},'참고':{c:'#0f766e',bg:'#f0fdfa',bd:'#99f6e4'}};
+
+window.runDataCheck=function(){
+  var box=$('dq-result'); if(!box) return;
+  var R=scan();
+  var crit=R.filter(function(x){return x.sev==='치명';}).length;
+  var warn=R.filter(function(x){return x.sev==='주의';}).length;
+  if(!R.length){
+    box.innerHTML='<div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:14px;font-size:13px;font-weight:800;color:#166534">✅ 점검 완료 — 발견된 문제가 없습니다. 데이터가 건강합니다.</div>';
+    return;
+  }
+  box.innerHTML=
+    '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
+      '<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:8px 14px"><div style="font-size:18px;font-weight:900;color:#dc2626">'+crit+'</div><div style="font-size:10px;font-weight:800;color:#7f1d1d">치명 (즉시 수정)</div></div>'+
+      '<div style="background:#fff7ed;border:1.5px solid #fdba74;border-radius:10px;padding:8px 14px"><div style="font-size:18px;font-weight:900;color:#c2410c">'+warn+'</div><div style="font-size:10px;font-weight:800;color:#7c2d12">주의</div></div>'+
+      '<div style="background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:10px;padding:8px 14px"><div style="font-size:18px;font-weight:900;color:#0f766e">'+(R.length-crit-warn)+'</div><div style="font-size:10px;font-weight:800;color:#134e4a">참고</div></div>'+
+    '</div>'+
+    R.map(function(x,i){
+      var s=SEV[x.sev];
+      var shown=x.items.slice(0,8), more=x.items.length-shown.length;
+      return '<div style="background:'+s.bg+';border:1.5px solid '+s.bd+';border-radius:12px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+          '<span style="font-size:10px;font-weight:900;color:#fff;background:'+s.c+';border-radius:6px;padding:2px 8px">'+x.sev+'</span>'+
+          '<span style="font-size:13px;font-weight:900;color:#0f172a">'+E(x.title)+'</span>'+
+          '<span style="font-size:12px;font-weight:800;color:'+s.c+'">'+x.items.length+'건</span>'+
+          '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="goPage(\''+x.page+'\')">수정하러 가기</button>'+
+        '</div>'+
+        '<div style="font-size:11.5px;color:#334155;margin-top:5px;font-weight:600">↳ '+E(x.impact)+'</div>'+
+        '<div style="font-size:12px;color:#0f172a;margin-top:4px;font-weight:700;line-height:1.6">'+
+          shown.map(E).join(' · ')+(more>0?' <span style="color:#64748b">외 '+more+'건</span>':'')+'</div>'+
+      '</div>';
+    }).join('')+
+    '<div style="font-size:10.5px;color:#94a3b8;margin-top:4px">치명 항목부터 처리하세요. 수정 후 다시 점검하면 목록이 줄어듭니다.</div>';
+};
+
+function injectUI(){
+  if($('page-data-check')) return;
+  var anchor=$('page-doc-center')||$('page-loc-stock')||document.querySelector('.page-section');
+  if(!anchor||!anchor.parentNode) return;
+  var sec=document.createElement('section');
+  sec.id='page-data-check'; sec.className='page-section space-y-4';
+  sec.innerHTML=
+    '<h2 class="text-lg font-black text-slate-800">🩺 데이터 점검</h2>'+
+    '<div style="font-size:11.5px;color:#64748b;font-weight:600">마스터·재고·BOM·규제 데이터의 빈 곳을 한 번에 찾습니다. 원가·서류가 조용히 어긋나는 것을 막습니다.</div>'+
+    '<button class="btn btn-primary w-full" onclick="runDataCheck()" style="font-size:14px;padding:12px">🔍 데이터 점검 실행</button>'+
+    '<div id="dq-result"></div>';
+  anchor.parentNode.insertBefore(sec, anchor.nextSibling);
+
+  var nav=$('nav-doc-center')||$('nav-loc-stock');
+  if(nav&&!$('nav-data-check')){
+    var n=document.createElement('div');
+    n.id='nav-data-check'; n.className='nav-item'; n.setAttribute('onclick',"goPage('data-check')");
+    n.innerHTML='<i data-lucide="stethoscope" class="w-4 h-4 shrink-0"></i> 🩺 데이터 점검';
+    nav.parentNode.insertBefore(n, nav.nextSibling);
+    try{ if(window.lucide) lucide.createIcons(); }catch(e){}
+  }
+}
+
+var _init=window.initNewPage;
+window.initNewPage=function(p){
+  try{ if(typeof _init==='function') _init(p); }catch(e){}
+  if(p==='data-check'){ injectUI(); try{ runDataCheck(); }catch(e){} }
+};
+function boot(){ injectUI(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot,1600);
+var __dqKeep=setInterval(injectUI,3000);
+setTimeout(function(){ clearInterval(__dqKeep); },90000);
 })();
