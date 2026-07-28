@@ -1,13 +1,11 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.4 — 노즈 (2026-07-20)
-   v3.4: 🏷 이름·LOT 정리 + 재고 정렬
-     · 제품명 일괄 정리 (찾기·바꾸기, 미리보기 후 적용)
-     · LOT 번호 표준 재부여 [코드]-[YYMMDD]-[순번]
-       판매·생산·이동·QC 기록의 LOT 참조까지 함께 갱신
-     · 재고 LOT 목록을 제품별 그룹·소계로 정렬 표시
-   v3.3: 주간정산 신규제품 표시 / v3.2: 주간 정산 모드
-   설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
-         (캐시 방지: index.html의 src를 nose-modules.js?v=3.4 로)
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.5 — 노즈 (2026-07-20)
+   v3.5: 🔻 품절 임박 완제품 대시보드 반영
+     · 완제품 위치 합계(창고+인사동)가 기준 미만인 품목 자동 집계
+     · 오늘 할 일에 긴급 카드 + 상세 표(창고/인사동/합계, 품절 표시)
+     · 기준 수량 화면에서 직접 변경(기본 10개), 행 클릭 시 생산 입력 이동
+   v3.4: 이름·LOT 정리·재고 정렬 / v3.3: 주간정산 신규제품 표시
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.5 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -1671,6 +1669,8 @@ setTimeout(function(){ clearInterval(__dcKeep); }, 90000);
 'use strict';
 var $ = function(id){ return document.getElementById(id); };
 var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
+var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
+var F = function(v){ return Math.round(N(v)).toLocaleString(); };
 var todayStr = function(){ return new Date().toISOString().split('T')[0]; };
 function plusDays(d){ var t=new Date(); t.setDate(t.getDate()+d); return t.toISOString().split('T')[0]; }
 
@@ -1694,8 +1694,11 @@ function metrics(){
   var woRun  = (db.txn.T_WORK_ORDER||[]).filter(function(w){ return w.status==='진행중'; }).length;
   var poDue = (db.txn.T_PO||[]).filter(function(p){ return p.status!=='입고완료' && p.dueDate && p.dueDate<=t; }).length;
   var planToday = (db.txn.T_PROD_PLAN||[]).filter(function(p){ return p.date===t && p.status!=='완료'; }).length;
+  var lowN = lowStockList().length;
+  var lowTh = N((db.meta&&db.meta.lowStockTh)!=null?db.meta.lowStockTh:10)||10;
   return [
     {n:qcWait,   icon:'🧪', label:'QC 대기 완제품', unit:'LOT', page:'qc-prod',      urgent:qcWait>0},
+    {n:lowN,     icon:'🔻', label:'품절 임박 완제품 ('+lowTh+'개 미만)', unit:'품목', page:'loc-stock', urgent:lowN>0},
     {n:matured,  icon:'🫙', label:'숙성완료 · 충진 가능', unit:'LOT', page:'t-batch', urgent:false},
     {n:safety,   icon:'📉', label:'안전재고 미달', unit:'품목', page:'safety-stock',  urgent:safety>0},
     {n:expiring, icon:'⏰', label:'유통기한 30일 임박', unit:'LOT', page:'stock',     urgent:expiring>0},
@@ -1751,6 +1754,33 @@ function invSnapshot(){
   ];
 }
 
+/* 완제품 품절 임박 (기본 10개 미만, 위치 합계 기준) */
+function lowStockList(){
+  var th = N((db.meta&&db.meta.lowStockTh)!=null ? db.meta.lowStockTh : 10) || 10;
+  var agg={};
+  (db.stock.FGT_LOT||[]).forEach(function(l){
+    if(String(l.status||'OK').toUpperCase()==='FAIL') return;
+    var k=l.productId;
+    if(!agg[k]) agg[k]={wh:0,st:0};
+    if((l.location||'창고')==='인사동') agg[k].st+=N(l.remaining); else agg[k].wh+=N(l.remaining);
+  });
+  /* 마스터에 있으나 재고 0인 제품도 포함 */
+  (db.master.M_PRODUCT||[]).forEach(function(p){ if(!agg[p.productId]) agg[p.productId]={wh:0,st:0}; });
+  return Object.keys(agg).map(function(id){
+    var p=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(id); });
+    var a=agg[id];
+    return { pid:id, name:p?p.name:String(id), wh:a.wh, st:a.st, tot:a.wh+a.st };
+  }).filter(function(x){ return x.tot < th; })
+    .sort(function(a,b){ return a.tot-b.tot; });
+}
+window.setLowTh=function(v){
+  if(!window.db) return;
+  db.meta=db.meta||{};
+  db.meta.lowStockTh=N(v)||10;
+  saveDB();
+  render();
+};
+
 function render(){
   var host = $('page-dashboard');
   if(!host || !window.db) return;
@@ -1784,6 +1814,26 @@ function render(){
         '<div style="font-size:10.5px;font-weight:800;color:#334155;margin-top:3px;line-height:1.35">'+m.label+'</div>'+
       '</div>';
     }).join('')+'</div>'+
+    (function(){
+      var lows=lowStockList();
+      var th=N((db.meta&&db.meta.lowStockTh)!=null?db.meta.lowStockTh:10)||10;
+      var head='<div style="display:flex;align-items:center;gap:8px;margin:12px 0 6px;flex-wrap:wrap">'+
+        '<span style="font-size:12px;font-weight:900;color:#0f172a">🔻 품절 임박 완제품</span>'+
+        '<span style="font-size:9.5px;color:#94a3b8;font-weight:700">합계 기준 미만</span>'+
+        '<input type="number" min="1" value="'+th+'" onchange="setLowTh(this.value)" style="width:58px;padding:2px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;text-align:right">'+
+        '<span style="font-size:10px;color:#64748b;font-weight:700">개</span></div>';
+      if(!lows.length) return head+'<div style="font-size:11px;color:#059669;font-weight:700;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:8px 12px">전 품목 재고 여유 — 품절 임박 없음</div>';
+      return head+'<div style="background:#fff;border:1.5px solid #fdba74;border-radius:12px;overflow:hidden">'+
+        '<table style="width:100%;font-size:11px"><tr style="background:#fff7ed"><th style="text-align:left;padding:5px 10px">제품</th><th style="width:20%">🏭 창고</th><th style="width:20%">🏬 인사동</th><th style="width:18%">합계</th></tr>'+
+        lows.map(function(x){
+          var c = x.tot===0?'#dc2626':'#c2410c';
+          return '<tr style="border-top:1px solid #f1f5f9;cursor:pointer" onclick="goPage(\'quick-log\')"><td style="padding:4px 10px;font-weight:700">'+E(x.name)+(x.tot===0?' <span style="font-size:9px;color:#dc2626;font-weight:900">품절</span>':'')+'</td>'+
+            '<td style="text-align:right;padding-right:10px">'+F(x.wh)+'</td>'+
+            '<td style="text-align:right;padding-right:10px">'+F(x.st)+'</td>'+
+            '<td style="text-align:right;padding-right:10px;font-weight:900;color:'+c+'">'+F(x.tot)+'</td></tr>';
+        }).join('')+'</table></div>'+
+        '<div style="font-size:9.5px;color:#94a3b8;margin-top:3px">행을 누르면 간편 기록(생산 입력)으로 이동합니다.</div>';
+    })()+
     '<div style="font-size:12px;font-weight:900;color:#0f172a;margin:12px 0 6px">📦 재고 스냅샷 <span style="font-size:9.5px;font-weight:700;color:#94a3b8">원료 · 부자재 · 벌크 · 완제품(위치별)</span></div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">'+
     invSnapshot().map(function(s){
