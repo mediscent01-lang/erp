@@ -1,13 +1,13 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.9 — 노즈 (2026-07-20)
-   v3.9: 🩺 데이터 점검 — 버튼 하나로 데이터 품질 스캔
-     치명: 원료 단가 미입력 / BOM 미설정 / 배합비 합계≠100% /
-           마스터 없는 재고 LOT / 알레르겐 프로파일 미입력
-     주의: 포장재 단가 / 판매단가 / 포장재 의심 제품 / IFRA 한도
-     참고: 유통기한 미입력 / 재고 0 제품 / 비표준 LOT 번호
-     항목별 영향 설명 + [수정하러 가기] 바로가기 제공
-   v3.8: 주간정산 가독성 / v3.7: 완제품·부자재 분리
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.9 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v4.0 — 노즈 (2026-07-20)
+   v4.0: 💰 재고 단가 채우기 (평가금액 복구)
+     재고 현황의 단가·평가금액은 LOT에 저장된 단가로만 계산되므로,
+     일괄 기초재고 등록분(단가 0)은 평가금액이 0으로 표시됨.
+     마스터 표준단가를 LOT에 일괄 적용하는 도구 추가.
+     원료 마스터 단위가 kg이면 재고 기준(g)으로 자동 환산.
+     미리보기(대상 LOT·적용 단가·예상 평가금액) 후 적용.
+   v3.9: 데이터 점검 / v3.8: 주간정산 가독성
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.0 으로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4052,6 +4052,53 @@ window.runDataCheck=function(){
     '<div style="font-size:10.5px;color:#94a3b8;margin-top:4px">치명 항목부터 처리하세요. 수정 후 다시 점검하면 목록이 줄어듭니다.</div>';
 };
 
+/* ── 단가 0원 LOT에 마스터 표준단가 채우기 ── */
+function costPlan(){
+  var out=[];
+  function push(key, idk, master, unitAware){
+    (db.stock[key]||[]).forEach(function(l){
+      if(N(l.unitCost)>0 || N(l.remaining)<=0) return;
+      var m=(db.master[master]||[]).find(function(x){ return String(x[idk])===String(l[idk]); });
+      if(!m || !N(m.stdCost)) return;
+      var c=N(m.stdCost);
+      /* 마스터 단위가 kg이면 재고 기준(g)에 맞춰 환산 */
+      if(unitAware && /kg/i.test(String(m.unit||''))) c=c/1000;
+      out.push({key:key, id:l.id, lotNo:l.lotNo, name:m.name, qty:N(l.remaining), cost:Math.round(c*100)/100});
+    });
+  }
+  push('RAW_LOT','rawId','M_RAW',true);
+  push('PACK_LOT','packId','M_PACK',false);
+  return out;
+}
+window.previewCostFill=function(){
+  var plan=costPlan();
+  var box=$('dq-costfix');
+  if(!box) return;
+  if(!plan.length){ box.innerHTML='<div style="font-size:12px;color:#059669;font-weight:800;padding:6px 0">✅ 단가가 비어 있는 LOT이 없습니다. (마스터 표준단가도 없는 품목은 제외)</div>'; return; }
+  var amt=plan.reduce(function(s,x){ return s+x.qty*x.cost; },0);
+  box.innerHTML=
+    '<div style="max-height:200px;overflow-y:auto;margin-top:6px"><table style="width:100%;font-size:12px">'+
+    '<tr><th style="text-align:left">품목</th><th style="text-align:left">LOT</th><th style="width:18%">잔량</th><th style="width:20%">적용 단가</th></tr>'+
+    plan.map(function(x){ return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(x.name)+'</td><td class="mono" style="color:#94a3b8">'+E(x.lotNo)+'</td>'+
+      '<td style="text-align:right">'+F(x.qty)+'</td><td style="text-align:right;font-weight:800">'+x.cost.toLocaleString()+'</td></tr>'; }).join('')+
+    '</table></div>'+
+    '<div style="font-size:12px;font-weight:800;color:#0f766e;margin-top:4px">'+plan.length+'개 LOT · 평가금액 약 ₩'+F(amt)+' 반영 예정</div>'+
+    '<button class="btn btn-primary w-full" style="margin-top:6px" onclick="applyCostFill()">단가 채우기 적용</button>';
+};
+window.applyCostFill=function(){
+  var plan=costPlan();
+  if(!plan.length) return;
+  if(!window.confirm(plan.length+'개 LOT에 마스터 표준단가를 적용합니다. 계속할까요?')) return;
+  plan.forEach(function(x){
+    var l=(db.stock[x.key]||[]).find(function(y){ return String(y.id)===String(x.id); });
+    if(l) l.unitCost=x.cost;
+  });
+  if(typeof logEvent==='function') logEvent('LOT 단가 일괄 적용 '+plan.length+'건');
+  if(typeof toast==='function') toast(plan.length+'개 LOT 단가 적용 완료','success');
+  saveDB();
+  try{ runDataCheck(); previewCostFill(); if(typeof mpRender==='function'){ mpRender('RAW'); mpRender('PACK'); } }catch(e){}
+};
+
 function injectUI(){
   if($('page-data-check')) return;
   var anchor=$('page-doc-center')||$('page-loc-stock')||document.querySelector('.page-section');
@@ -4062,6 +4109,12 @@ function injectUI(){
     '<h2 class="text-lg font-black text-slate-800">🩺 데이터 점검</h2>'+
     '<div style="font-size:11.5px;color:#64748b;font-weight:600">마스터·재고·BOM·규제 데이터의 빈 곳을 한 번에 찾습니다. 원가·서류가 조용히 어긋나는 것을 막습니다.</div>'+
     '<button class="btn btn-primary w-full" onclick="runDataCheck()" style="font-size:14px;padding:12px">🔍 데이터 점검 실행</button>'+
+    '<div class="card p-4 space-y-2" style="border:1.5px solid #7fb8a4;background:#f7fbfa">'+
+      '<h3 class="font-bold text-slate-700 text-sm">💰 재고 단가 채우기 (평가금액 복구)</h3>'+
+      '<div style="font-size:11.5px;color:#64748b">재고 현황의 단가·평가금액은 <b>LOT에 저장된 단가</b>로 계산됩니다. 일괄 기초재고로 넣은 LOT은 단가가 비어 0원으로 표시되니, 마스터 표준단가를 채워 넣으세요. (원료 마스터 단위가 kg이면 g 기준으로 자동 환산)</div>'+
+      '<button class="btn btn-secondary w-full" onclick="previewCostFill()">대상 확인 (미리보기)</button>'+
+      '<div id="dq-costfix"></div>'+
+    '</div>'+
     '<div id="dq-result"></div>';
   anchor.parentNode.insertBefore(sec, anchor.nextSibling);
 
