@@ -1,10 +1,13 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.3 — 노즈 (2026-07-20)
-   v3.3(fix): 주간정산 표에 제품 마스터 전체 표시 — 신규 등록 제품이
-         재고0·BOM미설정이어도 즉시 나타남. [🔄 제품목록 새로고침] 버튼
-         추가, BOM 없는 제품은 표시 및 정산 시 경고.
-   v3.2: 주간 정산 모드 / v3.1: 간편 기록 / v3.0: AI 조향 코파일럿
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.4 — 노즈 (2026-07-20)
+   v3.4: 🏷 이름·LOT 정리 + 재고 정렬
+     · 제품명 일괄 정리 (찾기·바꾸기, 미리보기 후 적용)
+     · LOT 번호 표준 재부여 [코드]-[YYMMDD]-[순번]
+       판매·생산·이동·QC 기록의 LOT 참조까지 함께 갱신
+     · 재고 LOT 목록을 제품별 그룹·소계로 정렬 표시
+   v3.3: 주간정산 신규제품 표시 / v3.2: 주간 정산 모드
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
+         (캐시 방지: index.html의 src를 nose-modules.js?v=3.4 로)
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -3457,4 +3460,193 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot,1500);
 var __qlKeep=setInterval(injectUI,3000);
 setTimeout(function(){ clearInterval(__qlKeep); },90000);
+})();
+
+/* ═══════════ 모듈: 이름·LOT 정리 + 재고 정렬 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var N=function(v){var x=Number(v);return isFinite(x)?x:0;};
+var E=function(v){return (typeof escH==='function')?escH(v):String(v==null?'':v);};
+var F=function(v){return Math.round(N(v)).toLocaleString();};
+
+function injectUI(){
+  var host=$('page-loc-stock');
+  if(!host || $('nm-card')) return;
+  var card=document.createElement('div');
+  card.id='nm-card'; card.className='card p-4 space-y-2';
+  card.style.border='1.5px solid #c7b9e8';
+  card.style.background='#fbfaff';
+  card.innerHTML=
+    '<h3 class="font-bold text-slate-700 text-sm">🏷 이름 · LOT 번호 정리</h3>'+
+    '<div style="font-size:10px;color:#64748b">적용 전 반드시 미리보기로 확인하세요. LOT 번호는 판매·생산·이동 기록의 참조까지 함께 변경됩니다.</div>'+
+    '<div style="font-size:11px;font-weight:800;color:#6d28d9;margin-top:4px">① 제품명 일괄 정리</div>'+
+    '<div class="grid grid-cols-3 gap-2">'+
+      '<input id="nm-find" class="input-field" placeholder="찾을 문자 (예: 시프트아이_)">'+
+      '<input id="nm-repl" class="input-field" placeholder="바꿀 문자 (비우면 삭제)">'+
+      '<button class="btn btn-secondary" onclick="previewRename()">미리보기</button>'+
+    '</div>'+
+    '<div id="nm-preview"></div>'+
+    '<div style="font-size:11px;font-weight:800;color:#6d28d9;margin-top:8px">② LOT 번호 표준 재부여</div>'+
+    '<div class="grid grid-cols-3 gap-2">'+
+      '<select id="nm-lot-type" class="input-field"><option value="FGT_LOT">완제품</option><option value="RAW_LOT">원료</option><option value="PACK_LOT">포장재</option></select>'+
+      '<input id="nm-prefix" class="input-field" placeholder="접두어 (비우면 제품코드)">'+
+      '<button class="btn btn-secondary" onclick="previewLotRenumber()">미리보기</button>'+
+    '</div>'+
+    '<div style="font-size:9.5px;color:#94a3b8">형식: [접두어 또는 코드]-[YYMMDD]-[순번2자리] · 입고/제조일 순으로 부여</div>'+
+    '<div id="nm-lot-preview"></div>';
+  host.appendChild(card);
+}
+
+/* ── 제품명 정리 ── */
+var renamePlan=[];
+window.previewRename=function(){
+  var find=($('nm-find').value||''), repl=($('nm-repl').value||'');
+  if(!find){ if(typeof toast==='function') toast('찾을 문자를 입력하세요','error'); return; }
+  renamePlan=[];
+  (db.master.M_PRODUCT||[]).forEach(function(p){
+    var nn=String(p.name||'').split(find).join(repl).replace(/\s{2,}/g,' ').trim();
+    if(nn && nn!==p.name) renamePlan.push({pid:p.productId, from:p.name, to:nn});
+  });
+  var box=$('nm-preview');
+  box.innerHTML = renamePlan.length
+    ? '<table style="width:100%;font-size:11px;margin-top:4px"><tr><th style="text-align:left">현재</th><th style="text-align:left">변경 후</th></tr>'+
+      renamePlan.map(function(r){ return '<tr style="border-top:1px solid #e2e8f0"><td style="color:#94a3b8">'+E(r.from)+'</td><td style="font-weight:700">'+E(r.to)+'</td></tr>'; }).join('')+
+      '</table><button class="btn btn-primary w-full" style="margin-top:6px" onclick="applyRename()">'+renamePlan.length+'개 제품명 변경 적용</button>'
+    : '<div style="font-size:11px;color:#94a3b8;padding:4px 0">변경될 제품이 없습니다.</div>';
+};
+window.applyRename=function(){
+  if(!renamePlan.length) return;
+  if(!window.confirm(renamePlan.length+'개 제품명을 변경합니다. 계속할까요?')) return;
+  renamePlan.forEach(function(r){
+    var p=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(r.pid); });
+    if(p) p.name=r.to;
+  });
+  if(typeof logEvent==='function') logEvent('제품명 일괄 변경 '+renamePlan.length+'건');
+  if(typeof toast==='function') toast(renamePlan.length+'개 제품명 변경 완료','success');
+  renamePlan=[]; $('nm-preview').innerHTML='';
+  saveDB();
+  try{ renderLocPage(); renderLotManager(); }catch(e){}
+};
+
+/* ── LOT 번호 표준 재부여 ── */
+var lotPlan=[], lotPlanKey='';
+function itemOf(key,l){
+  if(key==='RAW_LOT'){ var r=(db.master.M_RAW||[]).find(function(x){return String(x.rawId)===String(l.rawId);}); return r||{}; }
+  if(key==='PACK_LOT'){ var p=(db.master.M_PACK||[]).find(function(x){return String(x.packId)===String(l.packId);}); return p||{}; }
+  var q=(db.master.M_PRODUCT||[]).find(function(x){return String(x.productId)===String(l.productId);}); return q||{};
+}
+function codeOf(m){
+  if(m.code) return String(m.code).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8) || 'ITEM';
+  var nm=String(m.name||'ITEM');
+  var eng=nm.replace(/[^A-Za-z0-9]/g,'');
+  if(eng.length>=3) return eng.toUpperCase().slice(0,8);
+  return 'ITEM';
+}
+window.previewLotRenumber=function(){
+  var key=$('nm-lot-type').value, pre=($('nm-prefix').value||'').trim().toUpperCase();
+  lotPlanKey=key; lotPlan=[];
+  var lots=(db.stock[key]||[]).slice().sort(function(a,b){
+    return String(a.dateIn||a.mfgDate||'').localeCompare(String(b.dateIn||b.mfgDate||''));
+  });
+  var seq={};
+  lots.forEach(function(l){
+    var m=itemOf(key,l);
+    var base = pre || codeOf(m);
+    var d = String(l.dateIn||l.mfgDate||'').replace(/-/g,'').slice(2) || '000000';
+    var k = base+'-'+d;
+    seq[k]=(seq[k]||0)+1;
+    var nn = k+'-'+String(seq[k]).padStart(2,'0');
+    if(nn!==l.lotNo) lotPlan.push({id:l.id, from:l.lotNo, to:nn, name:m.name||'', qty:N(l.remaining)});
+  });
+  var box=$('nm-lot-preview');
+  box.innerHTML = lotPlan.length
+    ? '<div style="max-height:220px;overflow-y:auto"><table style="width:100%;font-size:11px;margin-top:4px">'+
+      '<tr><th style="text-align:left">품목</th><th style="text-align:left">현재 LOT</th><th style="text-align:left">변경 후</th><th style="width:14%">잔량</th></tr>'+
+      lotPlan.map(function(r){ return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(r.name)+'</td><td style="color:#94a3b8" class="mono">'+E(r.from)+'</td><td style="font-weight:700" class="mono">'+E(r.to)+'</td><td style="text-align:right">'+F(r.qty)+'</td></tr>'; }).join('')+
+      '</table></div><button class="btn btn-primary w-full" style="margin-top:6px" onclick="applyLotRenumber()">'+lotPlan.length+'개 LOT 번호 변경 적용 (참조 기록 포함)</button>'
+    : '<div style="font-size:11px;color:#94a3b8;padding:4px 0">변경될 LOT이 없습니다.</div>';
+};
+window.applyLotRenumber=function(){
+  if(!lotPlan.length) return;
+  if(!window.confirm(lotPlan.length+'개 LOT 번호를 변경합니다.\n판매·생산·이동 기록의 LOT 참조도 함께 바뀝니다.\n계속할까요?')) return;
+  var map={};
+  lotPlan.forEach(function(r){
+    var l=(db.stock[lotPlanKey]||[]).find(function(x){ return String(x.id)===String(r.id); });
+    if(!l) return;
+    map[r.from]=r.to;
+    l.lotNo=r.to;
+  });
+  /* 참조 갱신 — 같은 번호를 쓰는 다른 위치 LOT, 거래·이력 기록 */
+  (db.stock[lotPlanKey]||[]).forEach(function(l){ if(map[l.lotNo] && !lotPlan.some(function(r){return String(r.id)===String(l.id);})) l.lotNo=map[l.lotNo]; });
+  var t=db.txn||{};
+  (t.T_SALE||[]).forEach(function(s){ if(map[s.lotNo]) s.lotNo=map[s.lotNo]; });
+  (t.T_STOCK_MOVE||[]).forEach(function(s){ if(map[s.lotNo]) s.lotNo=map[s.lotNo]; });
+  (t.T_QC_PROD||[]).forEach(function(s){ if(map[s.lotNo]) s.lotNo=map[s.lotNo]; });
+  (t.T_BATCH||[]).forEach(function(b){
+    if(map[b.lotNo]) b.lotNo=map[b.lotNo];
+    if(map[b.bulkLotNo]) b.bulkLotNo=map[b.bulkLotNo];
+    (b.consumedLots||[]).forEach(function(u){ (u.lots||[]).forEach(function(x){ if(map[x.lotNo]) x.lotNo=map[x.lotNo]; }); });
+  });
+  (t.T_BULK||[]).forEach(function(b){
+    if(map[b.lotNo]) b.lotNo=map[b.lotNo];
+    (b.materials||[]).forEach(function(u){ (u.lots||[]).forEach(function(x){ if(map[x.lotNo]) x.lotNo=map[x.lotNo]; }); });
+  });
+  if(typeof logEvent==='function') logEvent('LOT 번호 표준화 '+lotPlan.length+'건 ('+lotPlanKey+')');
+  if(typeof toast==='function') toast(lotPlan.length+'개 LOT 번호 변경 완료 (참조 기록 갱신)','success');
+  lotPlan=[]; $('nm-lot-preview').innerHTML='';
+  saveDB();
+  try{ renderLocPage(); renderLotManager(); }catch(e){}
+};
+
+/* ── 재고 LOT 목록: 제품별 정렬 + 그룹 소계 ── */
+function sortedLotManager(){
+  var tb=$('lm-list'); if(!tb || typeof window.renderLotManager!=='function') return;
+  var key=($('lm-type')||{}).value||'FGT_LOT';
+  var arr=(db.stock[key]||[]).slice();
+  var groups={};
+  arr.forEach(function(l){
+    var m=itemOf(key,l);
+    var nm=m.name||String(l.rawId||l.packId||l.productId);
+    (groups[nm]=groups[nm]||[]).push(l);
+  });
+  var names=Object.keys(groups).sort(function(a,b){ return a.localeCompare(b); });
+  tb.innerHTML = names.map(function(nm){
+    var lots=groups[nm].sort(function(a,b){ return String(a.dateIn||a.mfgDate||'').localeCompare(String(b.dateIn||b.mfgDate||'')); });
+    var tot=lots.reduce(function(s,l){ return s+(String(l.status||'OK').toUpperCase()==='FAIL'?0:N(l.remaining)); },0);
+    var head='<tr><td colspan="6" style="background:#f1f5f9;font-size:10.5px;font-weight:900;color:#334155;padding:4px 12px">'+E(nm)+' <span style="color:#0f766e">· 합계 '+F(tot)+'</span> <span style="color:#94a3b8;font-weight:600">('+lots.length+' LOT)</span></td></tr>';
+    return head + lots.map(function(l){
+      var st=String(l.status||'OK').toUpperCase();
+      var stC=st==='OK'?'#059669':st==='FAIL'?'#dc2626':'#d97706';
+      var extra=key==='FGT_LOT'?(l.location||'창고'):(l.expDate||l.matureUntil||'-');
+      return '<tr><td class="pl-3 mono text-xs">'+E(l.lotNo)+'</td><td class="text-xs" style="color:#94a3b8">'+E(l.dateIn||l.mfgDate||'')+'</td>'+
+        '<td class="text-right text-xs font-bold">'+F(l.remaining)+'</td>'+
+        '<td class="text-xs" style="color:'+stC+';font-weight:800">'+E(st)+'</td>'+
+        '<td class="text-xs">'+E(extra)+'</td>'+
+        '<td class="text-right pr-3" style="white-space:nowrap">'+
+          '<button class="btn btn-secondary btn-sm" onclick="openLotEdit(\''+key+'\',\''+E(l.id)+'\')">수정</button> '+
+          '<button class="btn btn-sm" style="background:#fee2e2;color:#b91c1c;font-weight:800" onclick="deleteLot(\''+key+'\',\''+E(l.id)+'\')">삭제</button>'+
+        '</td></tr>';
+    }).join('');
+  }).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">LOT 없음</td></tr>';
+}
+/* 기존 renderLotManager를 제품별 정렬판으로 교체 */
+function hookSort(){
+  if(typeof window.renderLotManager!=='function' || window.renderLotManager.__sorted) return;
+  window.renderLotManager=function(){ try{ sortedLotManager(); }catch(e){} };
+  window.renderLotManager.__sorted=true;
+  var sel=$('lm-type'); if(sel) sel.onchange=window.renderLotManager;
+  try{ window.renderLotManager(); }catch(e){}
+}
+
+var _init=window.initNewPage;
+window.initNewPage=function(p){
+  try{ if(typeof _init==='function') _init(p); }catch(e){}
+  if(p==='loc-stock'){ injectUI(); hookSort(); }
+};
+function boot(){ injectUI(); hookSort(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot,1600);
+var __nmKeep=setInterval(function(){ injectUI(); hookSort(); },3000);
+setTimeout(function(){ clearInterval(__nmKeep); },90000);
 })();
