@@ -1,12 +1,12 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.6 — 노즈 (2026-07-20)
-   v3.6: 📦 마스터에서 직접 재고관리 (포장재·원료)
-     · 포장재/원료 마스터 화면 하단에 품목별 재고 현황 표
-       (포장재는 창고/인사동 분리, 원료는 g 합계 + 최근 유통기한)
-     · 각 행에서 [입고] 즉시 등록(LOT·단가·위치), [조정] 실사 반영
-       (부족분 FIFO 차감 / 초과분 ADJ LOT, 사유 기록)
-   v3.5: 품절 임박 대시보드 / v3.4: 이름·LOT 정리
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.6 으로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.7 — 노즈 (2026-07-20)
+   v3.7: 완제품 재고와 부자재 분리
+     · 위치 재고 매트릭스 = 완제품 전용 (부자재 구역 제거)
+       부자재·원료는 각 마스터 화면의 재고 패널에서 관리
+     · [제품 → 포장재 이동] 도구 추가 — 일괄 등록 시 포장재가 제품으로
+       잘못 등록된 경우 마스터와 재고 LOT을 함께 이동
+   v3.6: 마스터 재고관리 / v3.5: 품절 임박 대시보드
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.7 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -1899,7 +1899,8 @@ function injectUI(){
   sec.innerHTML =
     '<h2 class="text-lg font-black text-slate-800">🏬 위치 재고 (창고 · 인사동)</h2>'+
     '<div style="font-size:10.5px;color:#64748b;font-weight:600">완제품 재고를 위치별로 관리합니다. 이관은 QC 적합(OK) LOT만 가능합니다.</div>'+
-    '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">위치별 재고 현황</h3></div>'+
+    '<div class="card"><div class="card-header"><h3 class="font-bold text-slate-700 text-sm">완제품 위치별 재고</h3>'+
+      '<span style="font-size:10px;color:#94a3b8;font-weight:700;margin-left:auto">부자재·원료 재고는 각 마스터 화면에서 관리</span></div>'+
       '<div class="scroll-card"><table><thead><tr><th class="pl-3">제품</th><th class="text-right">🏭 창고</th><th class="text-right">🏬 인사동</th><th class="text-right pr-3">합계</th></tr></thead>'+
       '<tbody id="loc-matrix"></tbody></table></div></div>'+
     '<div class="grid grid-cols-1 xl:grid-cols-2 gap-5">'+
@@ -2014,7 +2015,7 @@ function injectUI(){
 }
 
 /* ════════ 렌더 ════════ */
-function renderLocPage(){
+window.renderLocPage=function(){
   ensure();
   var mx = $('loc-matrix'); if(!mx) return;
   function buildRows(stockKey, idk, master, label, badge){
@@ -2037,9 +2038,8 @@ function renderLocPage(){
         '<td class="text-right pr-3 text-xs font-bold">'+tot.toLocaleString()+'</td></tr>';
     }).join('');
   }
-  var rows = buildRows('FGT_LOT','productId', db.master.M_PRODUCT||[], '완제품','🏭')
-           + buildRows('PACK_LOT','packId',   db.master.M_PACK||[],    '부자재 (인사동 보유분 관리)','📦');
-  mx.innerHTML = rows || '<tr><td colspan="4" class="text-center py-4 text-slate-400">재고 없음</td></tr>';
+  var rows = buildRows('FGT_LOT','productId', db.master.M_PRODUCT||[], '완제품','🏭');
+  mx.innerHTML = rows || '<tr><td colspan="4" class="text-center py-4 text-slate-400">완제품 재고 없음</td></tr>';
 
   fillMoveLots();
   try{ pkFillItems(); }catch(e){}
@@ -2057,7 +2057,7 @@ function renderLocPage(){
       '<td class="text-xs">'+E(p?p.name:'')+'</td><td class="text-right text-xs font-bold">'+N(m.qty).toLocaleString()+'</td>'+
       '<td class="text-xs">'+E(m.from)+' → <b>'+E(m.to)+'</b></td><td class="text-xs" style="color:#64748b">'+E(m.note||'')+'</td></tr>';
   }).join('') || '<tr><td colspan="6" class="text-center py-4 text-slate-400">이동 이력 없음</td></tr>';
-}
+};
 function fillMoveLots(){
   var el = $('mv-lot'); if(!el) return;
   var type = (($('mv-type')||{}).value)||'FGT';
@@ -3545,8 +3545,15 @@ function injectUI(){
       '<button class="btn btn-secondary" onclick="previewLotRenumber()">미리보기</button>'+
     '</div>'+
     '<div style="font-size:9.5px;color:#94a3b8">형식: [접두어 또는 코드]-[YYMMDD]-[순번2자리] · 입고/제조일 순으로 부여</div>'+
+    '<div style="font-size:11px;font-weight:800;color:#6d28d9;margin-top:8px">③ 잘못 등록된 항목 이동 (제품 → 포장재)</div>'+
+    '<div style="font-size:10px;color:#64748b">일괄 등록 시 포장재를 제품으로 넣었다면 여기서 옮기세요. 재고 LOT도 함께 이동합니다.</div>'+
+    '<div class="grid grid-cols-2 gap-2">'+
+      '<select id="nm-mv-prod" class="input-field"></select>'+
+      '<button class="btn btn-secondary" onclick="moveProdToPack()">포장재로 이동</button>'+
+    '</div>'+
     '<div id="nm-lot-preview"></div>';
   host.appendChild(card);
+  try{ fillMoveSel(); }catch(e){}
 }
 
 /* ── 제품명 정리 ── */
@@ -3578,6 +3585,39 @@ window.applyRename=function(){
   renamePlan=[]; $('nm-preview').innerHTML='';
   saveDB();
   try{ renderLocPage(); renderLotManager(); }catch(e){}
+};
+
+/* ── 잘못 등록된 제품 → 포장재로 이동 ── */
+function fillMoveSel(){
+  var s=$('nm-mv-prod'); if(!s) return;
+  s.innerHTML='<option value="">이동할 항목 선택 (제품 마스터)</option>'+
+    (db.master.M_PRODUCT||[]).map(function(p){
+      var st=(db.stock.FGT_LOT||[]).filter(function(l){return String(l.productId)===String(p.productId);}).reduce(function(a,l){return a+N(l.remaining);},0);
+      return '<option value="'+E(p.productId)+'">'+E(p.name)+' (재고 '+F(st)+')</option>';
+    }).join('');
+}
+window.moveProdToPack=function(){
+  var id=($('nm-mv-prod')||{}).value;
+  if(!id){ if(typeof toast==='function') toast('항목을 선택하세요','error'); return; }
+  var p=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(id); });
+  if(!p) return;
+  var lots=(db.stock.FGT_LOT||[]).filter(function(l){ return String(l.productId)===String(id); });
+  var tot=lots.reduce(function(s,l){ return s+N(l.remaining); },0);
+  if(!window.confirm('"'+p.name+'"을(를) 포장재 마스터로 이동합니다.\n재고 LOT '+lots.length+'건 ('+F(tot)+') 도 함께 이동됩니다.\n계속할까요?')) return;
+  var packId=Date.now();
+  db.master.M_PACK=db.master.M_PACK||[];
+  db.master.M_PACK.push({ packId:packId, code:p.code||'', name:p.name, unit:'ea', note:'제품 마스터에서 이동' });
+  lots.forEach(function(l){
+    l.packId=packId; delete l.productId;
+    db.stock.PACK_LOT.push(l);
+  });
+  db.stock.FGT_LOT=(db.stock.FGT_LOT||[]).filter(function(l){ return !lots.some(function(x){ return String(x.id)===String(l.id); }); });
+  db.master.M_PRODUCT=(db.master.M_PRODUCT||[]).filter(function(x){ return String(x.productId)!==String(id); });
+  if(typeof logEvent==='function') logEvent('제품→포장재 이동: '+p.name+' (LOT '+lots.length+'건)');
+  if(typeof toast==='function') toast(p.name+' 포장재로 이동 완료','success');
+  saveDB();
+  fillMoveSel();
+  try{ renderLocPage(); renderLotManager(); if(typeof mpRender==='function'){ mpRender('PACK'); } }catch(e){}
 };
 
 /* ── LOT 번호 표준 재부여 ── */
@@ -3693,9 +3733,9 @@ function hookSort(){
 var _init=window.initNewPage;
 window.initNewPage=function(p){
   try{ if(typeof _init==='function') _init(p); }catch(e){}
-  if(p==='loc-stock'){ injectUI(); hookSort(); }
+  if(p==='loc-stock'){ injectUI(); hookSort(); try{ fillMoveSel(); }catch(e){} }
 };
-function boot(){ injectUI(); hookSort(); }
+function boot(){ injectUI(); hookSort(); try{ fillMoveSel(); }catch(e){} }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 setTimeout(boot,1600);
 var __nmKeep=setInterval(function(){ injectUI(); hookSort(); },3000);
