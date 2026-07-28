@@ -1,11 +1,12 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.5 — 노즈 (2026-07-20)
-   v3.5: 🔻 품절 임박 완제품 대시보드 반영
-     · 완제품 위치 합계(창고+인사동)가 기준 미만인 품목 자동 집계
-     · 오늘 할 일에 긴급 카드 + 상세 표(창고/인사동/합계, 품절 표시)
-     · 기준 수량 화면에서 직접 변경(기본 10개), 행 클릭 시 생산 입력 이동
-   v3.4: 이름·LOT 정리·재고 정렬 / v3.3: 주간정산 신규제품 표시
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.5 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.6 — 노즈 (2026-07-20)
+   v3.6: 📦 마스터에서 직접 재고관리 (포장재·원료)
+     · 포장재/원료 마스터 화면 하단에 품목별 재고 현황 표
+       (포장재는 창고/인사동 분리, 원료는 g 합계 + 최근 유통기한)
+     · 각 행에서 [입고] 즉시 등록(LOT·단가·위치), [조정] 실사 반영
+       (부족분 FIFO 차감 / 초과분 ADJ LOT, 사유 기록)
+   v3.5: 품절 임박 대시보드 / v3.4: 이름·LOT 정리
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.6 으로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -3699,4 +3700,169 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot,1600);
 var __nmKeep=setInterval(function(){ injectUI(); hookSort(); },3000);
 setTimeout(function(){ clearInterval(__nmKeep); },90000);
+})();
+
+/* ═══════════ 모듈: 포장재 마스터 재고 관리 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var N=function(v){var x=Number(v);return isFinite(x)?x:0;};
+var E=function(v){return (typeof escH==='function')?escH(v):String(v==null?'':v);};
+var F=function(v){return Math.round(N(v)).toLocaleString();};
+var TODAY=function(){return new Date().toISOString().split('T')[0];};
+function genId(p){return (typeof generateId==='function')?generateId(p):p+'-'+Date.now()+Math.floor(Math.random()*999);}
+
+var CFG={
+  PACK:{page:'page-master-pack', boxId:'mp-stock-pack', key:'PACK_LOT', idk:'packId', master:'M_PACK', label:'포장재', unit:'EA', loc:true},
+  RAW: {page:'page-master-raw',  boxId:'mp-stock-raw',  key:'RAW_LOT',  idk:'rawId',  master:'M_RAW',  label:'원료',   unit:'g',  loc:false}
+};
+
+function stockRows(t){
+  var c=CFG[t];
+  var agg={};
+  (db.stock[c.key]||[]).forEach(function(l){
+    if(String(l.status||'OK').toUpperCase()==='FAIL') return;
+    var k=l[c.idk];
+    if(!agg[k]) agg[k]={wh:0,st:0,lots:0,exp:''};
+    if(c.loc && (l.location||'창고')==='인사동') agg[k].st+=N(l.remaining); else agg[k].wh+=N(l.remaining);
+    if(N(l.remaining)>0) agg[k].lots++;
+    if(l.expDate && (!agg[k].exp || l.expDate<agg[k].exp)) agg[k].exp=l.expDate;
+  });
+  return (db.master[c.master]||[]).map(function(m){
+    var a=agg[m[c.idk]]||{wh:0,st:0,lots:0,exp:''};
+    return {id:m[c.idk], name:m.name, code:m.code||'', wh:a.wh, st:a.st, tot:a.wh+a.st, lots:a.lots, exp:a.exp};
+  }).sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
+}
+
+function render(t){
+  var c=CFG[t], page=$(c.page); if(!page) return;
+  var box=$(c.boxId);
+  if(!box){
+    box=document.createElement('div');
+    box.id=c.boxId; box.className='card';
+    box.style.marginTop='14px';
+    page.appendChild(box);
+  }
+  var rows=stockRows(t);
+  var low=rows.filter(function(r){return r.tot<=0;}).length;
+  box.innerHTML=
+    '<div class="card-header"><h3 class="font-bold text-slate-700 text-sm">📦 '+c.label+' 재고 현황</h3>'+
+      '<span class="badge-soft">'+rows.length+'품목'+(low?' · 재고0 '+low:'')+'</span>'+
+      '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="mpRender(\''+t+'\')">🔄 새로고침</button></div>'+
+    '<div class="scroll-card"><table><thead><tr>'+
+      '<th class="pl-3">'+c.label+'명</th>'+
+      (c.loc?'<th class="text-right">🏭 창고</th><th class="text-right">🏬 인사동</th>':'')+
+      '<th class="text-right">재고('+c.unit+')</th><th class="text-center">LOT</th>'+
+      (c.loc?'':'<th class="text-center">최근 유통기한</th>')+
+      '<th class="text-right pr-3">관리</th></tr></thead><tbody>'+
+    (rows.map(function(r){
+      var col=r.tot<=0?'#dc2626':'#0f172a';
+      return '<tr><td class="pl-3 text-xs font-bold">'+E(r.name)+(r.code?' <span style="color:#94a3b8;font-weight:500">'+E(r.code)+'</span>':'')+'</td>'+
+        (c.loc?'<td class="text-right text-xs">'+F(r.wh)+'</td><td class="text-right text-xs" style="color:#0f766e;font-weight:800">'+F(r.st)+'</td>':'')+
+        '<td class="text-right text-xs font-bold" style="color:'+col+'">'+F(r.tot)+(r.tot<=0?' <span style="font-size:9px">없음</span>':'')+'</td>'+
+        '<td class="text-center text-xs" style="color:#94a3b8">'+r.lots+'</td>'+
+        (c.loc?'':'<td class="text-center text-xs" style="color:#94a3b8">'+E(r.exp||'-')+'</td>')+
+        '<td class="text-right pr-3" style="white-space:nowrap">'+
+          '<button class="btn btn-primary btn-sm" onclick="mpOpen(\''+t+'\',\''+E(r.id)+'\',\'in\')">입고</button> '+
+          '<button class="btn btn-secondary btn-sm" onclick="mpOpen(\''+t+'\',\''+E(r.id)+'\',\'adj\')">조정</button>'+
+        '</td></tr>';
+    }).join('') || '<tr><td colspan="7" class="text-center py-4 text-slate-400">등록된 '+c.label+'가 없습니다</td></tr>')+
+    '</tbody></table></div>';
+}
+window.mpRender=render;
+
+window.mpOpen=function(t,id,mode){
+  var c=CFG[t];
+  var m=(db.master[c.master]||[]).find(function(x){ return String(x[c.idk])===String(id); });
+  if(!m) return;
+  var cur=stockRows(t).find(function(x){ return String(x.id)===String(id); })||{tot:0,wh:0,st:0};
+  var old=$('mp-modal'); if(old) old.remove();
+  var bg=document.createElement('div');
+  bg.id='mp-modal';
+  bg.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:960;display:flex;align-items:center;justify-content:center;padding:16px';
+  bg.innerHTML=
+    '<div style="background:#fff;border-radius:14px;max-width:400px;width:100%;padding:20px" onclick="event.stopPropagation()">'+
+      '<div style="font-weight:900;font-size:14px;color:#0f172a">'+(mode==='in'?'📥 '+c.label+' 입고':'⚖️ 재고 조정 (실사)')+'</div>'+
+      '<div style="font-size:11.5px;color:#64748b;margin:3px 0 12px">'+E(m.name)+' · 현재 '+F(cur.tot)+' '+c.unit+
+        (c.loc?' (창고 '+F(cur.wh)+' / 인사동 '+F(cur.st)+')':'')+'</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">'+(mode==='in'?'입고 수량':'실물 수량')+' ('+c.unit+')</label>'+
+          '<input id="mp-qty" type="number" step="0.01" min="0" class="input-field text-right" placeholder="'+(mode==='in'?'0':F(c.loc?cur.wh:cur.tot))+'"></div>'+
+        (mode==='in'
+          ? '<div><label style="font-size:10px;font-weight:800;color:#64748b">단가 ('+(t==='RAW'?'원/g':'원/EA')+')</label><input id="mp-cost" type="number" step="0.01" class="input-field text-right" placeholder="0"></div>'
+          : '<div><label style="font-size:10px;font-weight:800;color:#64748b">조정 사유</label><select id="mp-reason" class="input-field"><option>실사 차이</option><option>파손·불량</option><option>사용(미기록)</option><option>기타</option></select></div>')+
+        (c.loc?'<div><label style="font-size:10px;font-weight:800;color:#64748b">위치</label><select id="mp-loc" class="input-field"><option>창고</option><option>인사동</option></select></div>':'')+
+        '<div><label style="font-size:10px;font-weight:800;color:#64748b">'+(mode==='in'?'입고일':'기준일')+'</label><input id="mp-date" type="date" class="input-field" value="'+TODAY()+'"></div>'+
+        (mode==='in'?'<div style="grid-column:1/3"><label style="font-size:10px;font-weight:800;color:#64748b">LOT 번호 (비우면 자동)</label><input id="mp-lot" class="input-field" placeholder="자동 생성"></div>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-top:14px">'+
+        '<button class="btn btn-primary flex-1" onclick="mpSave(\''+t+'\',\''+E(id)+'\',\''+mode+'\')">저장</button>'+
+        '<button class="btn btn-secondary" onclick="document.getElementById(\'mp-modal\').remove()">취소</button>'+
+      '</div>'+
+    '</div>';
+  bg.onclick=function(){bg.remove();};
+  document.body.appendChild(bg);
+};
+
+window.mpSave=function(t,id,mode){
+  var c=CFG[t];
+  var qty=N(($('mp-qty')||{}).value);
+  var date=($('mp-date')||{}).value||TODAY();
+  var loc=c.loc?(($('mp-loc')||{}).value||'창고'):null;
+  var itemId=isNaN(Number(id))?id:Number(id);
+  if(mode==='in'){
+    if(qty<=0){ if(typeof toast==='function') toast('수량을 입력하세요','error'); return; }
+    var lotNo=(($('mp-lot')||{}).value||'').trim() || (String(t)+'-'+String(date).replace(/-/g,'').slice(2)+'-'+String(Math.floor(Math.random()*90+10)));
+    var lot={ id:genId(t), lotNo:lotNo, qty:qty, remaining:qty, unitCost:N(($('mp-cost')||{}).value), status:'OK', dateIn:date, note:'마스터 입고' };
+    lot[c.idk]=itemId;
+    if(c.loc) lot.location=loc;
+    db.stock[c.key].push(lot);
+    if(typeof logEvent==='function') logEvent(c.label+' 입고: '+lotNo+' '+qty+c.unit);
+    if(typeof toast==='function') toast('입고 완료: '+qty+' '+c.unit,'success');
+  } else {
+    var lots=(db.stock[c.key]||[]).filter(function(l){
+      return String(l[c.idk])===String(itemId) && String(l.status||'OK').toUpperCase()!=='FAIL' && (!c.loc || (l.location||'창고')===loc);
+    });
+    var book=lots.reduce(function(s,l){ return s+N(l.remaining); },0);
+    var diff=book-qty;
+    if(Math.abs(diff)<0.001){ if(typeof toast==='function') toast('차이가 없습니다','success'); }
+    else if(diff>0){
+      var rest=diff;
+      lots.sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); })
+        .forEach(function(l){ if(rest<=0) return; var take=Math.min(N(l.remaining),rest); l.remaining=N(l.remaining)-take; rest-=take; });
+    } else {
+      var q=0,v=0;
+      lots.forEach(function(l){ q+=N(l.remaining); v+=N(l.remaining)*N(l.unitCost); });
+      var nl={ id:genId(t), lotNo:'ADJ-'+String(date).replace(/-/g,'').slice(2), qty:-diff, remaining:-diff,
+        unitCost: q>0?Math.round(v/q*100)/100:0, status:'OK', dateIn:date, note:'재고조정 증가' };
+      nl[c.idk]=itemId;
+      if(c.loc) nl.location=loc;
+      db.stock[c.key].push(nl);
+    }
+    var reason=(($('mp-reason')||{}).value)||'실사 차이';
+    if(Math.abs(diff)>=0.001){
+      db.txn=db.txn||{}; db.txn.T_STOCK_MOVE=db.txn.T_STOCK_MOVE||[];
+      db.txn.T_STOCK_MOVE.push({ id:genId('MV'), date:date, lotNo:'(조정)', productId:null, qty:Math.abs(diff),
+        from: diff>0?(loc||'재고'):'(조정)', to: diff>0?'('+reason+')':(loc||'재고'), note:'['+c.label+'] '+reason });
+      if(typeof logEvent==='function') logEvent(c.label+' 재고조정: '+(diff>0?'-':'+')+Math.abs(diff)+' ('+reason+')');
+      if(typeof toast==='function') toast('조정 완료: '+(diff>0?'-':'+')+Math.abs(diff)+' '+c.unit,'success');
+    }
+  }
+  var mo=$('mp-modal'); if(mo) mo.remove();
+  saveDB();
+  render(t);
+  try{ if(typeof renderLocPage==='function') renderLocPage(); if(typeof renderLotManager==='function') renderLotManager(); }catch(e){}
+};
+
+var _init=window.initNewPage;
+window.initNewPage=function(p){
+  try{ if(typeof _init==='function') _init(p); }catch(e){}
+  if(p==='master-pack') render('PACK');
+  if(p==='master-raw') render('RAW');
+};
+function boot(){ try{ render('PACK'); render('RAW'); }catch(e){} }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot,1600);
+var __mpKeep=setInterval(boot,3000);
+setTimeout(function(){ clearInterval(__mpKeep); },90000);
 })();
