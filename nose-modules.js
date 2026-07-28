@@ -1,12 +1,9 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.2 — 노즈 (2026-07-20)
-   v3.2: 📅 주간 정산 모드 — 금요일 5분 루틴
-         한 표에 [이번주 생산][매장 보낸 수][창고 실물][매장 실물]
-         [원료 실물]만 적고 버튼 1회 → 생산·BOM차감·LOT·원가·이관·
-         판매계상·재고조정이 순서대로 자동 반영.
-         매장 감소분은 판매/테스터·파손 중 선택 처리.
-         빈칸은 "변동 없음", 부족분은 가능한 만큼 처리 후 경고.
-   v3.1: 간편 기록 / v3.0: AI 조향 코파일럿
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.3 — 노즈 (2026-07-20)
+   v3.3(fix): 주간정산 표에 제품 마스터 전체 표시 — 신규 등록 제품이
+         재고0·BOM미설정이어도 즉시 나타남. [🔄 제품목록 새로고침] 버튼
+         추가, BOM 없는 제품은 표시 및 정산 시 경고.
+   v3.2: 주간 정산 모드 / v3.1: 간편 기록 / v3.0: AI 조향 코파일럿
    설치: index.html은 그대로, 이 파일만 저장소에서 통째로 교체
    ╚══════════════════════════════════════════════════════════╝ */
 
@@ -3098,16 +3095,23 @@ window.qlTab=function(m){
 
 /* ════════ 주간 정산: 세고 → 넣고 → 한 번에 반영 ════════ */
 function weekProducts(){
-  var ids={};
-  (db.stock.FGT_LOT||[]).forEach(function(l){ if(N(l.remaining)>0 && String(l.status||'OK').toUpperCase()!=='FAIL') ids[l.productId]=1; });
-  (db.master.M_PRODUCT||[]).forEach(function(p){ if(p.bom && p.bom.length) ids[p.productId]=1; });
-  return Object.keys(ids).map(function(id){
-    var p=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(id); });
-    return { pid: isNaN(Number(id))?id:Number(id), name:p?p.name:id,
-      wh: fgtStock(id,'창고').reduce(function(s,l){return s+N(l.remaining);},0),
-      st: fgtStock(id,'인사동').reduce(function(s,l){return s+N(l.remaining);},0),
-      price: N(p&&p.price)||0 };
-  }).sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
+  /* 제품 마스터 전체를 표시 — 신규 등록 제품(재고0·BOM미설정)도 바로 나타남 */
+  var list = (db.master.M_PRODUCT||[]).map(function(p){
+    return { pid:p.productId, name:p.name,
+      wh: fgtStock(p.productId,'창고').reduce(function(s,l){return s+N(l.remaining);},0),
+      st: fgtStock(p.productId,'인사동').reduce(function(s,l){return s+N(l.remaining);},0),
+      price: N(p.price)||0, noBom: !(p.bom && p.bom.length) };
+  });
+  /* 마스터에 없는데 재고만 있는 경우도 누락 방지 */
+  var seen={}; list.forEach(function(x){ seen[x.pid]=1; });
+  (db.stock.FGT_LOT||[]).forEach(function(l){
+    if(seen[l.productId] || N(l.remaining)<=0) return;
+    seen[l.productId]=1;
+    list.push({ pid:l.productId, name:'(마스터 없음) '+l.productId,
+      wh: fgtStock(l.productId,'창고').reduce(function(s,x){return s+N(x.remaining);},0),
+      st: fgtStock(l.productId,'인사동').reduce(function(s,x){return s+N(x.remaining);},0), price:0, noBom:true });
+  });
+  return list.sort(function(a,b){ return String(a.name).localeCompare(String(b.name)); });
 }
 function weekRaws(){
   var ids={};
@@ -3123,14 +3127,18 @@ var wkP=[], wkR=[];
 function renderWeek(){
   wkP=weekProducts(); wkR=weekRaws();
   var h =
-  '<div style="font-size:10.5px;color:#0f766e;font-weight:700;margin-bottom:6px">① 이번 주 만든 수량과 매장에 보낸 수량을 적고 ② 지금 실물을 세어 적으세요. 빈칸은 "변동 없음"으로 처리됩니다.</div>'+
+  '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">'+
+    '<span style="font-size:10.5px;color:#0f766e;font-weight:700;flex:1">① 이번 주 만든 수량과 매장에 보낸 수량을 적고 ② 지금 실물을 세어 적으세요. 빈칸은 "변동 없음"으로 처리됩니다.</span>'+
+    '<button class="btn btn-secondary btn-sm" onclick="refreshWeek()">🔄 제품목록 새로고침</button>'+
+  '</div>'+
   '<div style="overflow-x:auto"><table style="width:100%;min-width:660px;font-size:11px">'+
   '<tr><th style="text-align:left">제품</th><th style="width:12%">이번주<br>생산</th><th style="width:12%">매장으로<br>보낸 수</th>'+
   '<th style="width:14%">창고 실물<br><span style="font-weight:500;color:#94a3b8">장부</span></th>'+
   '<th style="width:14%">매장 실물<br><span style="font-weight:500;color:#94a3b8">장부</span></th>'+
   '<th style="width:13%">판매단가</th></tr>'+
   wkP.map(function(p,i){
-    return '<tr style="border-top:1px solid #e2e8f0"><td style="font-weight:700">'+E(p.name)+'</td>'+
+    return '<tr style="border-top:1px solid #e2e8f0"><td style="font-weight:700">'+E(p.name)+
+      (p.noBom?' <span style="font-size:9px;color:#c2410c;font-weight:800">BOM 없음</span>':'')+'</td>'+
       '<td><input id="wk-prod-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="0"></td>'+
       '<td><input id="wk-move-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="0"></td>'+
       '<td><input id="wk-cw-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="'+p.wh+'"></td>'+
@@ -3152,6 +3160,7 @@ function renderWeek(){
   '<div id="ql-msg" style="font-size:11px;font-weight:700;margin-top:6px"></div>';
   return h;
 }
+window.refreshWeek=function(){ var b=$('ql-body'); if(b) b.innerHTML=renderWeek(); if(typeof toast==='function') toast('제품 목록을 새로 불러왔습니다','success'); };
 window.commitWeek=function(){
   ensure();
   var date=$('ql-date').value||TODAY();
@@ -3185,6 +3194,7 @@ window.commitWeek=function(){
       db.txn.T_STOCK_MOVE.push({id:genId('MV'),date:date,lotNo:lotNo,productId:p.pid,qty:prodQ,from:'(생산)',to:'창고',note:'주간정산'});
       log.push(p.name+' 생산 '+prodQ);
       if(shortage.length) warn.push(p.name+': '+shortage.join(', '));
+      if(!(prod.bom&&prod.bom.length)) warn.push(p.name+': BOM 미설정 — 원료 차감·원가 계산이 되지 않았습니다');
     }
 
     /* 2) 매장 출고(이관) 반영 */
