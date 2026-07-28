@@ -1,12 +1,11 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v3.7 — 노즈 (2026-07-20)
-   v3.7: 완제품 재고와 부자재 분리
-     · 위치 재고 매트릭스 = 완제품 전용 (부자재 구역 제거)
-       부자재·원료는 각 마스터 화면의 재고 패널에서 관리
-     · [제품 → 포장재 이동] 도구 추가 — 일괄 등록 시 포장재가 제품으로
-       잘못 등록된 경우 마스터와 재고 LOT을 함께 이동
-   v3.6: 마스터 재고관리 / v3.5: 품절 임박 대시보드
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.7 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v3.8 — 노즈 (2026-07-20)
+   v3.8: 주간정산 화면 가독성 개선
+     · 입력칸 글자 15px·높이 40px(모바일 터치 대응), 표 13.5px
+     · 장부 수량을 흐린 placeholder 대신 초록 배지로 항상 표시
+     · 제품명 굵게, 헤더 대비 강화, 결과 요약 13px
+   v3.7: 완제품·부자재 분리 / v3.6: 마스터 재고관리
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=3.8 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -3108,6 +3107,23 @@ function ensure(){ if(window.db){ db.txn=db.txn||{}; db.txn.T_STOCK_MOVE=db.txn.
 
 function injectUI(){
   if($('page-quick-log')) return;
+  if(!$('ql-style')){
+    var st=document.createElement('style');
+    st.id='ql-style';
+    st.textContent=[
+      '#page-quick-log table{font-size:13.5px}',
+      '#page-quick-log th{font-size:12px;font-weight:900;color:#0f172a;background:#eef5f2;padding:7px 6px}',
+      '#page-quick-log td{padding:7px 6px;color:#0f172a}',
+      '#page-quick-log input.input-field,#page-quick-log select.input-field{font-size:15px !important;padding:8px 10px !important;font-weight:800;color:#0f172a;border:1.5px solid #cbd5e1;border-radius:8px;min-height:40px}',
+      '#page-quick-log input.input-field:focus{border-color:#0f766e;outline:2px solid #99f6e4}',
+      '#page-quick-log input::placeholder{color:#94a3b8;font-weight:600}',
+      '#page-quick-log .ql-book{display:inline-block;font-size:12px;font-weight:800;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:6px;padding:2px 7px;margin-top:3px}',
+      '#page-quick-log .mes-tab{font-size:13.5px;padding:8px 16px}',
+      '#page-quick-log .ql-name{font-size:14px;font-weight:900;color:#0f172a}',
+      '@media(max-width:768px){#page-quick-log table{font-size:13px}#page-quick-log .ql-name{font-size:13.5px}}'
+    ].join('\n');
+    document.head.appendChild(st);
+  }
   var anchor = $('page-dashboard') || document.querySelector('.page-section');
   if(!anchor || !anchor.parentNode) return;
   var sec = document.createElement('section');
@@ -3182,36 +3198,37 @@ function renderWeek(){
   wkP=weekProducts(); wkR=weekRaws();
   var h =
   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">'+
-    '<span style="font-size:10.5px;color:#0f766e;font-weight:700;flex:1">① 이번 주 만든 수량과 매장에 보낸 수량을 적고 ② 지금 실물을 세어 적으세요. 빈칸은 "변동 없음"으로 처리됩니다.</span>'+
+    '<span style="font-size:12px;color:#0f766e;font-weight:800;flex:1">① 이번 주 만든 수량과 매장에 보낸 수량을 적고 ② 지금 실물을 세어 적으세요. 빈칸은 "변동 없음"으로 처리됩니다.</span>'+
     '<button class="btn btn-secondary btn-sm" onclick="refreshWeek()">🔄 제품목록 새로고침</button>'+
   '</div>'+
-  '<div style="overflow-x:auto"><table style="width:100%;min-width:660px;font-size:11px">'+
-  '<tr><th style="text-align:left">제품</th><th style="width:12%">이번주<br>생산</th><th style="width:12%">매장으로<br>보낸 수</th>'+
-  '<th style="width:14%">창고 실물<br><span style="font-weight:500;color:#94a3b8">장부</span></th>'+
-  '<th style="width:14%">매장 실물<br><span style="font-weight:500;color:#94a3b8">장부</span></th>'+
-  '<th style="width:13%">판매단가</th></tr>'+
+  '<div style="overflow-x:auto"><table style="width:100%;min-width:700px">'+
+  '<tr><th style="text-align:left">제품</th><th style="width:13%">이번주<br>생산</th><th style="width:13%">매장으로<br>보낸 수</th>'+
+  '<th style="width:16%">창고 실물</th>'+
+  '<th style="width:16%">매장 실물</th>'+
+  '<th style="width:14%">판매단가</th></tr>'+
   wkP.map(function(p,i){
-    return '<tr style="border-top:1px solid #e2e8f0"><td style="font-weight:700">'+E(p.name)+
-      (p.noBom?' <span style="font-size:9px;color:#c2410c;font-weight:800">BOM 없음</span>':'')+'</td>'+
-      '<td><input id="wk-prod-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="0"></td>'+
-      '<td><input id="wk-move-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="0"></td>'+
-      '<td><input id="wk-cw-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="'+p.wh+'"></td>'+
-      '<td><input id="wk-cs-'+i+'" type="number" min="0" class="input-field text-right" style="padding:3px 5px" placeholder="'+p.st+'"></td>'+
-      '<td><input id="wk-pr-'+i+'" type="number" class="input-field text-right" style="padding:3px 5px" placeholder="'+(p.price||'단가')+'"></td></tr>';
+    return '<tr style="border-top:1px solid #e2e8f0"><td><span class="ql-name">'+E(p.name)+'</span>'+
+      (p.noBom?' <span style="font-size:10px;color:#c2410c;font-weight:900">BOM 없음</span>':'')+'</td>'+
+      '<td><input id="wk-prod-'+i+'" type="number" min="0" class="input-field text-right" placeholder="0"></td>'+
+      '<td><input id="wk-move-'+i+'" type="number" min="0" class="input-field text-right" placeholder="0"></td>'+
+      '<td><input id="wk-cw-'+i+'" type="number" min="0" class="input-field text-right" placeholder="'+p.wh+'"><span class="ql-book">장부 '+F(p.wh)+'</span></td>'+
+      '<td><input id="wk-cs-'+i+'" type="number" min="0" class="input-field text-right" placeholder="'+p.st+'"><span class="ql-book">장부 '+F(p.st)+'</span></td>'+
+      '<td><input id="wk-pr-'+i+'" type="number" class="input-field text-right" placeholder="'+(p.price||'단가')+'"></td></tr>';
   }).join('')+'</table></div>'+
   (wkR.length?
   '<div style="font-size:10.5px;color:#0f766e;font-weight:700;margin:10px 0 4px">③ 원료 실물 (g) — 생산 반영 후 남은 양을 적으면 손실까지 정리됩니다</div>'+
-  '<div style="overflow-x:auto"><table style="width:100%;font-size:11px"><tr><th style="text-align:left">원료</th><th style="width:22%">현재 장부(g)</th><th style="width:26%">실물(g)</th></tr>'+
+  '<div style="overflow-x:auto"><table style="width:100%"><tr><th style="text-align:left">원료</th><th style="width:22%">현재 장부(g)</th><th style="width:26%">실물(g)</th></tr>'+
   wkR.map(function(r,i){
-    return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(r.name)+'</td><td style="text-align:right;color:#64748b">'+F(r.book)+'</td>'+
-      '<td><input id="wk-raw-'+i+'" type="number" step="0.01" class="input-field text-right" style="padding:3px 5px" placeholder="'+Math.round(r.book)+'"></td></tr>';
+    return '<tr style="border-top:1px solid #e2e8f0"><td><span class="ql-name">'+E(r.name)+'</span></td>'+
+      '<td style="text-align:right"><span class="ql-book">'+F(r.book)+' g</span></td>'+
+      '<td><input id="wk-raw-'+i+'" type="number" step="0.01" class="input-field text-right" placeholder="'+Math.round(r.book)+'"></td></tr>';
   }).join('')+'</table></div>':'')+
   '<div class="grid grid-cols-2 gap-2" style="margin-top:10px">'+
     '<select id="wk-cause" class="input-field"><option value="판매">매장 감소분 = 판매로 처리</option><option value="조정">매장 감소분 = 테스터·파손(매출 없음)</option></select>'+
     '<input id="wk-worker" class="input-field" placeholder="작성자">'+
   '</div>'+
   '<button class="btn btn-primary w-full" style="margin-top:8px" onclick="commitWeek()">📅 주간 정산 실행 (생산·출고·판매·조정 한 번에)</button>'+
-  '<div id="ql-msg" style="font-size:11px;font-weight:700;margin-top:6px"></div>';
+  '<div id="ql-msg" style="font-size:13px;font-weight:800;margin-top:8px;line-height:1.7"></div>';
   return h;
 }
 window.refreshWeek=function(){ var b=$('ql-body'); if(b) b.innerHTML=renderWeek(); if(typeof toast==='function') toast('제품 목록을 새로 불러왔습니다','success'); };
@@ -3388,7 +3405,7 @@ function renderQl(){
     }
     return head+rows+'</table>'+
       '<button class="btn btn-primary w-full" style="margin-top:8px" onclick="commitQuick()">✅ 기록 저장 (자동 처리)</button>'+
-      '<div id="ql-msg" style="font-size:11px;font-weight:700;margin-top:6px"></div>';
+      '<div id="ql-msg" style="font-size:13px;font-weight:800;margin-top:8px;line-height:1.7"></div>';
   }
   renderQlHistory();
 }
