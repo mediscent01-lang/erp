@@ -1,13 +1,12 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v4.3 — 노즈 (2026-07-21)
-   v4.3: 🧪 향수 표준 BOM 일괄 적용 (제품 마스터)
-     · 충진중량 자동 설정(30ml→30g, 50ml→50g) + 배합비 % 방식으로 통일
-       → 절대량 kg 입력 시 재고(g)와 1,000배 어긋나던 위험 제거
-     · 주정 80% + 향료 20%, 향료는 제품명으로 자동 매칭(수정 가능)
-     · 포장재: 공통(박스·노즐·펌프·쇼핑백) + 용량별(병·캡) 자동 구성
-     · 디퓨저·디스커버리·세트는 대상에서 자동 제외
-   v4.2: 사이드바 그룹 수정 / v4.1: 비색 테마
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.3 으로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v4.4 — 노즈 (2026-07-21)
+   v4.4: ⚖️ 원료 단위 g 통일 도구 (데이터 점검)
+     · 마스터 단위가 kg인 원료를 찾아 g으로 바꾸고 표준단가를 ÷1,000
+       (4,000원/kg → 4원/g). 재고 수량은 이미 g 기준이므로 미변경.
+     · 데이터 점검에 "원료 단위가 kg" 치명 항목 추가
+       → 30ml 향수에 24kg으로 표시되던 단위 혼선 해결
+   v4.3: 향수 표준 BOM / v4.2: 사이드바 그룹 수정
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.4 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4000,6 +3999,10 @@ function scan(){
   }).map(function(r){return r.name;});
   add('주의','IFRA 사용한도 미설정',noIfra,'조향 코파일럿이 한도 초과를 잡아내지 못합니다','master-raw');
 
+  /* 7-2. 원료 단위 kg (재고는 g 기준) */
+  var kgUnit=(M.M_RAW||[]).filter(function(r){ return /^\s*(kg|킬로|킬로그램)\s*$/i.test(String(r.unit||'')); }).map(function(r){return r.name;});
+  add('치명','원료 단위가 kg (재고는 g 기준)',kgUnit,'BOM 소요량·단가가 1,000배 어긋납니다 — 아래 [원료 단위 g 통일] 실행','data-check');
+
   /* 8. 유통기한 없는 원료 LOT */
   var noExp=(S.RAW_LOT||[]).filter(function(l){return N(l.remaining)>0 && !l.expDate;}).length;
   add('참고','유통기한 미입력 원료 LOT',noExp?[noExp+'건']:[],'유통기한 임박 알림이 작동하지 않습니다','master-raw');
@@ -4050,6 +4053,43 @@ window.runDataCheck=function(){
       '</div>';
     }).join('')+
     '<div style="font-size:10.5px;color:#94a3b8;margin-top:4px">치명 항목부터 처리하세요. 수정 후 다시 점검하면 목록이 줄어듭니다.</div>';
+};
+
+/* ── 원료 단위 g 통일 (kg → g, 표준단가 ÷1000) ── */
+function unitPlan(){
+  return (db.master.M_RAW||[]).filter(function(r){
+    return /^\s*(kg|킬로|킬로그램)\s*$/i.test(String(r.unit||''));
+  }).map(function(r){
+    return { id:r.rawId, name:r.name, cost:N(r.stdCost), newCost:Math.round(N(r.stdCost)/1000*10000)/10000 };
+  });
+}
+window.previewUnitFix=function(){
+  var plan=unitPlan(), box=$('dq-unitfix'); if(!box) return;
+  if(!plan.length){ box.innerHTML='<div style="font-size:12px;color:#059669;font-weight:800;padding:6px 0">✅ kg 단위로 등록된 원료가 없습니다. 이미 g 기준으로 통일돼 있습니다.</div>'; return; }
+  box.innerHTML=
+    '<div style="max-height:210px;overflow-y:auto;margin-top:6px"><table style="width:100%;font-size:12px">'+
+    '<tr><th style="text-align:left">원료</th><th style="width:18%">단위</th><th style="width:30%">표준단가</th></tr>'+
+    plan.map(function(x){
+      return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(x.name)+'</td>'+
+        '<td style="text-align:center">kg → <b style="color:#0f766e">g</b></td>'+
+        '<td style="text-align:right">'+(x.cost?F(x.cost)+'원/kg → <b style="color:#0f766e">'+x.newCost.toLocaleString()+'원/g</b>':'<span style="color:#94a3b8">미입력</span>')+'</td></tr>';
+    }).join('')+'</table></div>'+
+    '<div style="font-size:11.5px;color:#c2410c;font-weight:700;margin-top:5px">⚠ 재고 수량(RAW_LOT)은 이미 g 기준이므로 변경하지 않습니다. 단위 표기와 표준단가만 맞춥니다.</div>'+
+    '<button class="btn btn-primary w-full" style="margin-top:6px" onclick="applyUnitFix()">'+plan.length+'개 원료 단위 g 통일</button>';
+};
+window.applyUnitFix=function(){
+  var plan=unitPlan(); if(!plan.length) return;
+  if(!window.confirm(plan.length+'개 원료의 단위를 g으로 바꾸고 표준단가를 1/1000로 환산합니다.\n(재고 수량은 변경되지 않습니다)\n계속할까요?')) return;
+  plan.forEach(function(x){
+    var r=(db.master.M_RAW||[]).find(function(y){ return String(y.rawId)===String(x.id); });
+    if(!r) return;
+    r.unit='g';
+    if(N(r.stdCost)>0) r.stdCost=x.newCost;
+  });
+  if(typeof logEvent==='function') logEvent('원료 단위 g 통일 '+plan.length+'건');
+  if(typeof toast==='function') toast(plan.length+'개 원료 단위 g 통일 완료','success');
+  saveDB();
+  try{ runDataCheck(); previewUnitFix(); if(typeof mpRender==='function') mpRender('RAW'); }catch(e){}
 };
 
 /* ── 단가 0원 LOT에 마스터 표준단가 채우기 ── */
@@ -4109,6 +4149,12 @@ function injectUI(){
     '<h2 class="text-lg font-black text-slate-800">🩺 데이터 점검</h2>'+
     '<div style="font-size:11.5px;color:#64748b;font-weight:600">마스터·재고·BOM·규제 데이터의 빈 곳을 한 번에 찾습니다. 원가·서류가 조용히 어긋나는 것을 막습니다.</div>'+
     '<button class="btn btn-primary w-full" onclick="runDataCheck()" style="font-size:14px;padding:12px">🔍 데이터 점검 실행</button>'+
+    '<div class="card p-4 space-y-2" style="border:1.5px solid #fdba74;background:#fffaf5">'+
+      '<h3 class="font-bold text-slate-700 text-sm">⚖️ 원료 단위 g 통일 (kg 혼용 제거)</h3>'+
+      '<div style="font-size:11.5px;color:#64748b">재고·BOM·MRP는 모두 <b>g 기준</b>으로 계산됩니다. 마스터 단위가 kg이면 표시와 단가가 1,000배 어긋납니다. (예: 30ml 향수에 24kg 표시)</div>'+
+      '<button class="btn btn-secondary w-full" onclick="previewUnitFix()">대상 확인 (미리보기)</button>'+
+      '<div id="dq-unitfix"></div>'+
+    '</div>'+
     '<div class="card p-4 space-y-2" style="border:1.5px solid #7fb8a4;background:#f7fbfa">'+
       '<h3 class="font-bold text-slate-700 text-sm">💰 재고 단가 채우기 (평가금액 복구)</h3>'+
       '<div style="font-size:11.5px;color:#64748b">재고 현황의 단가·평가금액은 <b>LOT에 저장된 단가</b>로 계산됩니다. 일괄 기초재고로 넣은 LOT은 단가가 비어 0원으로 표시되니, 마스터 표준단가를 채워 넣으세요. (원료 마스터 단위가 kg이면 g 기준으로 자동 환산)</div>'+
