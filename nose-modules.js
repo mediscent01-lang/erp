@@ -1,11 +1,13 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v4.2 — 노즈 (2026-07-21)
-   v4.2(fix): 사이드바 그룹 오류 수정
-     본체에 이미 있는 그룹 라벨(1·기준정보 …)을 그대로 사용하도록 변경.
-     v4.1이 메뉴를 새 그룹으로 옮겨 "빈 그룹 라벨"만 남던 문제 해결.
-     확장 메뉴는 알맞은 본체 그룹으로 이동, 라벨 클릭 시 접기/펴기 +
-     항목 수 표시. 비색 팔레트·대시보드(빠른작업·경보·KPI)는 유지.
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.2 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v4.3 — 노즈 (2026-07-21)
+   v4.3: 🧪 향수 표준 BOM 일괄 적용 (제품 마스터)
+     · 충진중량 자동 설정(30ml→30g, 50ml→50g) + 배합비 % 방식으로 통일
+       → 절대량 kg 입력 시 재고(g)와 1,000배 어긋나던 위험 제거
+     · 주정 80% + 향료 20%, 향료는 제품명으로 자동 매칭(수정 가능)
+     · 포장재: 공통(박스·노즐·펌프·쇼핑백) + 용량별(병·캡) 자동 구성
+     · 디퓨저·디스커버리·세트는 대상에서 자동 제외
+   v4.2: 사이드바 그룹 수정 / v4.1: 비색 테마
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.3 으로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4322,4 +4324,163 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot,2500);
 setTimeout(function(){ fixNav(); renderDash(); },5000);
 setInterval(function(){ try{ if($('page-dashboard')&&$('page-dashboard').classList.contains('active')) renderDash(); }catch(e){} },60000);
+})();
+
+/* ═══════════ 모듈: 향수 표준 BOM ═══════════ */
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var N=function(v){var x=Number(v);return isFinite(x)?x:0;};
+var E=function(v){return (typeof escH==='function')?escH(v):String(v==null?'':v);};
+var EXCLUDE=/디퓨저|diffuser|디스커버리|discovery|set|세트|룸스프레이|캔들/i;
+
+function norm(s){ return String(s||'').toLowerCase().replace(/[\s_\-·.]/g,''); }
+function sizeOf(name){ var m=String(name||'').match(/(\d+)\s*ml/i); return m?N(m[1]):0; }
+function perfumeProducts(){
+  return (db.master.M_PRODUCT||[]).filter(function(p){
+    return sizeOf(p.name)>0 && !EXCLUDE.test(String(p.name||''));
+  });
+}
+/* 제품명 토큰으로 향료 원료 자동 매칭 */
+function guessFragrance(pname){
+  var raws=(db.master.M_RAW||[]).filter(function(r){
+    return /fragrance|향료|oil|HPD|퍼퓸/i.test(String(r.name||'')+' '+String(r.inci||''));
+  });
+  var pn=norm(pname).replace(/\d+ml/,'').replace(/시프트아이|shifti/g,'');
+  var best=null;
+  raws.forEach(function(r){
+    var rn=norm(r.name);
+    var score=0;
+    if(pn && rn.indexOf(pn)>=0) score=3;
+    else if(pn && pn.length>2 && rn.indexOf(pn.slice(0,4))>=0) score=2;
+    /* INCI에 제품명이 들어간 경우 (예: INCI AnnE) */
+    if(norm(r.inci).indexOf(pn)>=0 && pn) score=Math.max(score,3);
+    if(score && (!best||score>best.s)) best={r:r,s:score};
+  });
+  return best?best.r:null;
+}
+function packOpts(sel){
+  return (db.master.M_PACK||[]).map(function(p){
+    return '<option value="'+E(p.packId)+'"'+(String(sel)===String(p.packId)?' selected':'')+'>'+E(p.name)+'</option>';
+  }).join('');
+}
+function rawOpts(sel, filter){
+  return (db.master.M_RAW||[]).filter(function(r){ return !filter||filter(r); }).map(function(r){
+    return '<option value="'+E(r.rawId)+'"'+(String(sel)===String(r.rawId)?' selected':'')+'>'+E(r.name)+'</option>';
+  }).join('');
+}
+
+function sig(){ return ((db.master.M_PACK||[]).length)+'/'+((db.master.M_RAW||[]).length)+'/'+((db.master.M_PRODUCT||[]).length); }
+function injectUI(){
+  var host=$('page-master-product'); if(!host) return;
+  var old=$('bt-card');
+  if(old){
+    /* 마스터가 변경되면 목록을 다시 그림 (신규 원료·포장재 반영) */
+    if(old.dataset.sig===sig()) return;
+    old.remove();
+  }
+  var card=document.createElement('div');
+  card.id='bt-card'; card.className='card p-4 space-y-3';
+  card.dataset.sig=sig();
+  card.style.cssText='margin-top:14px;border:1.5px solid #7fb8a4;background:#f7fbfa';
+  var eth=(db.master.M_RAW||[]).filter(function(r){ return /ethanol|주정|alcohol/i.test(String(r.name||'')); })[0];
+  card.innerHTML=
+    '<h3 class="font-bold text-slate-700 text-sm">🧪 향수 표준 BOM 일괄 적용</h3>'+
+    '<div style="font-size:11px;color:#64748b">충진중량 기준 <b>배합비(%) 방식</b>으로 생성합니다. 절대량(kg) 입력 시 재고(g)와 1,000배 어긋나는 문제를 방지합니다. 디퓨저·디스커버리·세트는 자동 제외됩니다.</div>'+
+    '<div style="font-size:11.5px;font-weight:800;color:#0f766e">① 원료</div>'+
+    '<div class="grid grid-cols-3 gap-2">'+
+      '<div><label style="font-size:10px;font-weight:800;color:#64748b">베이스(주정)</label><select id="bt-eth" class="input-field">'+rawOpts(eth&&eth.rawId)+'</select></div>'+
+      '<div><label style="font-size:10px;font-weight:800;color:#64748b">주정 비율(%)</label><input id="bt-ethpct" type="number" class="input-field text-right" value="80"></div>'+
+      '<div><label style="font-size:10px;font-weight:800;color:#64748b">향료 비율(%)</label><input id="bt-frgpct" type="number" class="input-field text-right" value="20"></div>'+
+    '</div>'+
+    '<div style="font-size:11.5px;font-weight:800;color:#0f766e">② 용량별 포장재 (병·캡)</div>'+
+    '<div class="grid grid-cols-2 gap-2">'+
+      '<div><label style="font-size:10px;font-weight:800;color:#64748b">30ml 병</label><select id="bt-b30" class="input-field"><option value="">— 없음 —</option>'+packOpts()+'</select></div>'+
+      '<div><label style="font-size:10px;font-weight:800;color:#64748b">30ml 캡</label><select id="bt-c30" class="input-field"><option value="">— 없음 —</option>'+packOpts()+'</select></div>'+
+      '<div><label style="font-size:10px;font-weight:800;color:#64748b">50ml 병</label><select id="bt-b50" class="input-field"><option value="">— 없음 —</option>'+packOpts()+'</select></div>'+
+      '<div><label style="font-size:10px;font-weight:800;color:#64748b">50ml 캡</label><select id="bt-c50" class="input-field"><option value="">— 없음 —</option>'+packOpts()+'</select></div>'+
+    '</div>'+
+    '<div style="font-size:11.5px;font-weight:800;color:#0f766e">③ 공통 포장재 (전 용량 동일, 각 1개)</div>'+
+    '<div id="bt-common" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px;max-height:150px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px;background:#fff">'+
+      (db.master.M_PACK||[]).map(function(p){
+        var auto=/box|박스|노즐|nozzle|펌프|pump|스트럿|쇼핑백|bag/i.test(String(p.name||''));
+        return '<label style="font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:6px"><input type="checkbox" class="bt-cm" value="'+E(p.packId)+'"'+(auto?' checked':'')+'> '+E(p.name)+'</label>';
+      }).join('')+
+    '</div>'+
+    '<button class="btn btn-primary w-full" onclick="btPreview()">대상 제품 불러오기 (미리보기)</button>'+
+    '<div id="bt-list"></div>';
+  host.appendChild(card);
+}
+
+window.btPreview=function(){
+  var ps=perfumeProducts();
+  var box=$('bt-list'); if(!box) return;
+  if(!ps.length){ box.innerHTML='<div style="font-size:12px;color:#c0392b;font-weight:700">대상 제품이 없습니다. 제품명에 30ml / 50ml 표기가 있어야 인식됩니다.</div>'; return; }
+  box.innerHTML=
+    '<div style="font-size:11.5px;font-weight:800;color:#0f766e;margin-top:8px">④ 적용 대상 · 제품별 향료 확인</div>'+
+    '<div style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff;margin-top:4px">'+
+    '<table style="width:100%;font-size:12px"><tr style="background:#eef5f2"><th style="width:8%"></th><th style="text-align:left">제품</th><th style="width:12%">용량</th><th style="text-align:left;width:42%">향료 원료</th></tr>'+
+    ps.map(function(p,i){
+      var g=guessFragrance(p.name);
+      var sz=sizeOf(p.name);
+      return '<tr style="border-top:1px solid #f1f5f9"><td style="text-align:center"><input type="checkbox" class="bt-p" data-i="'+i+'" data-pid="'+E(p.productId)+'"'+(g?' checked':'')+'></td>'+
+        '<td style="font-weight:700">'+E(p.name)+'</td><td style="text-align:center">'+sz+'ml</td>'+
+        '<td><select id="bt-f-'+i+'" class="input-field" style="padding:3px 6px;font-size:11.5px"><option value="">— 향료 선택 —</option>'+
+          rawOpts(g&&g.rawId, function(r){ return /fragrance|향료|oil|HPD|퍼퓸/i.test(String(r.name||'')+' '+String(r.inci||'')); })+
+        '</select></td></tr>';
+    }).join('')+'</table></div>'+
+    '<div style="font-size:10.5px;color:#94a3b8;margin-top:4px">향료가 자동 매칭된 제품만 체크되어 있습니다. 매칭이 틀리면 드롭다운에서 바꾸세요.</div>'+
+    '<button class="btn btn-primary w-full" style="margin-top:6px" onclick="btApply()">체크한 제품에 BOM 일괄 적용</button>';
+  window.__btProducts=ps;
+};
+
+window.btApply=function(){
+  var ps=window.__btProducts||[];
+  var ethId=$('bt-eth').value, ethPct=N($('bt-ethpct').value), frgPct=N($('bt-frgpct').value);
+  if(!ethId){ if(typeof toast==='function') toast('베이스(주정)를 선택하세요','error'); return; }
+  if(Math.abs(ethPct+frgPct-100)>0.01){ if(typeof toast==='function') toast('주정+향료 비율이 100%가 아닙니다 ('+(ethPct+frgPct)+'%)','error'); return; }
+  var common=Array.prototype.slice.call(document.querySelectorAll('.bt-cm:checked')).map(function(c){ return c.value; });
+  var size={30:{b:$('bt-b30').value,c:$('bt-c30').value},50:{b:$('bt-b50').value,c:$('bt-c50').value}};
+  var checks=Array.prototype.slice.call(document.querySelectorAll('.bt-p:checked'));
+  if(!checks.length){ if(typeof toast==='function') toast('적용할 제품을 선택하세요','error'); return; }
+  var done=0, skip=[];
+  checks.forEach(function(ch){
+    var i=N(ch.dataset.i);
+    var p=ps[i]; if(!p) return;
+    var frgId=($('bt-f-'+i)||{}).value;
+    if(!frgId){ skip.push(p.name+' (향료 미지정)'); return; }
+    var sz=sizeOf(p.name);
+    var bom=[
+      {type:'RAW', itemId: isNaN(Number(ethId))?ethId:Number(ethId), qty: ethPct},
+      {type:'RAW', itemId: isNaN(Number(frgId))?frgId:Number(frgId), qty: frgPct}
+    ];
+    var sp=size[sz]||{};
+    [sp.b, sp.c].forEach(function(id){ if(id) bom.push({type:'PACK', itemId:isNaN(Number(id))?id:Number(id), qty:1}); });
+    common.forEach(function(id){ bom.push({type:'PACK', itemId:isNaN(Number(id))?id:Number(id), qty:1}); });
+    var target=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(p.productId); });
+    if(!target) return;
+    target.fillWeight = sz;          /* 30ml→30g, 50ml→50g */
+    target.bom = bom;
+    done++;
+  });
+  if(typeof logEvent==='function') logEvent('향수 표준 BOM 일괄 적용 '+done+'개 제품');
+  if(typeof toast==='function') toast(done+'개 제품 BOM 생성 완료'+(skip.length?' (제외 '+skip.length+'건)':''),'success');
+  var box=$('bt-list');
+  if(box) box.innerHTML='<div style="font-size:12.5px;font-weight:800;color:#0f766e;padding:8px 0">✅ '+done+'개 제품에 BOM을 적용했습니다. (충진중량 자동 설정 · 배합비 '+ethPct+':'+frgPct+')'+
+    (skip.length?'<br><span style="color:#c2410c">⚠️ 제외: '+skip.map(E).join(', ')+'</span>':'')+
+    '<br><span style="color:#64748b;font-weight:600">데이터 점검에서 BOM 항목이 사라졌는지 확인해 보세요.</span></div>';
+  saveDB();
+  try{ if(typeof renderProduct==='function') renderProduct(); }catch(e){}
+};
+
+var _init=window.initNewPage;
+window.initNewPage=function(p){
+  try{ if(typeof _init==='function') _init(p); }catch(e){}
+  if(p==='master-product') injectUI();
+};
+function boot(){ injectUI(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot,1800);
+var __btKeep=setInterval(injectUI,3000);
+setTimeout(function(){ clearInterval(__btKeep); },90000);
 })();
