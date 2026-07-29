@@ -1,13 +1,11 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v4.1 — 노즈 (2026-07-21)
-   v4.1: 🎨 비색 테마 (MEDISCENT UX 리디자인 적용)
-     1단계 사이드바 01~07 그룹 재배치 (클릭으로 접기/펴기)
-     2단계 비색(celadon) 팔레트 — 활성 메뉴·주요 버튼·배지
-     3단계 대시보드 재구성 — 빠른작업 4 · 경보 4 · KPI 4
-           (재고자산·완제품수량·이번달 생산·매출 실시간 집계)
-     ※ 기능 변경 없음. 이 모듈만 제거하면 원래 화면으로 복구됩니다.
-   v4.0: 재고 단가 채우기 / v3.9: 데이터 점검
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.1 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v4.2 — 노즈 (2026-07-21)
+   v4.2(fix): 사이드바 그룹 오류 수정
+     본체에 이미 있는 그룹 라벨(1·기준정보 …)을 그대로 사용하도록 변경.
+     v4.1이 메뉴를 새 그룹으로 옮겨 "빈 그룹 라벨"만 남던 문제 해결.
+     확장 메뉴는 알맞은 본체 그룹으로 이동, 라벨 클릭 시 접기/펴기 +
+     항목 수 표시. 비색 팔레트·대시보드(빠른작업·경보·KPI)는 유지.
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.2 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4140,7 +4138,7 @@ var __dqKeep=setInterval(injectUI,3000);
 setTimeout(function(){ clearInterval(__dqKeep); },90000);
 })();
 
-/* ═══════════ 모듈: 비색 테마 v1.0 ═══════════ */
+/* ═══════════ 모듈: 비색 테마 ═══════════ */
 (function(){
 'use strict';
 var $=function(id){return document.getElementById(id);};
@@ -4154,23 +4152,17 @@ function injectTheme(){
   var st=document.createElement('style');
   st.id='nose-theme';
   st.textContent=[
-    ':root{--celadon:#5e7676;--celadon-2:#78918f;--celadon-soft:#e7efed;--ink:#172222;--muted:#6f7d7b;--line:#dfe6e4}',
-    /* 사이드바 그룹 */
-    '.nose-group-title{height:30px;padding:0 12px;display:flex;align-items:center;gap:6px;font-size:10px;font-weight:900;letter-spacing:.08em;color:#78908a;text-transform:uppercase;margin-top:10px;cursor:pointer;user-select:none}',
-    '.nose-group-title b{color:#a7bbb6}',
-    '.nose-group-title .nose-caret{margin-left:auto;font-size:9px;opacity:.6;transition:transform .15s}',
-    '.nose-group.collapsed .nose-caret{transform:rotate(-90deg)}',
-    '.nose-group.collapsed .nav-item{display:none}',
-    '.nose-group .nav-item{margin:2px 0}',
-    /* 비색 강조 */
-    '.nav-item.active,.nav-item[class*="bg-"]{background:var(--celadon-soft) !important;color:#233332 !important;font-weight:800}',
+    ':root{--celadon:#5e7676;--celadon-soft:#e7efed;--ink:#172222;--muted:#6f7d7b;--line:#dfe6e4}',
+    '.nav-label{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}',
+    '.nav-label .nose-cnt{margin-left:auto;font-size:9px;opacity:.55;font-weight:700}',
+    '.nav-label .nose-caret{font-size:8px;opacity:.6;transition:transform .15s}',
+    '.nav-label.nose-collapsed .nose-caret{transform:rotate(-90deg)}',
     '.btn-primary,button.btn-primary{background:var(--celadon) !important;border-color:var(--celadon) !important;color:#fff !important}',
     '.btn-primary:hover{background:#4f6767 !important}',
     '.badge-soft{background:var(--celadon-soft) !important;color:#3e6960 !important}',
-    /* 대시보드 위젯 */
     '.nose-qa{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px}',
     '.nose-qa-item{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 15px;display:flex;align-items:center;gap:11px;cursor:pointer;box-shadow:0 3px 12px rgba(26,44,41,.025)}',
-    '.nose-qa-item:hover{border-color:#b7c9c5;box-shadow:0 10px 30px rgba(26,44,41,.07);transform:translateY(-1px)}',
+    '.nose-qa-item:hover{border-color:#b7c9c5;box-shadow:0 10px 30px rgba(26,44,41,.07)}',
     '.nose-qa-icon{width:36px;height:36px;border-radius:10px;background:var(--celadon-soft);display:grid;place-items:center;color:var(--celadon);font-size:17px;flex:none}',
     '.nose-qa-item strong{display:block;font-size:12.5px;color:var(--ink)}',
     '.nose-qa-item span{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}',
@@ -4181,7 +4173,7 @@ function injectTheme(){
     '.nose-alert h3{font-size:12px;margin:0;color:var(--ink)}.nose-alert p{font-size:10px;color:var(--muted);margin:3px 0 0}',
     '.nose-alert-num{margin-left:auto;font-size:24px;font-weight:900}',
     '.red .nose-alert-num{color:#c94b4b}.amber .nose-alert-num{color:#b7791f}.blue .nose-alert-num{color:#3d6f91}.green .nose-alert-num{color:#2f7b61}',
-    '.nose-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-bottom:6px}',
+    '.nose-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px}',
     '.nose-kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px;cursor:pointer}',
     '.nose-kpi:hover{border-color:#b7c9c5}',
     '.nose-kpi-top{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:11px;font-weight:700}',
@@ -4192,57 +4184,65 @@ function injectTheme(){
   document.head.appendChild(st);
 }
 
-/* ════════ 1단계: 사이드바 그룹 재배치 ════════ */
-var GROUPS=[
-  {no:'01', name:'기준정보', ids:['nav-master-supplier','nav-master-cust','nav-master-raw','nav-master-pack','nav-master-product','nav-cfg-company']},
-  {no:'02', name:'연구개발', ids:['nav-formula-dev','nav-dev-fullcomp','nav-dev-note','nav-sample','nav-perfume-ai','nav-allergen-report']},
-  {no:'03', name:'구매·생산', ids:['nav-purchase-order','nav-t-goods-in','nav-purchase-log','nav-prod-plan','nav-mrp-calc','nav-work-order','nav-prod-schedule','nav-t-bulk','nav-bulk-maturation','nav-t-batch','nav-prod-result','nav-yield']},
-  {no:'04', name:'품질·재고', ids:['nav-t-qc','nav-qc-prod','nav-qc-ncr','nav-qc-capa','nav-qc-trace','nav-stock','nav-stock-adj','nav-stock-ledger','nav-stock-dead','nav-safety-stock','nav-loc-stock']},
-  {no:'05', name:'영업·문서', ids:['nav-sales-order','nav-t-sale','nav-sales-return','nav-sales-claim','nav-channel-sales','nav-doc-center','nav-doc-label','nav-annual-report','nav-report','nav-records-admin']},
-  {no:'06', name:'점검·도움말', ids:['nav-data-check','nav-guide']}
+/* ════════ 1단계: 본체 그룹 라벨 활용 ════════ */
+/* 확장 메뉴를 어느 본체 그룹으로 보낼지 (라벨 텍스트 일부로 매칭) */
+var PLACE=[
+  {id:'nav-perfume-ai',     label:'연구개발'},
+  {id:'nav-prod-schedule',  label:'생산'},
+  {id:'nav-yield',          label:'생산'},
+  {id:'nav-loc-stock',      label:'재고'},
+  {id:'nav-doc-center',     label:'문서'},
+  {id:'nav-data-check',     label:'설정'}
 ];
-var TOP=['nav-quick-log','nav-dashboard'];  /* 그룹 밖 상단 고정 */
-
-function groupNav(){
-  var first=$('nav-dashboard');
-  if(!first) return;
-  var host=first.parentNode;
-  if(!host || host.dataset.noseGrouped==='1') return;
-  /* 모든 대상이 준비됐는지 확인 (확장 메뉴 포함) */
-  host.dataset.noseGrouped='1';
-
-  /* 상단 고정 항목 먼저 */
-  TOP.forEach(function(id){
-    var el=$(id); if(el) host.insertBefore(el, host.firstChild);
-  });
-
-  GROUPS.forEach(function(g){
-    var items=g.ids.map(function(id){return $(id);}).filter(Boolean);
-    if(!items.length) return;
-    var wrap=document.createElement('div');
-    wrap.className='nose-group';
-    wrap.id='nose-g-'+g.no;
-    var title=document.createElement('div');
-    title.className='nose-group-title';
-    title.innerHTML='<b>'+g.no+'</b> '+g.name+'<span class="nose-caret">▼</span>';
-    title.onclick=function(){ wrap.classList.toggle('collapsed'); };
-    wrap.appendChild(title);
-    items.forEach(function(el){ wrap.appendChild(el); });
-    host.appendChild(wrap);
-  });
-  /* 그룹에 못 들어간 나머지는 기타로 */
-  var rest=Array.prototype.filter.call(host.children, function(c){
-    return c.classList && c.classList.contains('nav-item') && TOP.indexOf(c.id)<0;
-  });
-  if(rest.length){
-    var w2=document.createElement('div'); w2.className='nose-group';
-    var t2=document.createElement('div'); t2.className='nose-group-title';
-    t2.innerHTML='<b>07</b> 기타<span class="nose-caret">▼</span>';
-    t2.onclick=function(){ w2.classList.toggle('collapsed'); };
-    w2.appendChild(t2);
-    rest.forEach(function(el){ w2.appendChild(el); });
-    host.appendChild(w2);
+function labels(){
+  return Array.prototype.slice.call(document.querySelectorAll('.nav-label'));
+}
+function membersOf(lab){
+  var out=[], n=lab.nextElementSibling;
+  while(n && !(n.classList && n.classList.contains('nav-label'))){
+    if(n.classList && n.classList.contains('nav-item')) out.push(n);
+    n=n.nextElementSibling;
   }
+  return out;
+}
+function placeExtensions(){
+  var labs=labels(); if(!labs.length) return;
+  PLACE.forEach(function(p){
+    var el=$(p.id); if(!el) return;
+    var lab=labs.filter(function(l){ return l.textContent.indexOf(p.label)>=0; })[0];
+    if(!lab) return;
+    var ms=membersOf(lab);
+    var last=ms.length?ms[ms.length-1]:lab;
+    if(el.previousElementSibling===last || el===last) return;   /* 이미 제자리 */
+    last.parentNode.insertBefore(el, last.nextSibling);
+  });
+  /* 간편 기록은 대시보드 바로 아래 고정 */
+  var q=$('nav-quick-log'), d=$('nav-dashboard');
+  if(q&&d&&d.nextElementSibling!==q) d.parentNode.insertBefore(q, d.nextSibling);
+}
+function decorateLabels(){
+  labels().forEach(function(lab){
+    var ms=membersOf(lab);
+    if(!lab.dataset.noseInit){
+      lab.dataset.noseInit='1';
+      lab.addEventListener('click', function(){
+        var on=lab.classList.toggle('nose-collapsed');
+        membersOf(lab).forEach(function(m){ m.style.display=on?'none':''; });
+      });
+    }
+    var cnt=lab.querySelector('.nose-cnt');
+    if(!cnt){
+      cnt=document.createElement('span'); cnt.className='nose-cnt';
+      var car=document.createElement('span'); car.className='nose-caret'; car.textContent='▼';
+      lab.appendChild(cnt); lab.appendChild(car);
+    }
+    cnt.textContent=ms.length;
+  });
+}
+function fixNav(){
+  if(!document.querySelector('.nav-label')) return;
+  placeExtensions();
+  decorateLabels();
 }
 
 /* ════════ 3단계: 대시보드 재구성 ════════ */
@@ -4260,21 +4260,18 @@ function metricsSafe(){
     var qc=(S.FGT_LOT||[]).filter(function(l){return String(l.status||'').toUpperCase()==='HOLD';}).length;
     var mat=(S.BULK_LOT||[]).filter(function(l){return String(l.status||'').toUpperCase()==='HOLD'&&l.matureUntil&&l.matureUntil<=t&&N(l.remaining)>0;}).length;
     var exp=[].concat(S.RAW_LOT||[],S.PACK_LOT||[]).filter(function(l){return N(l.remaining)>0&&l.expDate&&l.expDate<=soon&&String(l.status||'OK').toUpperCase()!=='FAIL';}).length;
-    var wo=(T.T_WORK_ORDER||[]).filter(function(w){return (w.status||'대기')!=='완료';}).length;
-    /* 품절 임박 */
     var th=N((db.meta&&db.meta.lowStockTh)!=null?db.meta.lowStockTh:10)||10;
     var agg={};
     (S.FGT_LOT||[]).forEach(function(l){ if(String(l.status||'OK').toUpperCase()==='FAIL') return; agg[l.productId]=(agg[l.productId]||0)+N(l.remaining); });
     (M.M_PRODUCT||[]).forEach(function(p){ if(agg[p.productId]==null) agg[p.productId]=0; });
     var low=Object.keys(agg).filter(function(k){return agg[k]<th;}).length;
-    /* 재고자산 */
     function val(k){ return (S[k]||[]).reduce(function(s,l){ return String(l.status||'OK').toUpperCase()==='FAIL'?s:s+N(l.remaining)*N(l.unitCost); },0); }
     var asset=val('RAW_LOT')+val('PACK_LOT')+val('BULK_LOT')+val('FGT_LOT');
     var fgtQty=(S.FGT_LOT||[]).reduce(function(s,l){return String(l.status||'OK').toUpperCase()==='FAIL'?s:s+N(l.remaining);},0);
     var ym=t.slice(0,7);
     var mSale=(T.T_SALE||[]).filter(function(s){return String(s.date||'').indexOf(ym)===0;}).reduce(function(s,x){return s+N(x.amount);},0);
     var mProd=(T.T_BATCH||[]).filter(function(b){return String(b.date||'').indexOf(ym)===0;}).reduce(function(s,b){return s+N(b.qty);},0);
-    return {qc:qc,mat:mat,exp:exp,wo:wo,low:low,asset:asset,fgtQty:fgtQty,mSale:mSale,mProd:mProd,th:th};
+    return {qc:qc,mat:mat,exp:exp,low:low,asset:asset,fgtQty:fgtQty,mSale:mSale,mProd:mProd,th:th};
   }catch(e){ return null; }
 }
 function renderDash(){
@@ -4312,17 +4309,17 @@ function renderDash(){
     }).join('')+'</div>';
 }
 window.noseRenderDash=renderDash;
+window.noseFixNav=fixNav;
 
 var _init=window.initNewPage;
 window.initNewPage=function(p){
   try{ if(typeof _init==='function') _init(p); }catch(e){}
-  injectTheme(); groupNav();
+  injectTheme(); fixNav();
   if(p==='dashboard') setTimeout(renderDash,120);
 };
-function boot(){ injectTheme(); groupNav(); renderDash(); }
+function boot(){ injectTheme(); fixNav(); renderDash(); }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
-/* 확장 메뉴가 늦게 주입되므로 충분히 기다린 뒤 그룹화 */
-setTimeout(function(){ injectTheme(); groupNav(); renderDash(); }, 2500);
-setTimeout(function(){ groupNav(); renderDash(); }, 5000);
-setInterval(function(){ try{ if($('page-dashboard')&&$('page-dashboard').classList.contains('active')) renderDash(); }catch(e){} }, 60000);
+setTimeout(boot,2500);
+setTimeout(function(){ fixNav(); renderDash(); },5000);
+setInterval(function(){ try{ if($('page-dashboard')&&$('page-dashboard').classList.contains('active')) renderDash(); }catch(e){} },60000);
 })();
