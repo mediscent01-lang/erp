@@ -1,13 +1,13 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v4.0 — 노즈 (2026-07-20)
-   v4.0: 💰 재고 단가 채우기 (평가금액 복구)
-     재고 현황의 단가·평가금액은 LOT에 저장된 단가로만 계산되므로,
-     일괄 기초재고 등록분(단가 0)은 평가금액이 0으로 표시됨.
-     마스터 표준단가를 LOT에 일괄 적용하는 도구 추가.
-     원료 마스터 단위가 kg이면 재고 기준(g)으로 자동 환산.
-     미리보기(대상 LOT·적용 단가·예상 평가금액) 후 적용.
-   v3.9: 데이터 점검 / v3.8: 주간정산 가독성
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.0 으로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v4.1 — 노즈 (2026-07-21)
+   v4.1: 🎨 비색 테마 (MEDISCENT UX 리디자인 적용)
+     1단계 사이드바 01~07 그룹 재배치 (클릭으로 접기/펴기)
+     2단계 비색(celadon) 팔레트 — 활성 메뉴·주요 버튼·배지
+     3단계 대시보드 재구성 — 빠른작업 4 · 경보 4 · KPI 4
+           (재고자산·완제품수량·이번달 생산·매출 실시간 집계)
+     ※ 기능 변경 없음. 이 모듈만 제거하면 원래 화면으로 복구됩니다.
+   v4.0: 재고 단가 채우기 / v3.9: 데이터 점검
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=4.1 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4138,4 +4138,191 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot,1600);
 var __dqKeep=setInterval(injectUI,3000);
 setTimeout(function(){ clearInterval(__dqKeep); },90000);
+})();
+
+/* ═══════════ 모듈: 비색 테마 v1.0 ═══════════ */
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var N=function(v){var x=Number(v);return isFinite(x)?x:0;};
+var E=function(v){return (typeof escH==='function')?escH(v):String(v==null?'':v);};
+var F=function(v){return Math.round(N(v)).toLocaleString();};
+
+/* ════════ 2단계: 비색 팔레트 ════════ */
+function injectTheme(){
+  if($('nose-theme')) return;
+  var st=document.createElement('style');
+  st.id='nose-theme';
+  st.textContent=[
+    ':root{--celadon:#5e7676;--celadon-2:#78918f;--celadon-soft:#e7efed;--ink:#172222;--muted:#6f7d7b;--line:#dfe6e4}',
+    /* 사이드바 그룹 */
+    '.nose-group-title{height:30px;padding:0 12px;display:flex;align-items:center;gap:6px;font-size:10px;font-weight:900;letter-spacing:.08em;color:#78908a;text-transform:uppercase;margin-top:10px;cursor:pointer;user-select:none}',
+    '.nose-group-title b{color:#a7bbb6}',
+    '.nose-group-title .nose-caret{margin-left:auto;font-size:9px;opacity:.6;transition:transform .15s}',
+    '.nose-group.collapsed .nose-caret{transform:rotate(-90deg)}',
+    '.nose-group.collapsed .nav-item{display:none}',
+    '.nose-group .nav-item{margin:2px 0}',
+    /* 비색 강조 */
+    '.nav-item.active,.nav-item[class*="bg-"]{background:var(--celadon-soft) !important;color:#233332 !important;font-weight:800}',
+    '.btn-primary,button.btn-primary{background:var(--celadon) !important;border-color:var(--celadon) !important;color:#fff !important}',
+    '.btn-primary:hover{background:#4f6767 !important}',
+    '.badge-soft{background:var(--celadon-soft) !important;color:#3e6960 !important}',
+    /* 대시보드 위젯 */
+    '.nose-qa{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px}',
+    '.nose-qa-item{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 15px;display:flex;align-items:center;gap:11px;cursor:pointer;box-shadow:0 3px 12px rgba(26,44,41,.025)}',
+    '.nose-qa-item:hover{border-color:#b7c9c5;box-shadow:0 10px 30px rgba(26,44,41,.07);transform:translateY(-1px)}',
+    '.nose-qa-icon{width:36px;height:36px;border-radius:10px;background:var(--celadon-soft);display:grid;place-items:center;color:var(--celadon);font-size:17px;flex:none}',
+    '.nose-qa-item strong{display:block;font-size:12.5px;color:var(--ink)}',
+    '.nose-qa-item span{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}',
+    '.nose-alerts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:14px}',
+    '.nose-alert{border-radius:14px;padding:14px 16px;border:1px solid;display:flex;align-items:center;gap:12px;background:#fff;cursor:pointer}',
+    '.nose-alert.red{border-color:#f0cfcf;background:#fff1f1}.nose-alert.amber{border-color:#f1dfb6;background:#fff8e8}.nose-alert.blue{border-color:#d3e3ed;background:#eef6fb}.nose-alert.green{border-color:#d5eadf;background:#edf8f3}',
+    '.nose-alert-icon{width:38px;height:38px;border-radius:10px;background:#fff;display:grid;place-items:center;font-size:17px;flex:none}',
+    '.nose-alert h3{font-size:12px;margin:0;color:var(--ink)}.nose-alert p{font-size:10px;color:var(--muted);margin:3px 0 0}',
+    '.nose-alert-num{margin-left:auto;font-size:24px;font-weight:900}',
+    '.red .nose-alert-num{color:#c94b4b}.amber .nose-alert-num{color:#b7791f}.blue .nose-alert-num{color:#3d6f91}.green .nose-alert-num{color:#2f7b61}',
+    '.nose-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;margin-bottom:6px}',
+    '.nose-kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px;cursor:pointer}',
+    '.nose-kpi:hover{border-color:#b7c9c5}',
+    '.nose-kpi-top{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:11px;font-weight:700}',
+    '.nose-kpi-value{font-size:23px;font-weight:900;margin-top:10px;letter-spacing:-.03em;color:var(--ink)}',
+    '.nose-kpi-foot{font-size:10px;color:#7f8c89;margin-top:5px}',
+    '@media(max-width:760px){.nose-qa{grid-template-columns:1fr}.nose-kpi-value{font-size:20px}}'
+  ].join('\n');
+  document.head.appendChild(st);
+}
+
+/* ════════ 1단계: 사이드바 그룹 재배치 ════════ */
+var GROUPS=[
+  {no:'01', name:'기준정보', ids:['nav-master-supplier','nav-master-cust','nav-master-raw','nav-master-pack','nav-master-product','nav-cfg-company']},
+  {no:'02', name:'연구개발', ids:['nav-formula-dev','nav-dev-fullcomp','nav-dev-note','nav-sample','nav-perfume-ai','nav-allergen-report']},
+  {no:'03', name:'구매·생산', ids:['nav-purchase-order','nav-t-goods-in','nav-purchase-log','nav-prod-plan','nav-mrp-calc','nav-work-order','nav-prod-schedule','nav-t-bulk','nav-bulk-maturation','nav-t-batch','nav-prod-result','nav-yield']},
+  {no:'04', name:'품질·재고', ids:['nav-t-qc','nav-qc-prod','nav-qc-ncr','nav-qc-capa','nav-qc-trace','nav-stock','nav-stock-adj','nav-stock-ledger','nav-stock-dead','nav-safety-stock','nav-loc-stock']},
+  {no:'05', name:'영업·문서', ids:['nav-sales-order','nav-t-sale','nav-sales-return','nav-sales-claim','nav-channel-sales','nav-doc-center','nav-doc-label','nav-annual-report','nav-report','nav-records-admin']},
+  {no:'06', name:'점검·도움말', ids:['nav-data-check','nav-guide']}
+];
+var TOP=['nav-quick-log','nav-dashboard'];  /* 그룹 밖 상단 고정 */
+
+function groupNav(){
+  var first=$('nav-dashboard');
+  if(!first) return;
+  var host=first.parentNode;
+  if(!host || host.dataset.noseGrouped==='1') return;
+  /* 모든 대상이 준비됐는지 확인 (확장 메뉴 포함) */
+  host.dataset.noseGrouped='1';
+
+  /* 상단 고정 항목 먼저 */
+  TOP.forEach(function(id){
+    var el=$(id); if(el) host.insertBefore(el, host.firstChild);
+  });
+
+  GROUPS.forEach(function(g){
+    var items=g.ids.map(function(id){return $(id);}).filter(Boolean);
+    if(!items.length) return;
+    var wrap=document.createElement('div');
+    wrap.className='nose-group';
+    wrap.id='nose-g-'+g.no;
+    var title=document.createElement('div');
+    title.className='nose-group-title';
+    title.innerHTML='<b>'+g.no+'</b> '+g.name+'<span class="nose-caret">▼</span>';
+    title.onclick=function(){ wrap.classList.toggle('collapsed'); };
+    wrap.appendChild(title);
+    items.forEach(function(el){ wrap.appendChild(el); });
+    host.appendChild(wrap);
+  });
+  /* 그룹에 못 들어간 나머지는 기타로 */
+  var rest=Array.prototype.filter.call(host.children, function(c){
+    return c.classList && c.classList.contains('nav-item') && TOP.indexOf(c.id)<0;
+  });
+  if(rest.length){
+    var w2=document.createElement('div'); w2.className='nose-group';
+    var t2=document.createElement('div'); t2.className='nose-group-title';
+    t2.innerHTML='<b>07</b> 기타<span class="nose-caret">▼</span>';
+    t2.onclick=function(){ w2.classList.toggle('collapsed'); };
+    w2.appendChild(t2);
+    rest.forEach(function(el){ w2.appendChild(el); });
+    host.appendChild(w2);
+  }
+}
+
+/* ════════ 3단계: 대시보드 재구성 ════════ */
+var QA=[
+  {icon:'⚡', t:'주간 정산', s:'생산·출고·실사 한 번에', p:'quick-log'},
+  {icon:'📅', t:'생산 일정', s:'캘린더·간트', p:'prod-schedule'},
+  {icon:'🏬', t:'위치 재고', s:'창고·인사동·피킹', p:'loc-stock'},
+  {icon:'📚', t:'문서센터', s:'서류 발행·기록', p:'doc-center'}
+];
+function metricsSafe(){
+  try{
+    var t=new Date().toISOString().split('T')[0];
+    var soon=new Date(); soon.setDate(soon.getDate()+30); soon=soon.toISOString().split('T')[0];
+    var S=db.stock||{}, T=db.txn||{}, M=db.master||{};
+    var qc=(S.FGT_LOT||[]).filter(function(l){return String(l.status||'').toUpperCase()==='HOLD';}).length;
+    var mat=(S.BULK_LOT||[]).filter(function(l){return String(l.status||'').toUpperCase()==='HOLD'&&l.matureUntil&&l.matureUntil<=t&&N(l.remaining)>0;}).length;
+    var exp=[].concat(S.RAW_LOT||[],S.PACK_LOT||[]).filter(function(l){return N(l.remaining)>0&&l.expDate&&l.expDate<=soon&&String(l.status||'OK').toUpperCase()!=='FAIL';}).length;
+    var wo=(T.T_WORK_ORDER||[]).filter(function(w){return (w.status||'대기')!=='완료';}).length;
+    /* 품절 임박 */
+    var th=N((db.meta&&db.meta.lowStockTh)!=null?db.meta.lowStockTh:10)||10;
+    var agg={};
+    (S.FGT_LOT||[]).forEach(function(l){ if(String(l.status||'OK').toUpperCase()==='FAIL') return; agg[l.productId]=(agg[l.productId]||0)+N(l.remaining); });
+    (M.M_PRODUCT||[]).forEach(function(p){ if(agg[p.productId]==null) agg[p.productId]=0; });
+    var low=Object.keys(agg).filter(function(k){return agg[k]<th;}).length;
+    /* 재고자산 */
+    function val(k){ return (S[k]||[]).reduce(function(s,l){ return String(l.status||'OK').toUpperCase()==='FAIL'?s:s+N(l.remaining)*N(l.unitCost); },0); }
+    var asset=val('RAW_LOT')+val('PACK_LOT')+val('BULK_LOT')+val('FGT_LOT');
+    var fgtQty=(S.FGT_LOT||[]).reduce(function(s,l){return String(l.status||'OK').toUpperCase()==='FAIL'?s:s+N(l.remaining);},0);
+    var ym=t.slice(0,7);
+    var mSale=(T.T_SALE||[]).filter(function(s){return String(s.date||'').indexOf(ym)===0;}).reduce(function(s,x){return s+N(x.amount);},0);
+    var mProd=(T.T_BATCH||[]).filter(function(b){return String(b.date||'').indexOf(ym)===0;}).reduce(function(s,b){return s+N(b.qty);},0);
+    return {qc:qc,mat:mat,exp:exp,wo:wo,low:low,asset:asset,fgtQty:fgtQty,mSale:mSale,mProd:mProd,th:th};
+  }catch(e){ return null; }
+}
+function renderDash(){
+  var host=$('page-dashboard'); if(!host||!window.db) return;
+  var m=metricsSafe(); if(!m) return;
+  var box=$('nose-dash');
+  if(!box){
+    box=document.createElement('div'); box.id='nose-dash'; box.style.marginBottom='14px';
+    host.insertBefore(box, host.firstChild);
+  }
+  var alerts=[
+    {c:m.qc>0?'red':'green', i:'🧪', h:'품질검사 대기', p:'출하 전 판정 필요', n:m.qc, pg:'qc-prod'},
+    {c:m.low>0?'amber':'green', i:'🔻', h:'품절 임박 완제품', p:m.th+'개 미만 품목', n:m.low, pg:'loc-stock'},
+    {c:m.exp>0?'amber':'green', i:'⏰', h:'유통기한 30일 임박', p:'원료·포장재 LOT', n:m.exp, pg:'stock'},
+    {c:m.mat>0?'blue':'green', i:'🫙', h:'숙성 완료 벌크', p:'충진 가능', n:m.mat, pg:'t-batch'}
+  ];
+  var kpis=[
+    {t:'총 재고자산', v:'₩'+F(m.asset), f:'원료·부자재·벌크·완제품 합계', pg:'stock'},
+    {t:'완제품 재고', v:F(m.fgtQty)+' EA', f:'창고 + 인사동', pg:'loc-stock'},
+    {t:'이번 달 생산', v:F(m.mProd)+' EA', f:'충진 완료 기준', pg:'prod-schedule'},
+    {t:'이번 달 매출', v:'₩'+F(m.mSale), f:'출고 등록 기준', pg:'t-sale'}
+  ];
+  box.innerHTML=
+    '<div class="nose-qa">'+QA.map(function(q){
+      return '<div class="nose-qa-item" onclick="goPage(\''+q.p+'\')"><div class="nose-qa-icon">'+q.icon+'</div>'+
+        '<div><strong>'+E(q.t)+'</strong><span>'+E(q.s)+'</span></div></div>';
+    }).join('')+'</div>'+
+    '<div class="nose-alerts">'+alerts.map(function(a){
+      return '<div class="nose-alert '+a.c+'" onclick="goPage(\''+a.pg+'\')"><div class="nose-alert-icon">'+a.i+'</div>'+
+        '<div><h3>'+E(a.h)+'</h3><p>'+E(a.p)+'</p></div><div class="nose-alert-num">'+a.n+'</div></div>';
+    }).join('')+'</div>'+
+    '<div class="nose-kpis">'+kpis.map(function(k){
+      return '<div class="nose-kpi" onclick="goPage(\''+k.pg+'\')"><div class="nose-kpi-top"><span>'+E(k.t)+'</span><span>›</span></div>'+
+        '<div class="nose-kpi-value">'+k.v+'</div><div class="nose-kpi-foot">'+E(k.f)+'</div></div>';
+    }).join('')+'</div>';
+}
+window.noseRenderDash=renderDash;
+
+var _init=window.initNewPage;
+window.initNewPage=function(p){
+  try{ if(typeof _init==='function') _init(p); }catch(e){}
+  injectTheme(); groupNav();
+  if(p==='dashboard') setTimeout(renderDash,120);
+};
+function boot(){ injectTheme(); groupNav(); renderDash(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+/* 확장 메뉴가 늦게 주입되므로 충분히 기다린 뒤 그룹화 */
+setTimeout(function(){ injectTheme(); groupNav(); renderDash(); }, 2500);
+setTimeout(function(){ groupNav(); renderDash(); }, 5000);
+setInterval(function(){ try{ if($('page-dashboard')&&$('page-dashboard').classList.contains('active')) renderDash(); }catch(e){} }, 60000);
 })();
