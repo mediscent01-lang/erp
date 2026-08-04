@@ -1,14 +1,13 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v5.0 — 노즈 (2026-07-21)
-   v5.0: 🏭 3거점 재고 체계 — 공장 · 물류센터 · 매장
-     · 기존 데이터 자동 이관 (창고→공장, 인사동→매장)
-     · 위치 매트릭스 3열, 이관은 출발지·도착지 자유 선택
-     · 주간정산: [생산] [→물류센터] [→매장] [공장·물류·매장 실물]
-       물류/매장 감소분은 판매로 자동 계상(택배·매장 판매),
-       공장 감소분은 조정으로 처리
-     · 피킹 목적지 물류센터/매장/고객, 실사·기초등록·LOT수정 3위치
-     · 대시보드 스냅샷 3거점 분리 표시
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.0 으로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v5.1 — 노즈 (2026-07-21)
+   v5.1(fix): 공장 실물 입력이 반영되지 않던 문제 해결
+     · 간편기록·마스터패널·LOT목록의 위치 기본값이 옛 값(창고)로 남아
+       위치가 비어 있는 LOT을 찾지 못하던 버그 수정 (→ 공장)
+     · LOT 수정·마스터 입고 모달의 위치 선택을 3거점으로 교체
+     · 위치 미지정 LOT을 공장으로 자동 명시(이관 시), 주간정산 진입·
+       실행 시점에도 이관 재확인
+   v5.0: 3거점 재고 체계 (공장·물류센터·매장)
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.1 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -1892,7 +1891,10 @@ var LOCS = ['공장','물류센터','매장'];
 window.migrateLoc=function(){
   if(!window.db||!db.stock) return;
   var map={'창고':'공장','인사동':'매장'};
-  ['FGT_LOT','PACK_LOT'].forEach(function(k){ (db.stock[k]||[]).forEach(function(l){ if(map[l.location]) l.location=map[l.location]; }); });
+  ['FGT_LOT','PACK_LOT'].forEach(function(k){ (db.stock[k]||[]).forEach(function(l){
+    if(map[l.location]) l.location=map[l.location];
+    else if(!l.location) l.location='공장';   /* 위치 미지정 LOT도 공장으로 명시 */
+  }); });
   ((db.txn||{}).T_STOCK_MOVE||[]).forEach(function(m){ if(map[m.from]) m.from=map[m.from]; if(map[m.to]) m.to=map[m.to]; });
 };
 var locOf = function(l){ return l.location || '공장'; };
@@ -2153,7 +2155,7 @@ window.renderLotManager = function(){
   tb.innerHTML = arr.slice().reverse().map(function(l){
     var st = String(l.status||'OK').toUpperCase();
     var stC = st==='OK'?'#059669':st==='FAIL'?'#dc2626':'#d97706';
-    var extra = key==='FGT_LOT' ? (l.location||'창고') : (l.expDate||l.matureUntil||'-');
+    var extra = key==='FGT_LOT' ? (l.location||'공장') : (l.expDate||l.matureUntil||'-');
     return '<tr><td class="pl-3 mono text-xs">'+E(l.lotNo)+'</td><td class="text-xs">'+E(lotName(key,l))+'</td>'+
       '<td class="text-right text-xs font-bold">'+N(l.remaining).toLocaleString()+'</td>'+
       '<td class="text-xs" style="color:'+stC+';font-weight:800">'+E(st)+'</td>'+
@@ -2181,7 +2183,7 @@ window.openLotEdit = function(key, id){
         '<div><label style="font-size:10px;font-weight:800;color:#64748b">단가</label><input id="le-cost" type="number" step="0.01" class="input-field text-right" value="'+N(l.unitCost)+'"></div>'+
         '<div><label style="font-size:10px;font-weight:800;color:#64748b">상태</label><select id="le-status" class="input-field"><option'+(String(l.status||'OK').toUpperCase()==='OK'?' selected':'')+'>OK</option><option'+(String(l.status).toUpperCase()==='HOLD'?' selected':'')+'>HOLD</option><option'+(String(l.status).toUpperCase()==='FAIL'?' selected':'')+'>FAIL</option></select></div>'+
         (isFgt
-          ? '<div><label style="font-size:10px;font-weight:800;color:#64748b">위치</label><select id="le-loc" class="input-field"><option'+((l.location||'창고')==='창고'?' selected':'')+'>창고</option><option'+(l.location==='인사동'?' selected':'')+'>인사동</option></select></div>'
+          ? '<div><label style="font-size:10px;font-weight:800;color:#64748b">위치</label><select id="le-loc" class="input-field">'+LOCS.map(function(x){return '<option'+((l.location||'공장')===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'
           : '<div><label style="font-size:10px;font-weight:800;color:#64748b">'+(key==='BULK_LOT'?'숙성완료일':'유통기한')+'</label><input id="le-exp" type="date" class="input-field" value="'+E(l.expDate||l.matureUntil||'')+'"></div>')+
       '</div>'+
       '<div style="display:flex;gap:8px;margin-top:14px">'+
@@ -3301,6 +3303,7 @@ function wkReconcile(p, loc, actual, price, cause, date, log, warn){
 }
 window.commitWeek=function(){
   ensure();
+  try{ if(typeof migrateLoc==='function') migrateLoc(); }catch(e){}
   var date=$('ql-date').value||TODAY();
   var cause=$('wk-cause').value;
   var log=[], warn=[];
@@ -3384,7 +3387,7 @@ function prodOpts(){
 }
 function fgtStock(pid, loc){
   return (db.stock.FGT_LOT||[]).filter(function(l){
-    return String(l.productId)===String(pid) && String(l.status||'OK').toUpperCase()!=='FAIL' && N(l.remaining)>0 && (!loc || (l.location||'창고')===loc);
+    return String(l.productId)===String(pid) && String(l.status||'OK').toUpperCase()!=='FAIL' && N(l.remaining)>0 && (!loc || (l.location||'공장')===loc);
   });
 }
 
@@ -3392,6 +3395,7 @@ function renderQl(){
   var b=$('ql-body'), d=$('ql-desc'); if(!b) return;
   var opts = prodOpts();
   if(qlMode==='week'){
+    try{ if(typeof migrateLoc==='function') migrateLoc(); }catch(e){}
     d.textContent='금요일 정산 — 세고, 넣고, 한 번에 반영합니다.';
     b.innerHTML = renderWeek();
     renderQlHistory();
@@ -3746,7 +3750,7 @@ function sortedLotManager(){
     return head + lots.map(function(l){
       var st=String(l.status||'OK').toUpperCase();
       var stC=st==='OK'?'#059669':st==='FAIL'?'#dc2626':'#d97706';
-      var extra=key==='FGT_LOT'?(l.location||'창고'):(l.expDate||l.matureUntil||'-');
+      var extra=key==='FGT_LOT'?(l.location||'공장'):(l.expDate||l.matureUntil||'-');
       return '<tr><td class="pl-3 mono text-xs">'+E(l.lotNo)+'</td><td class="text-xs" style="color:#94a3b8">'+E(l.dateIn||l.mfgDate||'')+'</td>'+
         '<td class="text-right text-xs font-bold">'+F(l.remaining)+'</td>'+
         '<td class="text-xs" style="color:'+stC+';font-weight:800">'+E(st)+'</td>'+
@@ -3868,7 +3872,7 @@ window.mpOpen=function(t,id,mode){
         (mode==='in'
           ? '<div><label style="font-size:10px;font-weight:800;color:#64748b">단가 ('+(t==='RAW'?'원/g':'원/EA')+')</label><input id="mp-cost" type="number" step="0.01" class="input-field text-right" placeholder="0"></div>'
           : '<div><label style="font-size:10px;font-weight:800;color:#64748b">조정 사유</label><select id="mp-reason" class="input-field"><option>실사 차이</option><option>파손·불량</option><option>사용(미기록)</option><option>기타</option></select></div>')+
-        (c.loc?'<div><label style="font-size:10px;font-weight:800;color:#64748b">위치</label><select id="mp-loc" class="input-field"><option>창고</option><option>인사동</option></select></div>':'')+
+        (c.loc?'<div><label style="font-size:10px;font-weight:800;color:#64748b">위치</label><select id="mp-loc" class="input-field">'+['공장','물류센터','매장'].map(function(x){return '<option>'+x+'</option>';}).join('')+'</select></div>':'')+
         '<div><label style="font-size:10px;font-weight:800;color:#64748b">'+(mode==='in'?'입고일':'기준일')+'</label><input id="mp-date" type="date" class="input-field" value="'+TODAY()+'"></div>'+
         (mode==='in'?'<div style="grid-column:1/3"><label style="font-size:10px;font-weight:800;color:#64748b">LOT 번호 (비우면 자동)</label><input id="mp-lot" class="input-field" placeholder="자동 생성"></div>':'')+
       '</div>'+
@@ -3885,7 +3889,7 @@ window.mpSave=function(t,id,mode){
   var c=CFG[t];
   var qty=N(($('mp-qty')||{}).value);
   var date=($('mp-date')||{}).value||TODAY();
-  var loc=c.loc?(($('mp-loc')||{}).value||'창고'):null;
+  var loc=c.loc?(($('mp-loc')||{}).value||'공장'):null;
   var itemId=isNaN(Number(id))?id:Number(id);
   if(mode==='in'){
     if(qty<=0){ if(typeof toast==='function') toast('수량을 입력하세요','error'); return; }
@@ -3898,7 +3902,7 @@ window.mpSave=function(t,id,mode){
     if(typeof toast==='function') toast('입고 완료: '+qty+' '+c.unit,'success');
   } else {
     var lots=(db.stock[c.key]||[]).filter(function(l){
-      return String(l[c.idk])===String(itemId) && String(l.status||'OK').toUpperCase()!=='FAIL' && (!c.loc || (l.location||'창고')===loc);
+      return String(l[c.idk])===String(itemId) && String(l.status||'OK').toUpperCase()!=='FAIL' && (!c.loc || (l.location||'공장')===loc);
     });
     var book=lots.reduce(function(s,l){ return s+N(l.remaining); },0);
     var diff=book-qty;
