@@ -1,13 +1,12 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v5.1 — 노즈 (2026-07-21)
-   v5.1(fix): 공장 실물 입력이 반영되지 않던 문제 해결
-     · 간편기록·마스터패널·LOT목록의 위치 기본값이 옛 값(창고)로 남아
-       위치가 비어 있는 LOT을 찾지 못하던 버그 수정 (→ 공장)
-     · LOT 수정·마스터 입고 모달의 위치 선택을 3거점으로 교체
-     · 위치 미지정 LOT을 공장으로 자동 명시(이관 시), 주간정산 진입·
-       실행 시점에도 이관 재확인
-   v5.0: 3거점 재고 체계 (공장·물류센터·매장)
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.1 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v5.2 — 노즈 (2026-07-21)
+   v5.2: 주간정산 진단 강화
+     · 정산 결과에 위치별 "장부 → 실물" 변화를 그대로 표시
+       (예: 시크릿가든 · 공장 70→55 (조정 15))
+     · 변동이 없을 때 원인 안내 (값 미입력 / 장부와 동일)
+     · 간편기록 화면에 모듈 버전 배지 표시 (캐시 확인용)
+   v5.1: 공장 실물 반영 버그 수정 / v5.0: 3거점 체계
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.2 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -3147,7 +3146,7 @@ function injectUI(){
   var sec = document.createElement('section');
   sec.id='page-quick-log'; sec.className='page-section space-y-4';
   sec.innerHTML =
-    '<h2 class="text-lg font-black text-slate-800">⚡ 간편 기록 (주간 정리)</h2>'+
+    '<h2 class="text-lg font-black text-slate-800">⚡ 간편 기록 (주간 정리) <span style="font-size:10px;font-weight:700;color:#0f766e;background:#e7efed;border-radius:6px;padding:2px 7px;vertical-align:middle">모듈 v5.2</span></h2>'+
     '<div style="font-size:10.5px;color:#64748b;font-weight:600">평일엔 안 적어도 됩니다. 주말에 여기서 한 번에 정리하면 뒤에서 LOT·원가·수불부·제조기록이 자동으로 채워집니다.</div>'+
     '<div class="card p-4 space-y-2">'+
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
@@ -3294,11 +3293,11 @@ function wkReconcile(p, loc, actual, price, cause, date, log, warn){
       }
     });
     var kind=((loc==='물류센터'||loc==='매장')&&cause==='판매')?'판매':'조정';
-    log.push(p.name+' '+loc+' '+kind+' '+diff+(kind==='판매'&&price?' ₩'+F(diff*price):''));
+    log.push(p.name+' · '+loc+' '+F(book)+'→'+F(actual)+' ('+kind+' '+diff+(kind==='판매'&&price?' ₩'+F(diff*price):'')+')');
     if(kind==='판매' && !price) warn.push(p.name+': 판매단가 미입력 (매출 0원 기록)');
   } else {
     db.stock.FGT_LOT.push({id:genId('FGT'),lotNo:'ADJ-'+String(date).replace(/-/g,'').slice(2),productId:p.pid,qty:-diff,remaining:-diff,unitCost:0,status:'OK',location:loc,dateIn:date,note:'주간정산 실사 증가'});
-    log.push(p.name+' '+loc+' 실사 +'+(-diff));
+    log.push(p.name+' · '+loc+' '+F(book)+'→'+F(actual)+' (실사 증가 +'+(-diff)+')');
   }
 }
 window.commitWeek=function(){
@@ -3371,9 +3370,17 @@ window.commitWeek=function(){
     }
   });
 
+  if(!log.length){
+    var anyInput=false;
+    wkP.forEach(function(p,i){ ['wk-prod-','wk-mvl-','wk-mvs-','wk-cf-','wk-cl-','wk-cs-'].forEach(function(k){ var e=$(k+i); if(e&&e.value!=='') anyInput=true; }); });
+    warn.push(anyInput ? '입력값과 장부가 모두 같아 변동이 없습니다 (장부 배지 숫자와 비교해 보세요)' : '입력된 값이 없습니다 — 숫자를 넣고 다시 실행하세요');
+  }
   db.txn.T_QUICK.push({id:genId('QL'),date:date,mode:'week',summary:log.join(' / '),warn:warn.join(' / '),worker:($('wk-worker')||{}).value||''});
   if(typeof logEvent==='function') logEvent('주간정산: '+log.length+'건 반영');
-  var summaryHtml = log.length?('✅ '+log.map(E).join('<br>✅ ')+(warn.length?'<br>⚠️ '+warn.map(E).join('<br>⚠️ '):'')):'변동 사항이 없습니다.';
+  var summaryHtml = (log.length?('✅ '+log.map(E).join('<br>✅ ')):'')
+    + (log.length&&warn.length?'<br>':'')
+    + (warn.length?('⚠️ '+warn.map(E).join('<br>⚠️ ')):'')
+    || '변동 사항이 없습니다.';
   if(typeof toast==='function') toast('주간 정산 완료 — '+log.length+'건 반영'+(warn.length?' (확인 '+warn.length+')':''),'success');
   saveDB();
   var b=$('ql-body'); if(b) b.innerHTML=renderWeek();
