@@ -1,14 +1,11 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v5.5 — 노즈 (2026-07-21)
-   v5.5: 🛒 판매 수량 직접 입력 (엑셀 왕복 포함)
-     · 주간정산 표·엑셀에 [📮 택배 판매] [🛒 매장 판매] 열 추가
-     · 판매 수량을 적으면 그만큼 해당 위치에서 차감 + 매출 계상
-       (LOT별 FIFO, 판매기록에 택배/매장 출처 표기)
-     · 판매를 적은 위치는 실물과의 나머지 차이를 손실·오차로 조정
-       → 판매와 파손·분실이 분리되어 매출이 정확해집니다
-     · 판매를 비워두면 기존처럼 감소분 전체를 판매로 추정
-   v5.4: 엑셀 왕복 / v5.3: 엑셀 다운로드 / v5.0: 3거점
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.5 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v5.6 — 노즈 (2026-07-21)
+   v5.6: 💵 판매단가 일괄 설정 (데이터 점검)
+     제품명 기준 자동 적용 — 30ml 58,000 / 50ml 90,000 /
+     디스커버리 세트 37,000. 미리보기 후 적용, 이미 맞는 건 건너뜀.
+     단가가 있어야 주간정산·구글시트 매출이 계산됩니다.
+   v5.5: 판매 수량 직접 입력 / v5.4: 엑셀 왕복 / v5.0: 3거점
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.6 으로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4252,6 +4249,52 @@ window.runDataCheck=function(){
     '<div style="font-size:10.5px;color:#94a3b8;margin-top:4px">치명 항목부터 처리하세요. 수정 후 다시 점검하면 목록이 줄어듭니다.</div>';
 };
 
+/* ── 판매단가 일괄 설정 (용량 기준) ── */
+function pricePlan(){
+  var rules=[
+    {re:/디스커버리|discovery/i, price:37000, label:'디스커버리 세트'},
+    {re:/(^|[^0-9])30\s*ml/i,    price:58000, label:'30ml'},
+    {re:/(^|[^0-9])50\s*ml/i,    price:90000, label:'50ml'}
+  ];
+  return (db.master.M_PRODUCT||[]).map(function(p){
+    var hit=null;
+    rules.some(function(r){ if(r.re.test(String(p.name||''))){ hit=r; return true; } return false; });
+    if(!hit) return null;
+    return { pid:p.productId, name:p.name, cur:N(p.price), next:hit.price, kind:hit.label,
+             same:N(p.price)===hit.price };
+  }).filter(Boolean);
+}
+window.previewPriceFix=function(){
+  var plan=pricePlan(), box=$('dq-pricefix'); if(!box) return;
+  var todo=plan.filter(function(x){ return !x.same; });
+  if(!plan.length){ box.innerHTML='<div style="font-size:12px;color:#c2410c;font-weight:800;padding:6px 0">제품명에 30ml·50ml·디스커버리 표기가 없어 대상을 찾지 못했습니다.</div>'; return; }
+  box.innerHTML=
+    '<div style="max-height:220px;overflow-y:auto;margin-top:6px"><table style="width:100%;font-size:12px">'+
+    '<tr><th style="text-align:left">제품</th><th style="width:16%">구분</th><th style="width:32%">판매단가</th></tr>'+
+    plan.map(function(x){
+      return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(x.name)+'</td><td style="text-align:center">'+E(x.kind)+'</td>'+
+        '<td style="text-align:right">'+(x.same
+          ? '<span style="color:#94a3b8">'+F(x.next)+'원 (동일)</span>'
+          : (x.cur?F(x.cur)+'원 → ':'')+'<b style="color:#0f766e">'+F(x.next)+'원</b>')+'</td></tr>';
+    }).join('')+'</table></div>'+
+    (todo.length
+      ? '<button class="btn btn-primary w-full" style="margin-top:6px" onclick="applyPriceFix()">'+todo.length+'개 제품 판매단가 적용</button>'
+      : '<div style="font-size:12px;color:#059669;font-weight:800;padding:6px 0">✅ 모든 제품의 단가가 이미 설정돼 있습니다.</div>');
+};
+window.applyPriceFix=function(){
+  var todo=pricePlan().filter(function(x){ return !x.same; });
+  if(!todo.length) return;
+  if(!window.confirm(todo.length+'개 제품의 판매단가를 설정합니다.\n30ml 58,000 · 50ml 90,000 · 디스커버리 37,000\n계속할까요?')) return;
+  todo.forEach(function(x){
+    var p=(db.master.M_PRODUCT||[]).find(function(y){ return String(y.productId)===String(x.pid); });
+    if(p) p.price=x.next;
+  });
+  if(typeof logEvent==='function') logEvent('판매단가 일괄 설정 '+todo.length+'건');
+  if(typeof toast==='function') toast(todo.length+'개 제품 단가 설정 완료','success');
+  saveDB();
+  try{ runDataCheck(); previewPriceFix(); }catch(e){}
+};
+
 /* ── 원료 단위 g 통일 (kg → g, 표준단가 ÷1000) ── */
 function unitPlan(){
   return (db.master.M_RAW||[]).filter(function(r){
@@ -4346,6 +4389,12 @@ function injectUI(){
     '<h2 class="text-lg font-black text-slate-800">🩺 데이터 점검</h2>'+
     '<div style="font-size:11.5px;color:#64748b;font-weight:600">마스터·재고·BOM·규제 데이터의 빈 곳을 한 번에 찾습니다. 원가·서류가 조용히 어긋나는 것을 막습니다.</div>'+
     '<button class="btn btn-primary w-full" onclick="runDataCheck()" style="font-size:14px;padding:12px">🔍 데이터 점검 실행</button>'+
+    '<div class="card p-4 space-y-2" style="border:1.5px solid #99f6e4;background:#f0fdfa">'+
+      '<h3 class="font-bold text-slate-700 text-sm">💵 판매단가 일괄 설정</h3>'+
+      '<div style="font-size:11.5px;color:#64748b">제품명 기준으로 단가를 채웁니다 — <b>30ml 58,000원 · 50ml 90,000원 · 디스커버리 세트 37,000원</b>. 단가가 있어야 주간정산·구글시트에서 매출이 계산됩니다.</div>'+
+      '<button class="btn btn-secondary w-full" onclick="previewPriceFix()">대상 확인 (미리보기)</button>'+
+      '<div id="dq-pricefix"></div>'+
+    '</div>'+
     '<div class="card p-4 space-y-2" style="border:1.5px solid #fdba74;background:#fffaf5">'+
       '<h3 class="font-bold text-slate-700 text-sm">⚖️ 원료 단위 g 통일 (kg 혼용 제거)</h3>'+
       '<div style="font-size:11.5px;color:#64748b">재고·BOM·MRP는 모두 <b>g 기준</b>으로 계산됩니다. 마스터 단위가 kg이면 표시와 단가가 1,000배 어긋납니다. (예: 30ml 향수에 24kg 표시)</div>'+
