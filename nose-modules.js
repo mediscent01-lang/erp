@@ -1,12 +1,14 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v5.2 — 노즈 (2026-07-21)
-   v5.2: 주간정산 진단 강화
-     · 정산 결과에 위치별 "장부 → 실물" 변화를 그대로 표시
-       (예: 시크릿가든 · 공장 70→55 (조정 15))
-     · 변동이 없을 때 원인 안내 (값 미입력 / 장부와 동일)
-     · 간편기록 화면에 모듈 버전 배지 표시 (캐시 확인용)
-   v5.1: 공장 실물 반영 버그 수정 / v5.0: 3거점 체계
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.2 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v5.4 — 노즈 (2026-07-21)
+   v5.4: 📤 실사양식 엑셀 왕복 (받기 → 채우기 → 올리기)
+     · [실사양식 받기]로 내려받아 폰·노트북에서 숫자만 채운 뒤
+       [작성본 올리기]로 업로드하면 표에 자동으로 채워집니다.
+     · 헤더 이름으로 열을 찾아 매핑 → 열 순서가 바뀌어도 동작
+     · 제품명 매칭(공백·기호 무시), 미매칭 항목은 목록으로 안내
+     · 완제품(생산·이관·3거점 실물·단가) + 원료(실물) 시트 지원
+     · 업로드는 표를 채우기만 하며, 반영은 [주간 정산 실행]에서
+   v5.3: 엑셀 다운로드 / v5.2: 정산 진단 / v5.0: 3거점
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.4 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -3218,7 +3220,11 @@ function renderWeek(){
   var h =
   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">'+
     '<span style="font-size:12px;color:#0f766e;font-weight:800;flex:1">① 이번 주 <b>생산(공장)</b>과 <b>보낸 수량</b>을 적고 ② 지금 <b>세 곳의 실물</b>을 세어 적으세요. 빈칸은 "변동 없음"입니다.</span>'+
-    '<button class="btn btn-secondary btn-sm" onclick="refreshWeek()">🔄 제품목록 새로고침</button>'+
+    '<button class="btn btn-secondary btn-sm" onclick="exportWeekXlsx(\'blank\')">📥 실사양식 받기</button>'+
+    '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'wk-file\').click()">📤 작성본 올리기</button>'+
+    '<input type="file" id="wk-file" accept=".xlsx,.xls" style="display:none" onchange="importWeekXlsx(this.files&&this.files[0]);this.value=\'\';">'+
+    '<button class="btn btn-secondary btn-sm" onclick="exportWeekXlsx(\'full\')">📊 현재값 엑셀</button>'+
+    '<button class="btn btn-secondary btn-sm" onclick="refreshWeek()">🔄 새로고침</button>'+
   '</div>'+
   '<div style="overflow-x:auto"><table style="width:100%;min-width:860px">'+
   '<tr><th style="text-align:left">제품</th>'+
@@ -3300,6 +3306,139 @@ function wkReconcile(p, loc, actual, price, cause, date, log, warn){
     log.push(p.name+' · '+loc+' '+F(book)+'→'+F(actual)+' (실사 증가 +'+(-diff)+')');
   }
 }
+/* ── 실사양식 엑셀 업로드 → 표에 자동 채움 ── */
+function normName(x){ return String(x||'').trim().toLowerCase().replace(/[\s_\-·.]/g,''); }
+window.importWeekXlsx=function(file){
+  if(!file) return;
+  if(!window.XLSX){ if(typeof toast==='function') toast('엑셀 모듈 로드 실패 — 새로고침 후 다시 시도하세요','error'); return; }
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      if(!wkP.length){ wkP=weekProducts(); wkR=weekRaws(); }
+      var filled=0, unknown=[], sheetP=null, sheetR=null;
+      wb.SheetNames.forEach(function(n){
+        if(/완제품|product/i.test(n)) sheetP=wb.Sheets[n];
+        else if(/원료|raw/i.test(n)) sheetR=wb.Sheets[n];
+      });
+      if(!sheetP) sheetP=wb.Sheets[wb.SheetNames[0]];
+
+      /* 완제품 시트: 헤더에서 열 위치를 찾아 매핑 (열 순서가 바뀌어도 동작) */
+      var rows=XLSX.utils.sheet_to_json(sheetP,{header:1,defval:''});
+      var hdrIdx=-1, col={};
+      for(var i=0;i<Math.min(rows.length,10);i++){
+        var r=rows[i].map(function(c){ return String(c||'').trim(); });
+        if(r.some(function(c){ return /제품/.test(c); }) && r.some(function(c){ return /실물|생산/.test(c); })){
+          hdrIdx=i;
+          r.forEach(function(c,j){
+            if(/^제품/.test(c)) col.name=j;
+            else if(/생산/.test(c)) col.prod=j;
+            else if(/물류센터$|→\s*물류/.test(c)) col.mvl=j;
+            else if(/매장$|→\s*매장/.test(c)) col.mvs=j;
+            else if(/공장.*실물/.test(c)) col.cf=j;
+            else if(/물류.*실물/.test(c)) col.cl=j;
+            else if(/매장.*실물/.test(c)) col.cs=j;
+            else if(/단가/.test(c)) col.price=j;
+          });
+          break;
+        }
+      }
+      if(hdrIdx<0 || col.name==null){ if(typeof toast==='function') toast('양식을 인식하지 못했습니다. [실사양식 받기]로 받은 파일을 사용하세요','error'); return; }
+
+      var map={};
+      wkP.forEach(function(p,i){ map[normName(p.name)]=i; });
+      for(var k=hdrIdx+1;k<rows.length;k++){
+        var row=rows[k]; if(!row||!row.length) continue;
+        var nm=String(row[col.name]||'').trim();
+        if(!nm || /^합계$/.test(nm)) continue;
+        var idx=map[normName(nm)];
+        if(idx==null){ unknown.push(nm); continue; }
+        [['prod','wk-prod-'],['mvl','wk-mvl-'],['mvs','wk-mvs-'],['cf','wk-cf-'],['cl','wk-cl-'],['cs','wk-cs-'],['price','wk-pr-']].forEach(function(pair){
+          var c=col[pair[0]]; if(c==null) return;
+          var v=row[c];
+          if(v===''||v==null) return;
+          var num=N(String(v).replace(/,/g,''));
+          if(!isFinite(num)) return;
+          var el=$(pair[1]+idx); if(!el) return;
+          el.value=num; filled++;
+        });
+      }
+      /* 원료 시트 */
+      if(sheetR && wkR.length){
+        var rr=XLSX.utils.sheet_to_json(sheetR,{header:1,defval:''});
+        var rmap={}; wkR.forEach(function(r,i){ rmap[normName(r.name)]=i; });
+        rr.forEach(function(row){
+          var nm=String(row[0]||'').trim();
+          if(!nm||/^(원료|합계)$/.test(nm)) return;
+          var idx=rmap[normName(nm)]; if(idx==null) return;
+          var v=row[2];
+          if(v===''||v==null) return;
+          var num=N(String(v).replace(/,/g,''));
+          var el=$('wk-raw-'+idx); if(el&&isFinite(num)){ el.value=num; filled++; }
+        });
+      }
+      var msg=$('ql-msg');
+      if(msg){
+        msg.style.color=unknown.length?'#c2410c':'#0f766e';
+        msg.innerHTML='📤 엑셀에서 '+filled+'개 값을 표에 채웠습니다. 확인 후 <b>[주간 정산 실행]</b>을 누르세요.'+
+          (unknown.length?'<br>⚠️ 매칭되지 않은 항목: '+unknown.slice(0,8).map(E).join(', ')+(unknown.length>8?' 외 '+(unknown.length-8)+'건':''):'');
+      }
+      if(typeof toast==='function') toast(filled+'개 값 불러오기 완료'+(unknown.length?' (미매칭 '+unknown.length+')':''),'success');
+    }catch(err){
+      if(typeof toast==='function') toast('파일 해석 실패: '+err,'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+};
+
+/* ── 주간정산 표 엑셀 다운로드 ── */
+window.exportWeekXlsx=function(mode){
+  if(!window.XLSX){ if(typeof toast==='function') toast('엑셀 모듈 로드 실패 — 새로고침 후 다시 시도하세요','error'); return; }
+  if(!wkP.length) wkP=weekProducts(), wkR=weekRaws();
+  var date=($('ql-date')&&$('ql-date').value)||TODAY();
+  var withInput = mode!=='blank';
+  var head=['제품','판매단가','이번주 생산','→물류센터','→매장','공장 장부','공장 실물','물류 장부','물류 실물','매장 장부','매장 실물','합계 장부'];
+  var rows=[head];
+  wkP.forEach(function(p,i){
+    function v(id){ var e=$(id); return (withInput&&e&&e.value!=='')?N(e.value):''; }
+    rows.push([p.name, p.price||'', v('wk-prod-'+i), v('wk-mvl-'+i), v('wk-mvs-'+i),
+      p.f, v('wk-cf-'+i), p.l, v('wk-cl-'+i), p.s, v('wk-cs-'+i), p.f+p.l+p.s]);
+  });
+  rows.push([]);
+  rows.push(['합계','','','','',
+    wkP.reduce(function(a,x){return a+x.f;},0),'',
+    wkP.reduce(function(a,x){return a+x.l;},0),'',
+    wkP.reduce(function(a,x){return a+x.s;},0),'',
+    wkP.reduce(function(a,x){return a+x.f+x.l+x.s;},0)]);
+  var wb=XLSX.utils.book_new();
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:26},{wch:10},{wch:10},{wch:11},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:11}];
+  XLSX.utils.book_append_sheet(wb, ws, '완제품');
+  if(wkR.length){
+    var r2=[['원료','장부(g)','실물(g)']];
+    wkR.forEach(function(r,i){
+      var e=$('wk-raw-'+i);
+      r2.push([r.name, r.book, (withInput&&e&&e.value!=='')?N(e.value):'']);
+    });
+    r2.push([]); r2.push(['합계', wkR.reduce(function(a,x){return a+x.book;},0), '']);
+    var ws2=XLSX.utils.aoa_to_sheet(r2);
+    ws2['!cols']=[{wch:28},{wch:14},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws2, '원료');
+  }
+  var hist=((db.txn&&db.txn.T_QUICK)||[]).slice(-30).reverse();
+  if(hist.length){
+    var r3=[['일자','구분','내용','확인 필요','작성자']];
+    hist.forEach(function(q){ r3.push([q.date, q.mode==='week'?'주간정산':q.mode, q.summary||'', q.warn||'', q.worker||'']); });
+    var ws3=XLSX.utils.aoa_to_sheet(r3);
+    ws3['!cols']=[{wch:12},{wch:10},{wch:70},{wch:40},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws3, '정산이력');
+  }
+  var fn='주간정산_'+date+(withInput?'':'_실사양식')+'.xlsx';
+  XLSX.writeFile(wb, fn);
+  if(typeof logEvent==='function') logEvent('주간정산 엑셀 다운로드: '+fn);
+  if(typeof toast==='function') toast('엑셀 다운로드: '+fn,'success');
+};
+
 window.commitWeek=function(){
   ensure();
   try{ if(typeof migrateLoc==='function') migrateLoc(); }catch(e){}
