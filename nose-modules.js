@@ -1,14 +1,14 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v5.4 — 노즈 (2026-07-21)
-   v5.4: 📤 실사양식 엑셀 왕복 (받기 → 채우기 → 올리기)
-     · [실사양식 받기]로 내려받아 폰·노트북에서 숫자만 채운 뒤
-       [작성본 올리기]로 업로드하면 표에 자동으로 채워집니다.
-     · 헤더 이름으로 열을 찾아 매핑 → 열 순서가 바뀌어도 동작
-     · 제품명 매칭(공백·기호 무시), 미매칭 항목은 목록으로 안내
-     · 완제품(생산·이관·3거점 실물·단가) + 원료(실물) 시트 지원
-     · 업로드는 표를 채우기만 하며, 반영은 [주간 정산 실행]에서
-   v5.3: 엑셀 다운로드 / v5.2: 정산 진단 / v5.0: 3거점
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.4 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v5.5 — 노즈 (2026-07-21)
+   v5.5: 🛒 판매 수량 직접 입력 (엑셀 왕복 포함)
+     · 주간정산 표·엑셀에 [📮 택배 판매] [🛒 매장 판매] 열 추가
+     · 판매 수량을 적으면 그만큼 해당 위치에서 차감 + 매출 계상
+       (LOT별 FIFO, 판매기록에 택배/매장 출처 표기)
+     · 판매를 적은 위치는 실물과의 나머지 차이를 손실·오차로 조정
+       → 판매와 파손·분실이 분리되어 매출이 정확해집니다
+     · 판매를 비워두면 기존처럼 감소분 전체를 판매로 추정
+   v5.4: 엑셀 왕복 / v5.3: 엑셀 다운로드 / v5.0: 3거점
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.5 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -3219,22 +3219,24 @@ function renderWeek(){
   wkP=weekProducts(); wkR=weekRaws();
   var h =
   '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">'+
-    '<span style="font-size:12px;color:#0f766e;font-weight:800;flex:1">① 이번 주 <b>생산(공장)</b>과 <b>보낸 수량</b>을 적고 ② 지금 <b>세 곳의 실물</b>을 세어 적으세요. 빈칸은 "변동 없음"입니다.</span>'+
+    '<span style="font-size:12px;color:#0f766e;font-weight:800;flex:1">① <b>생산·보낸 수량</b> ② <b>판매 수량</b>(택배·매장, 알면 입력) ③ <b>실물 수량</b>. 빈칸은 "변동 없음"이며, 판매를 적으면 그만큼 매출로 잡고 나머지 차이는 손실·오차로 조정합니다.</span>'+
     '<button class="btn btn-secondary btn-sm" onclick="exportWeekXlsx(\'blank\')">📥 실사양식 받기</button>'+
     '<button class="btn btn-primary btn-sm" onclick="document.getElementById(\'wk-file\').click()">📤 작성본 올리기</button>'+
     '<input type="file" id="wk-file" accept=".xlsx,.xls" style="display:none" onchange="importWeekXlsx(this.files&&this.files[0]);this.value=\'\';">'+
     '<button class="btn btn-secondary btn-sm" onclick="exportWeekXlsx(\'full\')">📊 현재값 엑셀</button>'+
     '<button class="btn btn-secondary btn-sm" onclick="refreshWeek()">🔄 새로고침</button>'+
   '</div>'+
-  '<div style="overflow-x:auto"><table style="width:100%;min-width:860px">'+
+  '<div style="overflow-x:auto"><table style="width:100%;min-width:1020px">'+
   '<tr><th style="text-align:left">제품</th>'+
-    '<th style="width:10%">🏭 생산</th>'+
+    '<th style="width:9%">🏭 생산</th>'+
     '<th style="width:11%">→ 물류센터</th>'+
     '<th style="width:11%">→ 매장</th>'+
     '<th style="width:13%">🏭 공장 실물</th>'+
     '<th style="width:13%">📦 물류 실물</th>'+
     '<th style="width:13%">🏬 매장 실물</th>'+
-    '<th style="width:12%">판매단가</th></tr>'+
+    '<th style="width:11%">📮 택배 판매</th>'+
+    '<th style="width:11%">🛒 매장 판매</th>'+
+    '<th style="width:11%">판매단가</th></tr>'+
   wkP.map(function(p,i){
     return '<tr style="border-top:1px solid #e2e8f0"><td><span class="ql-name">'+E(p.name)+'</span>'+
       (p.noBom?' <span style="font-size:10px;color:#c2410c;font-weight:900">BOM 없음</span>':'')+'</td>'+
@@ -3244,6 +3246,8 @@ function renderWeek(){
       '<td><input id="wk-cf-'+i+'" type="number" min="0" class="input-field text-right" placeholder="'+p.f+'"><span class="ql-book">장부 '+F(p.f)+'</span></td>'+
       '<td><input id="wk-cl-'+i+'" type="number" min="0" class="input-field text-right" placeholder="'+p.l+'"><span class="ql-book">장부 '+F(p.l)+'</span></td>'+
       '<td><input id="wk-cs-'+i+'" type="number" min="0" class="input-field text-right" placeholder="'+p.s+'"><span class="ql-book">장부 '+F(p.s)+'</span></td>'+
+      '<td><input id="wk-sl-'+i+'" type="number" min="0" class="input-field text-right" placeholder="0"></td>'+
+      '<td><input id="wk-ss-'+i+'" type="number" min="0" class="input-field text-right" placeholder="0"></td>'+
       '<td><input id="wk-pr-'+i+'" type="number" class="input-field text-right" placeholder="'+(p.price||'단가')+'"></td></tr>';
   }).join('')+'</table></div>'+
   (wkR.length?
@@ -3280,6 +3284,22 @@ function wkMove(pid, qty, to, date, log, warn, name){
   if(moved>0) log.push(name+' → '+to+' '+moved);
   if(rest>0) warn.push(name+': 공장 부족 '+rest+' 미이관');
 }
+/* 판매 수량 직접 처리: 해당 위치에서 차감하고 매출 계상 */
+function wkSell(p, loc, qty, price, date, log, warn){
+  if(qty<=0) return;
+  var lots=fgtStock(p.pid,loc).sort(function(a,b){ return String(a.dateIn||'').localeCompare(String(b.dateIn||'')); });
+  var rest=qty, sold=0;
+  lots.forEach(function(src){
+    if(rest<=0) return;
+    var t=Math.min(N(src.remaining),rest); src.remaining=N(src.remaining)-t; rest-=t; sold+=t;
+    db.txn.T_SALE.push({id:genId('SALE'),date:date,customerId:null,productId:p.pid,lotNo:src.lotNo,
+      qty:t,unitPrice:price,amount:t*price,note:'주간정산 판매('+(loc==='물류센터'?'택배':'매장')+')'});
+  });
+  if(sold>0) log.push(p.name+' · '+(loc==='물류센터'?'택배':'매장')+' 판매 '+sold+(price?' ₩'+F(sold*price):''));
+  if(rest>0) warn.push(p.name+': '+loc+' 재고 부족으로 판매 '+rest+'EA 미반영');
+  if(sold>0 && !price) warn.push(p.name+': 판매단가 미입력 (매출 0원 기록)');
+}
+
 /* 실물 대비 차이 반영: 감소분을 판매 또는 조정으로 */
 function wkReconcile(p, loc, actual, price, cause, date, log, warn){
   var book=fgtStock(p.pid,loc).reduce(function(s,l){return s+N(l.remaining);},0);
@@ -3335,6 +3355,8 @@ window.importWeekXlsx=function(file){
             else if(/생산/.test(c)) col.prod=j;
             else if(/물류센터$|→\s*물류/.test(c)) col.mvl=j;
             else if(/매장$|→\s*매장/.test(c)) col.mvs=j;
+            else if(/택배.*판매/.test(c)) col.sl=j;
+            else if(/매장.*판매/.test(c)) col.ss=j;
             else if(/공장.*실물/.test(c)) col.cf=j;
             else if(/물류.*실물/.test(c)) col.cl=j;
             else if(/매장.*실물/.test(c)) col.cs=j;
@@ -3353,7 +3375,7 @@ window.importWeekXlsx=function(file){
         if(!nm || /^합계$/.test(nm)) continue;
         var idx=map[normName(nm)];
         if(idx==null){ unknown.push(nm); continue; }
-        [['prod','wk-prod-'],['mvl','wk-mvl-'],['mvs','wk-mvs-'],['cf','wk-cf-'],['cl','wk-cl-'],['cs','wk-cs-'],['price','wk-pr-']].forEach(function(pair){
+        [['prod','wk-prod-'],['mvl','wk-mvl-'],['mvs','wk-mvs-'],['sl','wk-sl-'],['ss','wk-ss-'],['cf','wk-cf-'],['cl','wk-cl-'],['cs','wk-cs-'],['price','wk-pr-']].forEach(function(pair){
           var c=col[pair[0]]; if(c==null) return;
           var v=row[c];
           if(v===''||v==null) return;
@@ -3397,22 +3419,23 @@ window.exportWeekXlsx=function(mode){
   if(!wkP.length) wkP=weekProducts(), wkR=weekRaws();
   var date=($('ql-date')&&$('ql-date').value)||TODAY();
   var withInput = mode!=='blank';
-  var head=['제품','판매단가','이번주 생산','→물류센터','→매장','공장 장부','공장 실물','물류 장부','물류 실물','매장 장부','매장 실물','합계 장부'];
+  var head=['제품','판매단가','이번주 생산','→물류센터','→매장','택배 판매','매장 판매','공장 장부','공장 실물','물류 장부','물류 실물','매장 장부','매장 실물','합계 장부'];
   var rows=[head];
   wkP.forEach(function(p,i){
     function v(id){ var e=$(id); return (withInput&&e&&e.value!=='')?N(e.value):''; }
     rows.push([p.name, p.price||'', v('wk-prod-'+i), v('wk-mvl-'+i), v('wk-mvs-'+i),
+      v('wk-sl-'+i), v('wk-ss-'+i),
       p.f, v('wk-cf-'+i), p.l, v('wk-cl-'+i), p.s, v('wk-cs-'+i), p.f+p.l+p.s]);
   });
   rows.push([]);
-  rows.push(['합계','','','','',
+  rows.push(['합계','','','','','','',
     wkP.reduce(function(a,x){return a+x.f;},0),'',
     wkP.reduce(function(a,x){return a+x.l;},0),'',
     wkP.reduce(function(a,x){return a+x.s;},0),'',
     wkP.reduce(function(a,x){return a+x.f+x.l+x.s;},0)]);
   var wb=XLSX.utils.book_new();
   var ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:26},{wch:10},{wch:10},{wch:11},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:11}];
+  ws['!cols']=[{wch:26},{wch:10},{wch:10},{wch:11},{wch:10},{wch:11},{wch:11},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:11}];
   XLSX.utils.book_append_sheet(wb, ws, '완제품');
   if(wkR.length){
     var r2=[['원료','장부(g)','실물(g)']];
@@ -3482,10 +3505,15 @@ window.commitWeek=function(){
     wkMove(p.pid, mvL, '물류센터', date, log, warn, p.name);
     wkMove(p.pid, mvS, '매장', date, log, warn, p.name);
 
-    /* 3) 실물 대비 정산 (매장·물류는 판매 계상 가능, 공장은 조정) */
+    /* 3) 판매 수량 직접 입력분 먼저 반영 */
+    var sellL=N(($('wk-sl-'+i)||{}).value), sellS=N(($('wk-ss-'+i)||{}).value);
+    if(sellL>0) wkSell(p,'물류센터',sellL,price,date,log,warn);
+    if(sellS>0) wkSell(p,'매장',sellS,price,date,log,warn);
+
+    /* 4) 실물 대비 정산 — 판매를 직접 적었으면 나머지 차이는 손실·오차로 조정 */
     var cs=$('wk-cs-'+i), cl=$('wk-cl-'+i), cf=$('wk-cf-'+i);
-    if(cs && cs.value!=='') wkReconcile(p,'매장',N(cs.value),price,cause,date,log,warn);
-    if(cl && cl.value!=='') wkReconcile(p,'물류센터',N(cl.value),price,cause,date,log,warn);
+    if(cs && cs.value!=='') wkReconcile(p,'매장',N(cs.value),price,(sellS>0?'조정':cause),date,log,warn);
+    if(cl && cl.value!=='') wkReconcile(p,'물류센터',N(cl.value),price,(sellL>0?'조정':cause),date,log,warn);
     if(cf && cf.value!=='') wkReconcile(p,'공장',N(cf.value),price,'조정',date,log,warn);
   });
 
@@ -3511,7 +3539,7 @@ window.commitWeek=function(){
 
   if(!log.length){
     var anyInput=false;
-    wkP.forEach(function(p,i){ ['wk-prod-','wk-mvl-','wk-mvs-','wk-cf-','wk-cl-','wk-cs-'].forEach(function(k){ var e=$(k+i); if(e&&e.value!=='') anyInput=true; }); });
+    wkP.forEach(function(p,i){ ['wk-prod-','wk-mvl-','wk-mvs-','wk-cf-','wk-cl-','wk-cs-','wk-sl-','wk-ss-'].forEach(function(k){ var e=$(k+i); if(e&&e.value!=='') anyInput=true; }); });
     warn.push(anyInput ? '입력값과 장부가 모두 같아 변동이 없습니다 (장부 배지 숫자와 비교해 보세요)' : '입력된 값이 없습니다 — 숫자를 넣고 다시 실행하세요');
   }
   db.txn.T_QUICK.push({id:genId('QL'),date:date,mode:'week',summary:log.join(' / '),warn:warn.join(' / '),worker:($('wk-worker')||{}).value||''});
