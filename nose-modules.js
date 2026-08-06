@@ -1,11 +1,15 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v5.7 — 노즈 (2026-08-06)
-   v5.7: 🔍 재고 숫자 대사 (데이터 점검)
-     LOT별 재고현황과 간편기록·위치재고의 숫자가 다른 이유를 품목별로
-     규명 — QC 대기(HOLD) / 부적합(FAIL) / 위치 미지정 / 알 수 없는 위치.
-     QC 대기 LOT을 적합(OK)으로 일괄 전환하는 정리 버튼 포함.
-   v5.6: 판매단가 일괄 설정 / v5.5: 판매 수량 직접 입력
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.7 로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v5.8 — 노즈 (2026-08-06)
+   v5.8: 📦 재고 허브 — 재고 화면 통합 (UX 개편)
+     · 흩어져 있던 LOT별 재고현황을 대체하는 단일 화면
+     · 상단 KPI: 총 재고자산 / 완제품(3거점) / 원료 / 부자재 / 주의 품목
+     · 품목 한 줄에 공장·물류·매장·합계·금액·LOT수 표시
+     · 태그로 상태 즉시 인지: QC대기 · 부적합 · 기한임박 · 품절/부족
+     · 필터(전체·완제품·원료·부자재) · 검색 · [주의 항목만] 보기
+     · 행 클릭 시 해당 품목 LOT 상세 펼침 (수정 버튼 포함)
+     · 기존 [재고 현황] 메뉴가 이 화면으로 연결됩니다
+   v5.7: 재고 숫자 대사 / v5.6: 판매단가 일괄 설정
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.8 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4856,4 +4860,239 @@ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded'
 setTimeout(boot,1800);
 var __btKeep=setInterval(injectUI,3000);
 setTimeout(function(){ clearInterval(__btKeep); },90000);
+})();
+
+/* ═══════════ 모듈: 재고 허브 ═══════════ */
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var N=function(v){var x=Number(v);return isFinite(x)?x:0;};
+var E=function(v){return (typeof escH==='function')?escH(v):String(v==null?'':v);};
+var F=function(v){return Math.round(N(v)).toLocaleString();};
+var LOCS=['공장','물류센터','매장'];
+var locOf=function(l){ return l.location || '공장'; };
+var openRow=null, hubFilter='ALL', hubQuery='', hubOnlyIssue=false;
+
+function css(){
+  if($('hub-style')) return;
+  var st=document.createElement('style'); st.id='hub-style';
+  st.textContent=[
+    '#page-inv-hub .hub-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}',
+    '#page-inv-hub .kpi{background:#fff;border:1px solid #dfe6e4;border-radius:13px;padding:13px 15px}',
+    '#page-inv-hub .kpi .v{font-size:21px;font-weight:900;letter-spacing:-.03em;color:#172222}',
+    '#page-inv-hub .kpi .l{font-size:10.5px;font-weight:700;color:#6f7d7b;margin-top:3px}',
+    '#page-inv-hub .kpi.warn{border-color:#fdba74;background:#fffaf5}#page-inv-hub .kpi.warn .v{color:#c2410c}',
+    '#page-inv-hub .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}',
+    '#page-inv-hub .chip{font-size:11.5px;font-weight:800;padding:6px 13px;border-radius:9px;cursor:pointer;background:#f1f5f4;color:#6f7d7b;border:1px solid transparent}',
+    '#page-inv-hub .chip.on{background:#5e7676;color:#fff}',
+    '#page-inv-hub table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #dfe6e4;border-radius:12px;overflow:hidden}',
+    '#page-inv-hub th{background:#e7efed;font-size:11px;font-weight:800;padding:9px 10px;color:#233332;text-align:right}',
+    '#page-inv-hub th:first-child{text-align:left}',
+    '#page-inv-hub td{font-size:12.5px;padding:9px 10px;border-top:1px solid #f1f5f4;text-align:right;color:#172222}',
+    '#page-inv-hub td:first-child{text-align:left;font-weight:700}',
+    '#page-inv-hub tr.item{cursor:pointer}#page-inv-hub tr.item:hover{background:#f7faf9}',
+    '#page-inv-hub .tot{font-weight:900;color:#0f766e}',
+    '#page-inv-hub .zero{color:#c3ccca}',
+    '#page-inv-hub .tag{display:inline-block;font-size:9.5px;font-weight:800;border-radius:6px;padding:2px 6px;margin-left:5px}',
+    '#page-inv-hub .tag.hold{background:#fdf1e3;color:#b7791f}',
+    '#page-inv-hub .tag.fail{background:#fdeaea;color:#c0392b}',
+    '#page-inv-hub .tag.low{background:#fdeaea;color:#c0392b}',
+    '#page-inv-hub .tag.exp{background:#fdf1e3;color:#b7791f}',
+    '#page-inv-hub .lots{background:#f7faf9}',
+    '#page-inv-hub .lots table{border:none;border-radius:0;background:transparent}',
+    '#page-inv-hub .lots th{background:#eef3f1;font-size:10px;padding:6px 9px}',
+    '#page-inv-hub .lots td{font-size:11.5px;padding:6px 9px;border-top:1px solid #e9efed}',
+    '#page-inv-hub .mono{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#6f7d7b}'
+  ].join('\n');
+  document.head.appendChild(st);
+}
+
+/* ── 데이터 집계 ── */
+function items(){
+  var out=[], t=new Date(), soon=new Date(); soon.setDate(soon.getDate()+30);
+  var soonS=soon.toISOString().split('T')[0], today=t.toISOString().split('T')[0];
+  function push(kind, key, idk, master, unit){
+    var agg={};
+    (db.stock[key]||[]).forEach(function(l){
+      var id=l[idk];
+      if(!agg[id]) agg[id]={loc:{'공장':0,'물류센터':0,'매장':0},hold:0,fail:0,val:0,lots:[],exp:''};
+      var st=String(l.status||'OK').toUpperCase(), rem=N(l.remaining);
+      agg[id].lots.push(l);
+      if(rem<=0) return;
+      if(st==='FAIL'){ agg[id].fail+=rem; return; }
+      if(st==='HOLD') agg[id].hold+=rem;
+      var lc=locOf(l); if(agg[id].loc[lc]==null) lc='공장';
+      agg[id].loc[lc]+=rem;
+      agg[id].val+=rem*N(l.unitCost);
+      if(l.expDate && (!agg[id].exp || l.expDate<agg[id].exp)) agg[id].exp=l.expDate;
+    });
+    (db.master[master]||[]).forEach(function(m){
+      var a=agg[m[idk]]||{loc:{'공장':0,'물류센터':0,'매장':0},hold:0,fail:0,val:0,lots:[],exp:''};
+      var tot=a.loc['공장']+a.loc['물류센터']+a.loc['매장'];
+      out.push({ kind:kind, id:m[idk], key:key, name:m.name, unit:unit,
+        f:a.loc['공장'], l:a.loc['물류센터'], s:a.loc['매장'], tot:tot,
+        hold:a.hold, fail:a.fail, val:a.val, lots:a.lots, exp:a.exp,
+        expSoon:(a.exp && a.exp<=soonS && tot>0) });
+      delete agg[m[idk]];
+    });
+    /* 마스터에 없는 재고 */
+    Object.keys(agg).forEach(function(id){
+      var a=agg[id]; var tot=a.loc['공장']+a.loc['물류센터']+a.loc['매장'];
+      if(tot<=0 && !a.fail && !a.lots.length) return;
+      out.push({ kind:kind, id:id, key:key, name:'(마스터 없음) '+id, unit:unit,
+        f:a.loc['공장'], l:a.loc['물류센터'], s:a.loc['매장'], tot:tot,
+        hold:a.hold, fail:a.fail, val:a.val, lots:a.lots, exp:a.exp, expSoon:false, orphan:true });
+    });
+  }
+  push('완제품','FGT_LOT','productId','M_PRODUCT','EA');
+  push('원료','RAW_LOT','rawId','M_RAW','g');
+  push('부자재','PACK_LOT','packId','M_PACK','EA');
+  return out;
+}
+function lowTh(){ return N((db.meta&&db.meta.lowStockTh)!=null?db.meta.lowStockTh:10)||10; }
+function isIssue(x){
+  return x.fail>0 || x.hold>0 || x.expSoon || x.orphan ||
+         (x.kind==='완제품' && x.tot<lowTh()) ||
+         (x.kind!=='완제품' && x.tot<=0);
+}
+
+/* ── 렌더 ── */
+window.renderInvHub=function(){
+  var host=$('inv-hub-body'); if(!host||!window.db) return;
+  var all=items();
+  var fgt=all.filter(function(x){return x.kind==='완제품';});
+  var raw=all.filter(function(x){return x.kind==='원료';});
+  var pack=all.filter(function(x){return x.kind==='부자재';});
+  var sum=function(a,k){ return a.reduce(function(s,x){ return s+N(x[k]); },0); };
+  var asset=sum(all,'val');
+  var issues=all.filter(isIssue).length;
+
+  var kpi=
+    '<div class="hub-kpi">'+
+      '<div class="kpi"><div class="v">₩'+F(asset)+'</div><div class="l">총 재고자산</div></div>'+
+      '<div class="kpi"><div class="v">'+F(sum(fgt,'tot'))+' EA</div><div class="l">완제품 (공장 '+F(sum(fgt,'f'))+' · 물류 '+F(sum(fgt,'l'))+' · 매장 '+F(sum(fgt,'s'))+')</div></div>'+
+      '<div class="kpi"><div class="v">'+F(sum(raw,'tot'))+' g</div><div class="l">원료 '+raw.filter(function(x){return x.tot>0;}).length+'종</div></div>'+
+      '<div class="kpi"><div class="v">'+F(sum(pack,'tot'))+' EA</div><div class="l">부자재 '+pack.filter(function(x){return x.tot>0;}).length+'종</div></div>'+
+      '<div class="kpi'+(issues?' warn':'')+'"><div class="v">'+issues+'</div><div class="l">주의가 필요한 품목</div></div>'+
+    '</div>';
+
+  var rows=all.filter(function(x){
+    if(hubFilter!=='ALL' && x.kind!==hubFilter) return false;
+    if(hubOnlyIssue && !isIssue(x)) return false;
+    if(hubQuery && String(x.name).toLowerCase().indexOf(hubQuery)<0) return false;
+    return true;
+  }).sort(function(a,b){
+    var ka=['완제품','원료','부자재'].indexOf(a.kind), kb=['완제품','원료','부자재'].indexOf(b.kind);
+    if(ka!==kb) return ka-kb;
+    return String(a.name).localeCompare(String(b.name));
+  });
+
+  var body='', lastKind='';
+  rows.forEach(function(x,i){
+    if(x.kind!==lastKind){
+      lastKind=x.kind;
+      body+='<tr><td colspan="7" style="background:#f1f5f4;font-size:10.5px;font-weight:900;color:#475569;padding:6px 10px">'+
+        ({'완제품':'🏭 완제품','원료':'🧪 원료','부자재':'🧰 부자재'}[x.kind])+'</td></tr>';
+    }
+    var tags='';
+    if(x.hold>0) tags+='<span class="tag hold">QC대기 '+F(x.hold)+'</span>';
+    if(x.fail>0) tags+='<span class="tag fail">부적합 '+F(x.fail)+'</span>';
+    if(x.expSoon) tags+='<span class="tag exp">기한임박</span>';
+    if(x.kind==='완제품' && x.tot<lowTh()) tags+='<span class="tag low">'+(x.tot<=0?'품절':'부족')+'</span>';
+    if(x.orphan) tags+='<span class="tag fail">마스터없음</span>';
+    var z=function(v){ return v>0?F(v):'<span class="zero">0</span>'; };
+    var rid='hub-'+x.key+'-'+x.id;
+    body+='<tr class="item" onclick="hubToggle(\''+E(rid)+'\')"><td>'+E(x.name)+tags+'</td>'+
+      (x.kind==='완제품'
+        ? '<td>'+z(x.f)+'</td><td>'+z(x.l)+'</td><td>'+z(x.s)+'</td>'
+        : '<td colspan="3" style="color:#94a3b8;font-size:11px">'+(x.kind==='원료'?'창고 보관':'창고 보관')+'</td>')+
+      '<td class="tot">'+F(x.tot)+' <span style="font-size:10px;color:#94a3b8">'+x.unit+'</span></td>'+
+      '<td>'+(x.val>0?'₩'+F(x.val):'<span class="zero">-</span>')+'</td>'+
+      '<td style="color:#94a3b8">'+x.lots.filter(function(l){return N(l.remaining)>0;}).length+' LOT ▾</td></tr>'+
+      '<tr id="'+E(rid)+'" style="display:none" class="lots"><td colspan="7" style="padding:0">'+lotTable(x)+'</td></tr>';
+  });
+  if(!rows.length) body='<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:24px">해당하는 품목이 없습니다</td></tr>';
+
+  host.innerHTML=kpi+
+    '<div class="bar">'+
+      ['ALL','완제품','원료','부자재'].map(function(k){
+        return '<span class="chip'+(hubFilter===k?' on':'')+'" onclick="hubSetFilter(\''+k+'\')">'+(k==='ALL'?'전체':k)+'</span>';
+      }).join('')+
+      '<span class="chip'+(hubOnlyIssue?' on':'')+'" onclick="hubToggleIssue()">⚠️ 주의 항목만</span>'+
+      '<input id="hub-q" class="input-field" style="max-width:220px;margin-left:auto" placeholder="품목 검색" value="'+E(hubQuery)+'" oninput="hubSearch(this.value)">'+
+    '</div>'+
+    '<table><tr><th>품목</th><th>🏭 공장</th><th>📦 물류</th><th>🏬 매장</th><th>합계</th><th>금액</th><th>LOT</th></tr>'+body+'</table>'+
+    '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px">행을 누르면 LOT 상세가 펼쳐집니다 · 합계는 판매 가능한 재고 기준(부적합 제외)</div>';
+  if(openRow && $(openRow)) $(openRow).style.display='';
+};
+function lotTable(x){
+  var ls=x.lots.filter(function(l){ return N(l.remaining)>0; })
+    .sort(function(a,b){ return String(a.dateIn||a.mfgDate||'').localeCompare(String(b.dateIn||b.mfgDate||'')); });
+  if(!ls.length) return '<div style="padding:10px 14px;font-size:11.5px;color:#94a3b8">잔량이 있는 LOT이 없습니다</div>';
+  return '<table><tr><th style="text-align:left">LOT</th><th>입고/제조</th><th>잔량</th><th>단가</th><th>금액</th><th>상태</th><th>'+
+    (x.kind==='완제품'?'위치':'유통기한')+'</th><th>관리</th></tr>'+
+    ls.map(function(l){
+      var st=String(l.status||'OK').toUpperCase();
+      var c=st==='OK'?'#2f7b61':st==='FAIL'?'#c0392b':'#b7791f';
+      return '<tr><td class="mono" style="text-align:left">'+E(l.lotNo)+'</td>'+
+        '<td>'+E(l.dateIn||l.mfgDate||'-')+'</td>'+
+        '<td style="font-weight:800">'+F(l.remaining)+'</td>'+
+        '<td>'+(N(l.unitCost)?F(l.unitCost):'-')+'</td>'+
+        '<td>'+(N(l.unitCost)?F(N(l.remaining)*N(l.unitCost)):'-')+'</td>'+
+        '<td style="color:'+c+';font-weight:800">'+E(st)+'</td>'+
+        '<td>'+E(x.kind==='완제품'?(l.location||'공장'):(l.expDate||'-'))+'</td>'+
+        '<td><button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openLotEdit(\''+E(x.key)+'\',\''+E(l.id)+'\')">수정</button></td></tr>';
+    }).join('')+'</table>';
+}
+window.hubToggle=function(rid){
+  var el=$(rid); if(!el) return;
+  var show=el.style.display==='none';
+  if(openRow && $(openRow)) $(openRow).style.display='none';
+  el.style.display=show?'':'none';
+  openRow=show?rid:null;
+};
+window.hubSetFilter=function(k){ hubFilter=k; renderInvHub(); };
+window.hubToggleIssue=function(){ hubOnlyIssue=!hubOnlyIssue; renderInvHub(); };
+window.hubSearch=function(v){
+  hubQuery=String(v||'').toLowerCase();
+  clearTimeout(window.__hubT);
+  window.__hubT=setTimeout(function(){ renderInvHub(); setTimeout(function(){ var q=$('hub-q'); if(q){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); } },0); },250);
+};
+
+/* ── 페이지 주입 + 기존 LOT 화면 대체 ── */
+function injectUI(){
+  css();
+  if(!$('page-inv-hub')){
+    var anchor=$('page-stock')||document.querySelector('.page-section');
+    if(!anchor||!anchor.parentNode) return;
+    var sec=document.createElement('section');
+    sec.id='page-inv-hub'; sec.className='page-section space-y-4';
+    sec.innerHTML=
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+        '<h2 class="text-lg font-black text-slate-800" style="margin:0">📦 재고 현황</h2>'+
+        '<span style="font-size:10.5px;color:#94a3b8;font-weight:700">완제품 · 원료 · 부자재를 한 화면에서</span>'+
+        '<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="renderInvHub()">🔄 새로고침</button>'+
+      '</div>'+
+      '<div id="inv-hub-body"></div>';
+    anchor.parentNode.insertBefore(sec, anchor);
+  }
+  /* 기존 [LOT별 재고 현황] 메뉴를 이 화면으로 연결 */
+  var nav=$('nav-stock');
+  if(nav && nav.getAttribute('onclick')!=="goPage('inv-hub')"){
+    nav.setAttribute('onclick',"goPage('inv-hub')");
+    var t=nav.textContent.replace(/재고\s*현황|LOT별\s*재고\s*현황/,'재고 현황');
+    nav.innerHTML=nav.innerHTML.replace(/(LOT별\s*)?재고\s*현황/,'📦 재고 현황');
+  }
+}
+var _init=window.initNewPage;
+window.initNewPage=function(p){
+  try{ if(typeof _init==='function') _init(p); }catch(e){}
+  injectUI();
+  if(p==='inv-hub'){ try{ renderInvHub(); }catch(e){} setTimeout(function(){ try{ renderInvHub(); }catch(e){} },80); }
+};
+function boot(){ injectUI(); try{ if($('page-inv-hub')&&$('page-inv-hub').classList.contains('active')) renderInvHub(); }catch(e){} }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+setTimeout(boot,1800);
+var __hubKeep=setInterval(injectUI,3000);
+setTimeout(function(){ clearInterval(__hubKeep); },90000);
 })();
