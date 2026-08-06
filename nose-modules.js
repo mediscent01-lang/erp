@@ -1,11 +1,11 @@
 /* ╔══════════════════════════════════════════════════════════╗
-   SHIFTI ERP 확장 모듈 nose-modules.js v5.6 — 노즈 (2026-07-21)
-   v5.6: 💵 판매단가 일괄 설정 (데이터 점검)
-     제품명 기준 자동 적용 — 30ml 58,000 / 50ml 90,000 /
-     디스커버리 세트 37,000. 미리보기 후 적용, 이미 맞는 건 건너뜀.
-     단가가 있어야 주간정산·구글시트 매출이 계산됩니다.
-   v5.5: 판매 수량 직접 입력 / v5.4: 엑셀 왕복 / v5.0: 3거점
-   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.6 으로 변경
+   SHIFTI ERP 확장 모듈 nose-modules.js v5.7 — 노즈 (2026-08-06)
+   v5.7: 🔍 재고 숫자 대사 (데이터 점검)
+     LOT별 재고현황과 간편기록·위치재고의 숫자가 다른 이유를 품목별로
+     규명 — QC 대기(HOLD) / 부적합(FAIL) / 위치 미지정 / 알 수 없는 위치.
+     QC 대기 LOT을 적합(OK)으로 일괄 전환하는 정리 버튼 포함.
+   v5.6: 판매단가 일괄 설정 / v5.5: 판매 수량 직접 입력
+   설치: nose-modules.js 교체 + index.html의 src를 ?v=5.7 로 변경
    ╚══════════════════════════════════════════════════════════╝ */
 
 
@@ -4249,6 +4249,81 @@ window.runDataCheck=function(){
     '<div style="font-size:10.5px;color:#94a3b8;margin-top:4px">치명 항목부터 처리하세요. 수정 후 다시 점검하면 목록이 줄어듭니다.</div>';
 };
 
+/* ── 재고 대사: 화면별 숫자 차이 원인 규명 ── */
+function reconRows(){
+  var out=[];
+  var byP={};
+  (db.stock.FGT_LOT||[]).forEach(function(l){
+    var k=l.productId;
+    if(!byP[k]) byP[k]={ok:0,hold:0,fail:0,zero:0,noloc:0,loc:{'공장':0,'물류센터':0,'매장':0,'기타':0},lots:0};
+    var st=String(l.status||'OK').toUpperCase();
+    var rem=N(l.remaining);
+    byP[k].lots++;
+    if(rem<=0){ byP[k].zero++; return; }
+    if(st==='FAIL') byP[k].fail+=rem;
+    else if(st==='HOLD') byP[k].hold+=rem;
+    else byP[k].ok+=rem;
+    var lc=l.location||'';
+    if(!lc){ byP[k].noloc+=rem; lc='공장'; }
+    if(byP[k].loc[lc]==null) lc='기타';
+    if(st!=='FAIL') byP[k].loc[lc]+=rem;
+  });
+  Object.keys(byP).forEach(function(pid){
+    var p=(db.master.M_PRODUCT||[]).find(function(x){ return String(x.productId)===String(pid); });
+    var a=byP[pid];
+    var lotTotal=a.ok+a.hold+a.fail;            /* LOT 화면 합계(잔량>0 전체) */
+    var quickTotal=a.loc['공장']+a.loc['물류센터']+a.loc['매장'];  /* 간편기록 합계 */
+    var diff=lotTotal-quickTotal;
+    out.push({ pid:pid, name:p?p.name:('(마스터 없음) '+pid), lotTotal:lotTotal, quickTotal:quickTotal,
+      diff:diff, ok:a.ok, hold:a.hold, fail:a.fail, noloc:a.noloc, etc:a.loc['기타'], lots:a.lots });
+  });
+  return out.sort(function(x,y){ return Math.abs(y.diff)-Math.abs(x.diff) || String(x.name).localeCompare(String(y.name)); });
+}
+window.runRecon=function(){
+  var box=$('dq-recon'); if(!box) return;
+  var rows=reconRows();
+  var bad=rows.filter(function(r){ return r.diff!==0; });
+  if(!rows.length){ box.innerHTML='<div style="font-size:12px;color:#94a3b8;padding:6px 0">완제품 재고가 없습니다.</div>'; return; }
+  box.innerHTML=
+    '<div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap">'+
+      '<div style="background:'+(bad.length?'#fff7ed':'#f0fdf4')+';border:1.5px solid '+(bad.length?'#fdba74':'#bbf7d0')+';border-radius:10px;padding:8px 14px">'+
+      '<div style="font-size:18px;font-weight:900;color:'+(bad.length?'#c2410c':'#059669')+'">'+bad.length+'</div>'+
+      '<div style="font-size:10px;font-weight:800;color:#64748b">화면 간 차이 품목</div></div>'+
+      '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 14px">'+
+      '<div style="font-size:18px;font-weight:900">'+rows.length+'</div><div style="font-size:10px;font-weight:800;color:#64748b">전체 품목</div></div>'+
+    '</div>'+
+    (bad.length?'':'<div style="font-size:12px;color:#059669;font-weight:800;padding:4px 0">✅ 모든 품목의 숫자가 일치합니다.</div>')+
+    '<div style="max-height:280px;overflow-y:auto"><table style="width:100%;font-size:11.5px">'+
+    '<tr><th style="text-align:left">제품</th><th style="width:13%">LOT화면</th><th style="width:13%">간편기록</th><th style="width:11%">차이</th><th style="text-align:left;width:34%">원인</th></tr>'+
+    rows.map(function(r){
+      var why=[];
+      if(r.hold>0) why.push('QC 대기 '+F(r.hold));
+      if(r.fail>0) why.push('부적합 '+F(r.fail));
+      if(r.etc>0) why.push('알 수 없는 위치 '+F(r.etc));
+      if(r.noloc>0) why.push('위치 미지정 '+F(r.noloc)+'(공장 처리)');
+      var col=r.diff===0?'#94a3b8':'#c2410c';
+      return '<tr style="border-top:1px solid #e2e8f0"><td>'+E(r.name)+'</td>'+
+        '<td style="text-align:right">'+F(r.lotTotal)+'</td>'+
+        '<td style="text-align:right;font-weight:800">'+F(r.quickTotal)+'</td>'+
+        '<td style="text-align:right;font-weight:900;color:'+col+'">'+(r.diff>0?'+':'')+F(r.diff)+'</td>'+
+        '<td style="color:#64748b">'+(why.length?E(why.join(' · ')):'<span style="color:#94a3b8">일치</span>')+'</td></tr>';
+    }).join('')+'</table></div>'+
+    '<div style="font-size:10.5px;color:#64748b;margin-top:6px;line-height:1.7">'+
+    '<b>왜 다른가요?</b> LOT 화면은 <b>모든 LOT</b>을 보여주고, 간편기록·위치재고는 <b>판매 가능한 재고</b>만 셉니다.<br>'+
+    'QC 대기(HOLD)는 검사 통과 전이라, 부적합(FAIL)은 출고 불가라 제외됩니다. 아래 버튼으로 정리할 수 있습니다.</div>'+
+    (bad.length?'<button class="btn btn-secondary w-full" style="margin-top:6px" onclick="fixHoldLots()">QC 대기 LOT을 적합(OK)으로 일괄 전환</button>':'');
+};
+window.fixHoldLots=function(){
+  var holds=(db.stock.FGT_LOT||[]).filter(function(l){ return String(l.status||'').toUpperCase()==='HOLD' && N(l.remaining)>0; });
+  if(!holds.length){ if(typeof toast==='function') toast('QC 대기 LOT이 없습니다','success'); return; }
+  if(!window.confirm('QC 대기(HOLD) 완제품 LOT '+holds.length+'건을 적합(OK)으로 바꿉니다.\n검사가 끝난 재고만 전환하세요.\n계속할까요?')) return;
+  holds.forEach(function(l){ l.status='OK'; });
+  if(typeof logEvent==='function') logEvent('QC 대기 LOT 일괄 적합 전환 '+holds.length+'건');
+  if(typeof toast==='function') toast(holds.length+'건 적합 전환 완료','success');
+  saveDB();
+  try{ runRecon(); runDataCheck(); renderLocPage(); }catch(e){}
+};
+
 /* ── 판매단가 일괄 설정 (용량 기준) ── */
 function pricePlan(){
   var rules=[
@@ -4389,6 +4464,12 @@ function injectUI(){
     '<h2 class="text-lg font-black text-slate-800">🩺 데이터 점검</h2>'+
     '<div style="font-size:11.5px;color:#64748b;font-weight:600">마스터·재고·BOM·규제 데이터의 빈 곳을 한 번에 찾습니다. 원가·서류가 조용히 어긋나는 것을 막습니다.</div>'+
     '<button class="btn btn-primary w-full" onclick="runDataCheck()" style="font-size:14px;padding:12px">🔍 데이터 점검 실행</button>'+
+    '<div class="card p-4 space-y-2" style="border:1.5px solid #c7b9e8;background:#faf9ff">'+
+      '<h3 class="font-bold text-slate-700 text-sm">🔍 재고 숫자 대사 (화면별 차이 원인)</h3>'+
+      '<div style="font-size:11.5px;color:#64748b">LOT별 재고현황과 간편기록·위치재고의 숫자가 다른 이유를 품목별로 찾아냅니다.</div>'+
+      '<button class="btn btn-secondary w-full" onclick="runRecon()">대사 실행</button>'+
+      '<div id="dq-recon"></div>'+
+    '</div>'+
     '<div class="card p-4 space-y-2" style="border:1.5px solid #99f6e4;background:#f0fdfa">'+
       '<h3 class="font-bold text-slate-700 text-sm">💵 판매단가 일괄 설정</h3>'+
       '<div style="font-size:11.5px;color:#64748b">제품명 기준으로 단가를 채웁니다 — <b>30ml 58,000원 · 50ml 90,000원 · 디스커버리 세트 37,000원</b>. 단가가 있어야 주간정산·구글시트에서 매출이 계산됩니다.</div>'+
