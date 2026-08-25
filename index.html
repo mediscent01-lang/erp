@@ -7674,6 +7674,18 @@ function initNewPage(pageId) {
 
 <script src="nose-modules.js?v=5.8"></script>
   <script src="SHIFTI_AI.js"></script>
+  <script>
+window.addEventListener('load', function () {
+  setTimeout(function () {
+    var menu = document.querySelector('[data-shifti-ai-nav="1"]');
+    var nav = document.querySelector('aside nav');
+    if (menu && nav) {
+      menu.style.display = 'flex';
+      nav.insertBefore(menu, nav.firstElementChild);
+    }
+  }, 800);
+});
+</script>
 </body>
  
 </html>
