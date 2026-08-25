@@ -7686,6 +7686,281 @@ window.addEventListener('load', function () {
   }, 800);
 });
 </script>
+  <script>
+(function () {
+  function aiApi(text) {
+    var url = (window.SB_URL || 'https://foctzlqkspneznevbkmp.supabase.co')
+      + '/functions/v1/shifti-ai?action=command';
+
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: window.SB_KEY,
+        Authorization: 'Bearer ' + window.SB_KEY
+      },
+      body: JSON.stringify({ text: text })
+    }).then(function(r){ return r.json(); });
+  }
+
+  function say(msg) {
+    var box = document.getElementById('shifti-command-result');
+    if (box) box.innerHTML =
+      '<div style="padding:12px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;">' +
+      msg + '</div>';
+  }
+
+  function saveERP() {
+    if (typeof saveDB === 'function') saveDB();
+  }
+
+  function executeAction(r) {
+    if (!r.clientAction) return;
+
+    if (r.requiresConfirmation) {
+      if (!confirm(r.message + '\n\n실행할까요?')) return;
+    }
+
+    var a = r.args || {};
+
+    if (r.clientAction === 'navigate') {
+      if (typeof goPage === 'function') goPage(a.pageId);
+      return;
+    }
+
+    if (r.clientAction === 'open_quote') {
+      if (typeof goPage === 'function') goPage('doc-quote');
+      return;
+    }
+
+    if (r.clientAction === 'backup') {
+      if (typeof exportJSON === 'function') exportJSON();
+      return;
+    }
+
+    if (r.clientAction === 'create_production_plan') {
+      db.txn = db.txn || {};
+      db.txn.T_PROD_PLAN = db.txn.T_PROD_PLAN || [];
+
+      db.txn.T_PROD_PLAN.push({
+        id: 'PP-' + Date.now(),
+        no: 'PP-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + (db.txn.T_PROD_PLAN.length + 1),
+        productId: a.productId,
+        qty: Number(a.qty || 0),
+        date: a.date,
+        priority: a.priority || '일반',
+        note: 'SHIFTI AI 음성/자연어 명령',
+        status: '계획'
+      });
+
+      saveERP();
+      say('✅ ' + a.productName + ' ' + a.qty + '개 생산계획을 등록했습니다.');
+      return;
+    }
+
+    if (r.clientAction === 'create_sales_order') {
+      db.txn = db.txn || {};
+      db.txn.T_SO = db.txn.T_SO || [];
+
+      db.txn.T_SO.push({
+        id: 'SO-' + Date.now(),
+        no: 'SO-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + (db.txn.T_SO.length + 1),
+        customerId: a.customerId || '',
+        date: a.date,
+        dueDate: a.date,
+        items: [{
+          productId: a.productId,
+          qty: Number(a.qty || 0),
+          unitPrice: Number(a.unitPrice || 0),
+          amount: Number(a.qty || 0) * Number(a.unitPrice || 0)
+        }],
+        totalAmount: Number(a.qty || 0) * Number(a.unitPrice || 0),
+        status: '접수'
+      });
+
+      saveERP();
+      say('✅ ' + a.productName + ' ' + a.qty + '개 수주를 등록했습니다.');
+      return;
+    }
+
+    if (r.clientAction === 'export_shipping_excel') {
+      if (!window.XLSX) {
+        alert('Excel 기능을 찾을 수 없습니다.');
+        return;
+      }
+
+      var rows = [];
+      ((db.txn || {}).T_SO || []).forEach(function(so) {
+        if (['완료','출고완료','취소'].includes(so.status)) return;
+
+        (so.items || []).forEach(function(it) {
+          var p = ((db.master || {}).M_PRODUCT || [])
+            .find(function(x){ return String(x.productId) === String(it.productId); });
+
+          rows.push({
+            수주번호: so.no || '',
+            거래처: (((db.master || {}).M_CUSTOMER || [])
+              .find(function(x){ return String(x.customerId) === String(so.customerId); }) || {}).name || '',
+            제품: p ? p.name : it.productId,
+            수량: it.qty || 0,
+            출고예정일: so.dueDate || ''
+          });
+        });
+      });
+
+      var ws = XLSX.utils.json_to_sheet(rows);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '택배등록');
+      XLSX.writeFile(wb, 'SHIFTI_택배등록.xlsx');
+      say('✅ 택배등록 Excel을 만들었습니다.');
+      return;
+    }
+
+    if (r.clientAction === 'export_tax_excel') {
+      if (!window.XLSX) return;
+
+      var rows = ((db.txn || {}).T_SALE || []).map(function(s) {
+        var p = ((db.master || {}).M_PRODUCT || [])
+          .find(function(x){ return String(x.productId) === String(s.productId); });
+
+        return {
+          거래일: s.date || '',
+          제품: p ? p.name : s.productId,
+          수량: s.qty || 0,
+          공급가액: s.amount || 0
+        };
+      });
+
+      var ws = XLSX.utils.json_to_sheet(rows);
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '세금계산서자료');
+      XLSX.writeFile(wb, 'SHIFTI_세금계산서자료.xlsx');
+      say('✅ 세금계산서 신고용 Excel을 만들었습니다.');
+    }
+  }
+
+  async function runCommand(text) {
+    if (!text) return;
+
+    say('⏳ "' + text + '" 처리 중...');
+
+    try {
+      var r = await aiApi(text);
+
+      say('🤖 ' + (r.message || '처리했습니다.'));
+
+      if (r.intent === 'daily_production' && r.data) {
+        var rows = r.data.rows || [];
+        var txt = '<b>오늘 생산 권장: ' + r.data.totalRecommendedQty + '개</b><br><br>';
+
+        rows.filter(function(x){ return x.recommendedQty > 0; })
+          .forEach(function(x){
+            txt += '• ' + x.name + ' : <b>' + x.recommendedQty + '개</b><br>';
+          });
+
+        say(txt);
+      }
+
+      if (r.intent === 'shortage_report' && r.data) {
+        var t = '<b>' + r.message + '</b><br><br>';
+        (r.data.rows || []).slice(0,15).forEach(function(x){
+          t += '• ' + x.name + ' 부족 ' + x.shortage + '<br>';
+        });
+        say(t);
+      }
+
+      executeAction(r);
+
+    } catch(e) {
+      say('❌ 명령 처리 중 오류가 발생했습니다.');
+    }
+  }
+
+  function installCommander() {
+    var page = document.getElementById('page-shifti-ai');
+    if (!page || document.getElementById('shifti-command-box')) return;
+
+    var box = document.createElement('div');
+    box.id = 'shifti-command-box';
+    box.className = 'card p-4 mb-4';
+
+    box.innerHTML = `
+      <div style="font-weight:900;font-size:16px;margin-bottom:4px">
+        🎙 SHIFTI AI 업무비서
+      </div>
+
+      <div style="font-size:11px;color:#64748b;margin-bottom:12px">
+        말하거나 자연어로 입력하세요.
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <input id="shifti-command-input"
+          placeholder="예: ARIRANG 30ml 50개 생산계획 잡아줘"
+          style="flex:1;border:1px solid #cbd5e1;border-radius:9px;padding:11px">
+
+        <button id="shifti-mic"
+          style="font-size:20px;padding:8px 13px;border-radius:9px;background:#f1f5f9">
+          🎙
+        </button>
+
+        <button id="shifti-send"
+          style="padding:8px 16px;border-radius:9px;background:#0d9488;color:white;font-weight:800">
+          실행
+        </button>
+      </div>
+
+      <div id="shifti-command-result" style="margin-top:12px"></div>
+
+      <div style="font-size:11px;color:#94a3b8;margin-top:10px">
+        예: 오늘 생산량 알려줘 · Sunlit Window 재고 알려줘 ·
+        이번달 매출 보여줘 · ARIRANG 50개 생산계획 잡아줘 ·
+        수주관리 열어줘 · 택배파일 만들어줘
+      </div>
+    `;
+
+    page.insertBefore(box, page.firstChild);
+
+    var input = document.getElementById('shifti-command-input');
+
+    document.getElementById('shifti-send').onclick = function(){
+      runCommand(input.value.trim());
+    };
+
+    input.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') runCommand(input.value.trim());
+    });
+
+    document.getElementById('shifti-mic').onclick = function(){
+      var SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SpeechRecognition) {
+        alert('이 브라우저에서는 음성인식이 지원되지 않습니다. Chrome을 사용해주세요.');
+        return;
+      }
+
+      var rec = new SpeechRecognition();
+      rec.lang = 'ko-KR';
+      rec.interimResults = false;
+
+      say('🎙 듣고 있습니다...');
+
+      rec.onresult = function(e){
+        var text = e.results[0][0].transcript;
+        input.value = text;
+        runCommand(text);
+      };
+
+      rec.start();
+    };
+  }
+
+  window.addEventListener('load', function(){
+    setTimeout(installCommander, 1200);
+    setTimeout(installCommander, 2500);
+  });
+})();
+</script>
 </body>
  
 </html>
