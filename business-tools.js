@@ -7,7 +7,7 @@
     return;
   }
 
-  const TOOL_VERSION = '4.0-beta.1';
+  const TOOL_VERSION = '4.1-beta.1';
   const SESSION_ID = `S-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const SESSION_START = Date.now();
   const EVENT_KEY = 'mediscent_tool_ab_events_v1';
@@ -17,16 +17,25 @@
 
   const TOOLS = [
     { id: 'biz-dilution', icon: '🧪', name: '향료 배합·희석', group: 'R&D', desc: '배치량·농도·손실률을 반영한 제조량 계산' },
-    { id: 'biz-margin', icon: '₩', name: '원가·마진·공급률', group: '가격', desc: '수수료·부가세·할인을 반영한 공헌이익 계산' },
+    { id: 'biz-margin', icon: '₩', name: '채널별 손익·도매가', group: '가격', desc: '기존 표준원가에 수수료·부가세·할인을 반영한 채널 공헌이익' },
     { id: 'biz-moq', icon: '📦', name: 'MOQ 손익', group: '가격', desc: '발주 수량별 투자금·손익분기·재고개월 비교' },
     { id: 'biz-export-price', icon: '🌍', name: '환율 적용 수출가', group: '수출', desc: '공급률·환율 버퍼·현지 유통마진 시뮬레이션' },
     { id: 'biz-export-doc', icon: '📄', name: '수출 견적·인보이스', group: '수출', desc: '고객·제품 데이터로 영문 문서 발행 및 저장' },
     { id: 'biz-roas', icon: '📈', name: '인플루언서 ROAS', group: '마케팅', desc: '콘텐츠 비용·도달·구매·LTV 손익분기 분석' },
-    { id: 'biz-allergen', icon: '🌿', name: '전성분·알레르겐', group: 'R&D', desc: '원료사 자료 기반 최종제품 알레르겐 함량 계산' },
     { id: 'biz-sku', icon: '▥', name: 'SKU·GTIN', group: '기준정보', desc: '내부 SKU 생성과 정식 GTIN 검증·바코드 출력' },
-    { id: 'biz-lot', icon: '🏭', name: '생산 LOT 관리표', group: '생산', desc: '기존 LOT 통합 조회·신규 코드·엑셀 내보내기' },
     { id: 'biz-product-en', icon: 'EN', name: '영문 제품정보서', group: '문서', desc: '제품·전성분·회사정보 기반 영문 원페이지 생성' }
   ];
+
+  const EU26_INCI_BY_CAS = {
+    '127-51-5':'ALPHA-ISOMETHYL IONONE','122-40-7':'AMYL CINNAMAL','101-85-9':'AMYL CINNAMYL ALCOHOL',
+    '105-13-5':'ANISYL ALCOHOL','100-51-6':'BENZYL ALCOHOL','120-51-4':'BENZYL BENZOATE',
+    '103-41-3':'BENZYL CINNAMATE','118-58-1':'BENZYL SALICYLATE','80-54-6':'BUTYLPHENYL METHYLPROPIONAL',
+    '104-55-2':'CINNAMAL','104-54-1':'CINNAMYL ALCOHOL','5392-40-5':'CITRAL','106-22-9':'CITRONELLOL',
+    '91-64-5':'COUMARIN','97-53-0':'EUGENOL','90028-67-4':'EVERNIA FURFURACEA EXTRACT',
+    '90028-68-5':'EVERNIA PRUNASTRI EXTRACT','4602-84-0':'FARNESOL','106-24-1':'GERANIOL',
+    '101-86-0':'HEXYL CINNAMAL','107-75-5':'HYDROXYCITRONELLAL','31906-04-4':'HYDROXYISOHEXYL 3-CYCLOHEXENE CARBOXALDEHYDE',
+    '97-54-1':'ISOEUGENOL','5989-27-5':'LIMONENE','78-70-6':'LINALOOL','111-12-6':'METHYL 2-OCTYNOATE'
+  };
 
   const e = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -151,9 +160,31 @@
     holder.id = 'business-tools-pages';
     holder.innerHTML = [
       hubPage(), dilutionPage(), marginPage(), moqPage(), exportPricePage(), exportDocPage(),
-      roasPage(), allergenPage(), skuPage(), lotPage(), productEnglishPage()
+      roasPage(), skuPage(), productEnglishPage()
     ].join('');
     while (holder.firstChild) main.appendChild(holder.firstChild);
+  }
+
+  function installExistingIntegrations() {
+    const stockPage = document.getElementById('page-stock');
+    if (stockPage && !document.getElementById('bt-stock-export')) {
+      const toolbar = document.createElement('div');
+      toolbar.id = 'bt-stock-export';
+      toolbar.className = 'card p-3 no-print';
+      toolbar.innerHTML = `<div class="bt-title"><div><h3 style="margin:0">LOT 통합 내보내기</h3><p>현재 원료·포장재·벌크·완제품 LOT을 한 파일로 저장합니다.</p></div><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.exportLotsXlsx()">전체 LOT 엑셀</button></div>`;
+      const heading = stockPage.querySelector('h2');
+      (heading?.parentElement === stockPage ? heading : stockPage.firstElementChild)?.insertAdjacentElement('afterend', toolbar);
+    }
+
+    const allergenReport = document.getElementById('page-allergen-report');
+    if (allergenReport && !document.getElementById('bt-allergen-canonical-note')) {
+      const note = document.createElement('div');
+      note.id = 'bt-allergen-canonical-note';
+      note.className = 'bt-alert bt-alert-blue no-print';
+      note.innerHTML = `<b>알레르겐 단일 관리 기준</b><span>이 화면의 EU 알레르겐 프로파일을 기준 데이터로 사용합니다. 원료별 수치는 공급사 Allergen Declaration에서만 입력하세요.</span>`;
+      const heading = allergenReport.querySelector('h2');
+      (heading || allergenReport.firstElementChild)?.insertAdjacentElement('afterend', note);
+    }
   }
 
   function hubPage() {
@@ -188,7 +219,7 @@
   }
 
   function marginPage() {
-    return pageShell('biz-margin', '원가·마진·도매 공급률 계산기', '부가세·할인·판매수수료·물류비까지 반영한 실제 공헌이익을 계산합니다.', `
+    return pageShell('biz-margin', '채널별 손익·도매가 계산기', '제품 마스터의 표준원가에 부가세·할인·판매수수료·물류비를 반영합니다.', `
       <div class="bt-grid"><div class="bt-card"><h3>판매 조건</h3><div class="bt-fields">
         <div class="bt-field"><label>ERP 제품 불러오기</label>${productSelect('bt-margin-product', 'MediscentTools.loadMarginProduct()')}</div>
         <div class="bt-field"><label>제조원가</label><input id="bt-margin-cogs" class="bt-input" type="number" value="18000"></div>
@@ -326,10 +357,10 @@
       host.innerHTML = `<div class="bt-tool-grid">${TOOLS.map((tool) => `<div class="bt-tool-card" onclick="goPage('${tool.id}')"><i>${tool.icon}</i><em>${e(tool.group)}</em><b>${e(tool.name)}</b><span>${e(tool.desc)}</span></div>`).join('')}</div>`;
     } else {
       const flow = [
-        ['1', '제품 설계', 'biz-dilution', '배합·전성분·SKU'],
+        ['1', '제품 설계', 'biz-dilution', '배합·SKU'],
         ['2', '가격 결정', 'biz-margin', '원가·MOQ·수출가'],
         ['3', '판매 준비', 'biz-export-doc', '견적·인보이스·제품정보'],
-        ['4', '성과 검토', 'biz-roas', 'ROAS·LOT·실적']
+        ['4', '성과 검토', 'biz-roas', 'ROAS·실적']
       ];
       host.innerHTML = `<div class="bt-flow">${flow.map((step) => `<div class="bt-flow-step" onclick="goPage('${step[2]}')"><small>STEP ${step[0]}</small><b>${step[1]}</b><span>${step[3]}</span></div>`).join('')}</div><div class="bt-tool-grid" style="margin-top:12px">${TOOLS.map((tool) => `<div class="bt-tool-card" onclick="goPage('${tool.id}')"><em>${e(tool.group)}</em><b>${tool.icon} ${e(tool.name)}</b><span>${e(tool.desc)}</span></div>`).join('')}</div>`;
     }
@@ -814,7 +845,7 @@
 
   function loadSkuProduct() {
     const product = productById(v('bt-sku-product')); if (!product) return;
-    document.getElementById('bt-sku-item').value = product.code || product.name || '';
+    document.getElementById('bt-sku-item').value = product.sku || product.code || product.name || '';
     document.getElementById('bt-sku-size').value = String(product.spec || '').match(/[\d.]+\s*(?:ml|g|kg|l)/i)?.[0]?.replace(/\s/g, '') || '';
     document.getElementById('bt-gtin-full').value = product.gtin || '';
     generateSku();
@@ -840,7 +871,7 @@
     const product = productById(v('bt-sku-product')); if (!product) { notify('저장할 ERP 제품을 선택하세요.', 'error'); return; }
     const result = await generateSku(); if (!result?.sku) return;
     if (result.gtin && products().some((item) => item !== product && item.gtin === result.gtin)) { notify('다른 제품에 이미 등록된 GTIN입니다.', 'error'); return; }
-    product.code = result.sku; if (result.gtin) product.gtin = result.gtin;
+    product.sku = result.sku; if (result.gtin) product.gtin = result.gtin;
     persist(`제품 식별정보 저장: ${product.name || product.productId}`); notify('SKU와 GTIN을 제품에 저장했습니다.');
   }
 
@@ -912,11 +943,22 @@
     const rawBom = (product?.bom || []).filter((row) => row.type === 'RAW').slice().sort((a, b) => M.finite(b.qty) - M.finite(a.qty));
     const base = rawBom.map((row) => rawById(row.itemId)?.inci || rawById(row.itemId)?.name).filter(Boolean);
     const allergens = [];
-    rawBom.forEach((row) => (rawById(row.itemId)?.allergens || []).forEach((alg) => {
+    rawBom.forEach((row) => allergenEntries(rawById(row.itemId)).forEach((alg) => {
       const concentration = M.allergenConcentration({ ingredientPercent: row.qty, allergenPercentInIngredient: alg.percent });
       if (M.allergenStatus({ concentration, productType: 'leave-on' }).mustLabel) allergens.push(alg.inci || alg.name);
     }));
     return [...new Set([...base, ...allergens])].join(', ');
+  }
+
+  function allergenEntries(raw) {
+    if (!raw) return [];
+    const profile = raw.allergenProfile || {};
+    const extra = raw.allergenExtraProfile || {};
+    const canonical = [
+      ...Object.entries(profile).map(([cas, percent]) => ({ cas, name: EU26_INCI_BY_CAS[cas] || cas, inci: EU26_INCI_BY_CAS[cas] || cas, percent: M.finite(percent) })),
+      ...Object.entries(extra).map(([cas, item]) => ({ cas, name: item?.name || cas, inci: item?.name || cas, percent: M.finite(item?.pct) }))
+    ].filter((item) => item.percent > 0);
+    return canonical.length ? canonical : (raw.allergens || []);
   }
 
   function loadEnglishProduct() {
@@ -936,7 +978,7 @@
   function renderEnglishProduct() {
     const host = document.getElementById('bt-en-preview'); if (!host) return;
     const product = productById(v('bt-en-product'));
-    const sku = product?.code || ''; const gtin = product?.gtin || '';
+    const sku = product?.sku || product?.code || ''; const gtin = product?.gtin || '';
     const fields = [
       ['Brand', v('bt-en-brand')], ['Product Name', v('bt-en-name') || 'Product Name'], ['Category', v('bt-en-category')],
       ['Net Content', v('bt-en-net')], ['Country of Origin', v('bt-en-origin')], ['HS Code', v('bt-en-hs') || '-'], ['SKU / GTIN', [sku, gtin].filter(Boolean).join(' / ') || '-']
@@ -958,10 +1000,10 @@
     injectStyles();
     injectNavigation();
     injectPages();
+    installExistingIntegrations();
     initializeRows();
     wrapNavigation();
     renderHub();
-    renderLots();
     calcDilution();
     calcMargin();
     calcMoq();
@@ -971,7 +1013,7 @@
     renderExportDoc();
     renderEnglishProduct();
     const version = document.querySelector('#brand-logo + div span');
-    if (version) version.textContent = 'v4.0 BETA';
+    if (version) version.textContent = 'v4.1 BETA';
   }
 
   if (document.readyState === 'loading') window.addEventListener('load', () => setTimeout(boot, 500));

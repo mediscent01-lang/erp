@@ -472,7 +472,8 @@ var $ = function(id){ return document.getElementById(id); };
 var N = function(v){ var x = Number(v); return isFinite(x) ? x : 0; };
 var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
 
-/* ── EU 26 알레르겐 레지스트리 (SCCNFP) — CAS를 저장 키로 사용 ── */
+/* ── 기존 EU 26 알레르겐 레지스트리 — CAS를 저장 키로 사용
+   2026 확대 성분은 공급사 선언서에서 읽어 allergenExtraProfile에 함께 저장한다. ── */
 var A26 = [
  {cas:'127-51-5',  en:'ALPHA-ISOMETHYL IONONE',    ko:'알파-이소메틸 이오논'},
  {cas:'122-40-7',  en:'AMYL CINNAMAL',              ko:'아밀신남알'},
@@ -511,7 +512,7 @@ function injectUI(){
     var b = document.createElement('button');
     b.id='alg-open-btn'; b.className='btn btn-secondary w-full btn-sm';
     b.style.cssText='margin-top:4px;font-weight:800';
-    b.textContent='🧬 알레르겐 프로파일 관리 (26종 %)';
+    b.textContent='🧬 EU 알레르겐 프로파일 관리';
     b.onclick=function(){ openAllergenProfileModal($('raw-edit-id') && $('raw-edit-id').value); };
     box.appendChild(b);
   }
@@ -535,7 +536,8 @@ window.openAllergenProfileModal = function(preferRawId){
   if(!window.db) return;
   var raws = (db.master.M_RAW||[]);
   var opts = raws.map(function(r){
-    var has = r.allergenProfile && Object.keys(r.allergenProfile).some(function(k){ return N(r.allergenProfile[k])>0; });
+    var has = (r.allergenProfile && Object.keys(r.allergenProfile).some(function(k){ return N(r.allergenProfile[k])>0; })) ||
+      (r.allergenExtraProfile && Object.keys(r.allergenExtraProfile).some(function(k){ return N((r.allergenExtraProfile[k]||{}).pct)>0; }));
     return '<option value="'+r.rawId+'"'+(String(r.rawId)===String(preferRawId)?' selected':'')+'>'+(has?'🧬 ':'')+E(r.name)+'</option>';
   }).join('');
   var bg = document.createElement('div');
@@ -544,8 +546,8 @@ window.openAllergenProfileModal = function(preferRawId){
   if(!document.querySelector('.mes-modal-bg')) bg.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px';
   bg.innerHTML =
   '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:92vh;overflow-y:auto;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
-    '<div style="font-weight:900;font-size:15px;color:#0f172a">🧬 알레르겐 프로파일 (EU 26종)</div>'+
-    '<div style="font-size:11px;color:#64748b;margin:4px 0 10px">공급사 성분표의 "Total in Fragrance Oil(%)" 값을 저장합니다.</div>'+
+    '<div style="font-weight:900;font-size:15px;color:#0f172a">🧬 EU 향료 알레르겐 프로파일</div>'+
+    '<div style="font-size:11px;color:#64748b;margin:4px 0 10px">공급사 성분표의 "Total in Fragrance Oil(%)" 값을 저장합니다. 기존 26종 외 CAS 성분도 아래 확장 목록에 보존됩니다.</div>'+
     '<label style="font-size:10.5px;font-weight:800;color:#64748b">원료 선택</label>'+
     '<select id="alg-raw-sel" class="input-field" style="margin-bottom:10px">'+opts+'</select>'+
     '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:10px;margin-bottom:10px">'+
@@ -562,6 +564,11 @@ window.openAllergenProfileModal = function(preferRawId){
         return '<div style="font-size:10.5px;font-weight:700;color:#334155;align-self:center">'+E(a.en)+'<span style="color:#94a3b8;font-weight:500"> '+a.cas+'</span></div>'+
                '<input id="alg-'+a.cas+'" type="number" step="0.0001" min="0" class="input-field text-right" style="padding:3px 6px;font-size:11px" placeholder="0">';
       }).join('')+
+    '</div>'+
+    '<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:9px;margin-top:10px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px"><div style="font-size:10.5px;font-weight:900;color:#1e40af">확대·추가 알레르겐</div><button class="btn btn-secondary btn-sm" type="button" onclick="addExtraAllergenRow()">+ 성분</button></div>'+
+      '<div id="alg-extra-rows"></div>'+
+      '<div style="font-size:10px;color:#64748b;margin-top:5px">공급사 선언서에 있는 성분명·CAS·원료 내 함량만 입력하세요.</div>'+
     '</div>'+
     '<div style="display:flex;gap:8px;margin-top:14px">'+
       '<button class="btn btn-primary flex-1" onclick="saveAllergenProfile()">저장</button>'+
@@ -580,11 +587,29 @@ function loadProfileToForm(){
   var raw = (db.master.M_RAW||[]).find(function(r){ return String(r.rawId)===String($('alg-raw-sel').value); });
   var p = (raw && raw.allergenProfile) || {};
   A26.forEach(function(a){ var el=$('alg-'+a.cas); if(el) el.value = N(p[a.cas]) || ''; });
+  var host=$('alg-extra-rows'); if(host) host.innerHTML='';
+  var extra=(raw && raw.allergenExtraProfile)||{};
+  Object.keys(extra).forEach(function(cas){
+    var x=extra[cas]||{}; addExtraAllergenRow({name:x.name||'',cas:cas,pct:N(x.pct)});
+  });
+  if(host && !host.children.length) addExtraAllergenRow();
 }
+
+window.addExtraAllergenRow = function(data){
+  var host=$('alg-extra-rows'); if(!host) return;
+  data=data||{};
+  var row=document.createElement('div'); row.className='alg-extra-row';
+  row.style.cssText='display:grid;grid-template-columns:1fr 130px 90px 30px;gap:5px;margin-bottom:5px';
+  row.innerHTML='<input class="input-field alg-extra-name" placeholder="INCI 성분명" value="'+E(data.name||'')+'">'+
+    '<input class="input-field alg-extra-cas" placeholder="CAS" value="'+E(data.cas||'')+'">'+
+    '<input class="input-field alg-extra-pct" type="number" min="0" step="0.000001" placeholder="%" value="'+(N(data.pct)||'')+'">'+
+    '<button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">×</button>';
+  host.appendChild(row);
+};
 
 /* 공통 파싱 파이프라인: 텍스트 행 배열에서 CAS 앵커로 %값 추출 → 폼 채움 */
 function applyAllergenLines(lines, srcLabel){
-  var found = 0, unknown = [];
+  var found = 0, extraFound = 0;
   lines.forEach(function(line){
     var m = String(line).match(/(\d{2,7}-\d{2}-\d)\b/);
     if(!m) return;
@@ -592,20 +617,29 @@ function applyAllergenLines(lines, srcLabel){
     var def = A26.find(function(a){ return a.cas===cas; });
     var after = String(line).slice(String(line).indexOf(cas)+cas.length);
     var num = after.match(/-?\d+(?:[.,]\d+)?/);
-    if(!def){ if(num && parseFloat(num[0].replace(',','.'))>0) unknown.push(cas); return; }
     if(!num) return;
     var v = parseFloat(num[0].replace(',','.'));
+    if(!def){
+      if(v>0){
+        var name=String(line).slice(0,String(line).indexOf(cas)).replace(/[\t,;]+/g,' ').trim() || cas;
+        var existing=Array.prototype.find.call(document.querySelectorAll('.alg-extra-row'),function(row){ return row.querySelector('.alg-extra-cas').value.trim()===cas; });
+        if(existing){ existing.querySelector('.alg-extra-name').value=name; existing.querySelector('.alg-extra-pct').value=v; }
+        else addExtraAllergenRow({name:name,cas:cas,pct:v});
+        extraFound++;
+      }
+      return;
+    }
     var el = $('alg-'+cas);
     if(el && isFinite(v)){ el.value = v || ''; found++; }
   });
   var msg = $('alg-paste-msg');
   if(msg){
-    msg.style.color = found ? '#0f766e' : '#c0392b';
-    msg.textContent = found
-      ? '✅ '+(srcLabel||'')+' '+found+'개 성분 인식 완료. 값 확인 후 [저장]을 누르세요.'+(unknown.length?' (26종 외 CAS 무시: '+unknown.join(', ')+')':'')
+    msg.style.color = (found+extraFound) ? '#0f766e' : '#c0392b';
+    msg.textContent = (found+extraFound)
+      ? '✅ '+(srcLabel||'')+' 기존 '+found+'개, 확대·추가 '+extraFound+'개 인식. 값 확인 후 [저장]을 누르세요.'
       : '인식된 성분이 없습니다. 성분명·CAS·% 열이 포함되어 있는지 확인해 주세요.';
   }
-  return found;
+  return found+extraFound;
 }
 
 window.parseAllergenPaste = function(){
@@ -644,10 +678,19 @@ window.saveAllergenProfile = function(){
     var v = N($('alg-'+a.cas) && $('alg-'+a.cas).value);
     if(v>0){ p[a.cas]=v; cnt++; }
   });
+  var extra={};
+  document.querySelectorAll('.alg-extra-row').forEach(function(row){
+    var name=row.querySelector('.alg-extra-name').value.trim();
+    var cas=row.querySelector('.alg-extra-cas').value.trim();
+    var pct=N(row.querySelector('.alg-extra-pct').value);
+    if(name && cas && pct>0) extra[cas]={name:name,pct:pct};
+  });
   raw.allergenProfile = p;
-  raw.isAllergen = cnt>0 || !!raw.isAllergen;
-  if(typeof logEvent==='function') logEvent('알레르겐 프로파일 저장: '+raw.name+' ('+cnt+'종)');
-  if(typeof toast==='function') toast(raw.name+' 프로파일 저장 ('+cnt+'종 검출)','success');
+  raw.allergenExtraProfile = extra;
+  var total=cnt+Object.keys(extra).length;
+  raw.isAllergen = total>0 || !!raw.isAllergen;
+  if(typeof logEvent==='function') logEvent('알레르겐 프로파일 저장: '+raw.name+' ('+total+'종)');
+  if(typeof toast==='function') toast(raw.name+' 프로파일 저장 ('+total+'종 검출)','success');
   saveDB(); closeAllergenModal();
   if(typeof renderRaw==='function') try{ renderRaw(); }catch(e){}
 };
@@ -673,6 +716,7 @@ window.renderAllergen2 = function(){
     if(!x.raw) return;
     var frac = x.g / base; /* 완제품 내 원료 비중 (0~1) */
     var p = x.raw.allergenProfile;
+    var extra=x.raw.allergenExtraProfile||{};
     if(p && Object.keys(p).length){
       Object.keys(p).forEach(function(cas){
         var add = frac * N(p[cas]);
@@ -682,16 +726,25 @@ window.renderAllergen2 = function(){
           acc[cas].from.push(x.raw.name+' '+(frac*100).toFixed(1)+'%');
         }
       });
-    } else if (x.raw.isAllergen){
+    } else if (!Object.keys(extra).length && x.raw.isAllergen){
       noProfile.push(x.raw.name);
     }
+    Object.keys(extra).forEach(function(cas){
+      var ex=extra[cas]||{};
+      var add=frac*N(ex.pct);
+      if(add>0){
+        if(!acc[cas]) acc[cas]={pct:0,from:[],def:{cas:cas,en:ex.name||cas,ko:''}};
+        acc[cas].pct+=add;
+        acc[cas].from.push(x.raw.name+' '+(frac*100).toFixed(1)+'%');
+      }
+    });
   });
 
   var rows = Object.keys(acc).map(function(cas){
-    var def = A26.find(function(a){ return a.cas===cas; }) || {en:cas, ko:''};
+    var def = A26.find(function(a){ return a.cas===cas; }) || acc[cas].def || {cas:cas,en:cas,ko:''};
     var v = acc[cas].pct;
     return { def:def, pct:v, from:acc[cas].from,
-      leave: v>=TH_LEAVE, rinse: v>=TH_RINSE };
+      leave: v>TH_LEAVE, rinse: v>TH_RINSE };
   }).sort(function(a,b){ return b.pct-a.pct; });
 
   var mustLeave = rows.filter(function(r){ return r.leave; }).length;
@@ -708,7 +761,7 @@ window.renderAllergen2 = function(){
   }
 
   html += rows.length
-    ? '<table><thead><tr><th class="pl-3">알레르겐 (INCI)</th><th>국문 표시명</th><th class="text-right">완제품 함량(%)</th><th class="text-center">향수·크림 등<br>leave-on ≥0.001%</th><th class="text-center">워시오프<br>rinse-off ≥0.01%</th><th>기여 원료</th></tr></thead><tbody>'+
+    ? '<table><thead><tr><th class="pl-3">알레르겐 (INCI)</th><th>국문 표시명</th><th class="text-right">완제품 함량(%)</th><th class="text-center">향수·크림 등<br>leave-on &gt;0.001%</th><th class="text-center">워시오프<br>rinse-off &gt;0.01%</th><th>기여 원료</th></tr></thead><tbody>'+
       rows.map(function(r){
         return '<tr><td class="pl-3 font-bold text-xs">'+E(r.def.en)+'<div style="color:#94a3b8;font-weight:500">'+r.def.cas+'</div></td>'+
           '<td class="text-xs">'+E(r.def.ko)+'</td>'+
