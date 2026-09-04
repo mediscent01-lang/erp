@@ -1,0 +1,26 @@
+:root{--v42-ink:#17231f;--v42-muted:#5d6b65;--v42-line:#d6e2dc;--v42-soft:#f1f7f3;--v42-brand:#315f55;--v42-danger:#b42318}
+body{background:#f3f8f4;color:var(--v42-ink);font-size:14px}
+.nav-item{font-size:13px!important;min-height:38px;line-height:1.35}
+.nav-label{font-size:11px!important;letter-spacing:.08em!important}
+.input-field,.bt-input,.bt-select,.bt-textarea{font-size:14px!important;min-height:40px}
+#sb-login input,#sb-login button{font-size:14px!important;min-height:42px}
+textarea.input-field,textarea.bt-textarea{line-height:1.55}
+table td,table th{font-size:12.5px}
+.bt-field label{font-size:13px!important}.bt-field small,.bt-note{font-size:12px!important}
+.bt-card h3{font-size:16px!important}.bt-metric span{font-size:12px!important}.bt-alert,.bt-alert b{font-size:13px!important;line-height:1.55}
+.bt-tool-card span,.bt-flow-step span{font-size:12.5px!important}.bt-tool-card em,.bt-flow-step small{font-size:11px!important}
+.bt-btn,.btn{min-height:38px}.btn-sm{min-height:34px}
+.v42-quick-actions{display:grid;grid-template-columns:minmax(150px,1.4fr) repeat(6,minmax(84px,1fr));gap:8px;align-items:stretch;background:#e8f2ec;border:1px solid #c8dbd0;border-radius:14px;padding:10px}
+.v42-quick-actions>div{display:flex;flex-direction:column;justify-content:center;padding:0 8px}.v42-quick-actions strong{font-size:14px}.v42-quick-actions span{font-size:12px;color:var(--v42-muted);margin-top:2px}
+.v42-quick-actions button{border:1px solid #c4d5cc;background:#fff;color:#243a33;border-radius:10px;padding:10px 8px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 1px 2px rgba(23,35,31,.04)}
+.v42-quick-actions button:hover,.v42-quick-actions button:focus-visible{border-color:var(--v42-brand);outline:3px solid rgba(49,95,85,.15)}
+.v42-quick-actions button b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#e3eee8;color:var(--v42-brand);margin-right:4px}
+.v42-dialog-backdrop{position:fixed;inset:0;z-index:12000;background:rgba(13,24,20,.62);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px)}
+.v42-dialog{width:min(460px,100%);background:#fff;border-radius:16px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.3)}
+.v42-dialog-icon{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;background:#e8f2ec;color:var(--v42-brand);font-size:20px;font-weight:900}.v42-dialog-icon.danger{background:#fee4e2;color:var(--v42-danger)}
+.v42-dialog h2{font-size:18px;font-weight:900;margin:12px 0 6px}.v42-dialog p{font-size:14px;line-height:1.6;color:var(--v42-muted)}.v42-dialog ul{margin:12px 0;padding-left:20px;font-size:13px;color:var(--v42-danger)}
+.v42-dialog label{display:block;font-size:13px;font-weight:800;margin:16px 0 6px}.v42-dialog label span{color:var(--v42-danger)}.v42-dialog textarea{width:100%;border:1px solid #bdcbc4;border-radius:9px;padding:10px 12px;font-size:14px;resize:vertical}.v42-dialog textarea:focus{outline:3px solid rgba(49,95,85,.15);border-color:var(--v42-brand)}
+.v42-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.v42-dialog button{border:0;border-radius:9px;padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer}.v42-primary{background:var(--v42-brand);color:#fff;width:100%;margin-top:12px}.v42-secondary{background:#edf2ef;color:#34453f}.v42-danger{background:var(--v42-danger);color:#fff}.v42-dialog button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:1100px){.v42-quick-actions{grid-template-columns:repeat(3,1fr)}.v42-quick-actions>div{grid-column:1/-1;padding:4px}}
+@media(max-width:700px){body{font-size:15px}.v42-quick-actions{grid-template-columns:repeat(2,1fr)}.v42-quick-actions button{min-height:46px}.bt-row,.bt-row-allergen{grid-template-columns:1fr!important}.bt-row .bt-btn,.bt-row-allergen .bt-btn{width:100%}.bt-doc-stage{padding:8px!important}.bt-doc-page{min-width:760px}.bt-field label{font-size:14px!important}}
+@media print{.v42-quick-actions,.v42-dialog-backdrop{display:none!important}}

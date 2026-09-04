@@ -574,12 +574,15 @@
     ['RAW', 'PACK', 'BULK', 'FGT'].forEach(function (k) {
       lots(k).forEach(function (l) {
         if (n(l.remaining) < 0) {
-          safe(function () { window.logEvent('⚠ 마이너스 재고 보정: ' + l.lotNo + ' ' + l.remaining + ' → 0'); });
-          l.remaining = 0; c++;
+          /* 장부 오류를 숨기지 않는다. 음수값은 진단 대상으로 보존하고
+             신규 거래 단계에서 차단한다. 자동 0 보정은 추적성을 훼손한다. */
+          l.dataIssue = 'NEGATIVE_STOCK';
+          c++;
         }
       });
     });
-    return c;
+    if (c) setStatus('retry');
+    return 0;
   }
 
   wrap('loadDB', function (orig) {

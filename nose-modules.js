@@ -550,6 +550,11 @@ window.openAllergenProfileModal = function(preferRawId){
     '<div style="font-size:11px;color:#64748b;margin:4px 0 10px">공급사 성분표의 "Total in Fragrance Oil(%)" 값을 저장합니다. 기존 26종 외 CAS 성분도 아래 확장 목록에 보존됩니다.</div>'+
     '<label style="font-size:10.5px;font-weight:800;color:#64748b">원료 선택</label>'+
     '<select id="alg-raw-sel" class="input-field" style="margin-bottom:10px">'+opts+'</select>'+
+    '<div style="display:grid;grid-template-columns:1fr 140px 120px;gap:6px;margin-bottom:10px">'+
+      '<input id="alg-decl-supplier" class="input-field" placeholder="공급사명">'+
+      '<input id="alg-decl-date" type="date" class="input-field" title="선언서 발행일">'+
+      '<input id="alg-decl-version" class="input-field" placeholder="문서 버전">'+
+    '</div>'+
     '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:10px;margin-bottom:10px">'+
       '<div style="font-size:10.5px;font-weight:800;color:#0f766e;margin-bottom:6px">📂 공급사 알레르겐 성분표(XLS/XLSX)를 그대로 업로드하세요</div>'+
       '<button class="btn btn-primary btn-sm w-full" onclick="document.getElementById(\'alg-file\').click()">알레르겐 XLS 업로드 → 자동 인식</button>'+
@@ -586,6 +591,10 @@ window.closeAllergenModal = function(){ var m=$('alg-modal'); if(m) m.remove(); 
 function loadProfileToForm(){
   var raw = (db.master.M_RAW||[]).find(function(r){ return String(r.rawId)===String($('alg-raw-sel').value); });
   var p = (raw && raw.allergenProfile) || {};
+  var decl=(raw && raw.allergenDeclaration)||{};
+  if($('alg-decl-supplier')) $('alg-decl-supplier').value=decl.supplier||((raw&&raw.supplier)||'');
+  if($('alg-decl-date')) $('alg-decl-date').value=decl.issuedAt||'';
+  if($('alg-decl-version')) $('alg-decl-version').value=decl.version||'';
   A26.forEach(function(a){ var el=$('alg-'+a.cas); if(el) el.value = N(p[a.cas]) || ''; });
   var host=$('alg-extra-rows'); if(host) host.innerHTML='';
   var extra=(raw && raw.allergenExtraProfile)||{};
@@ -609,16 +618,17 @@ window.addExtraAllergenRow = function(data){
 
 /* 공통 파싱 파이프라인: 텍스트 행 배열에서 CAS 앵커로 %값 추출 → 폼 채움 */
 function applyAllergenLines(lines, srcLabel){
-  var found = 0, extraFound = 0;
+  var found = 0, extraFound = 0, ambiguous = 0;
   lines.forEach(function(line){
     var m = String(line).match(/(\d{2,7}-\d{2}-\d)\b/);
     if(!m) return;
     var cas = m[1];
     var def = A26.find(function(a){ return a.cas===cas; });
     var after = String(line).slice(String(line).indexOf(cas)+cas.length);
-    var num = after.match(/-?\d+(?:[.,]\d+)?/);
-    if(!num) return;
-    var v = parseFloat(num[0].replace(',','.'));
+    var nums = after.match(/-?\d+(?:[.,]\d+)?/g);
+    if(!nums) return;
+    if(nums.length!==1){ ambiguous++; return; }
+    var v = parseFloat(nums[0].replace(',','.'));
     if(!def){
       if(v>0){
         var name=String(line).slice(0,String(line).indexOf(cas)).replace(/[\t,;]+/g,' ').trim() || cas;
@@ -636,7 +646,7 @@ function applyAllergenLines(lines, srcLabel){
   if(msg){
     msg.style.color = (found+extraFound) ? '#0f766e' : '#c0392b';
     msg.textContent = (found+extraFound)
-      ? '✅ '+(srcLabel||'')+' 기존 '+found+'개, 확대·추가 '+extraFound+'개 인식. 값 확인 후 [저장]을 누르세요.'
+      ? '✅ '+(srcLabel||'')+' 기존 '+found+'개, 확대·추가 '+extraFound+'개 인식.'+(ambiguous?' 숫자가 여러 개인 '+ambiguous+'행은 안전을 위해 제외했습니다.':'')+' 값 확인 후 [저장]을 누르세요.'
       : '인식된 성분이 없습니다. 성분명·CAS·% 열이 포함되어 있는지 확인해 주세요.';
   }
   return found+extraFound;
@@ -663,6 +673,8 @@ window.uploadAllergenXls = function(file){
         rows.forEach(function(r){ lines.push(r.map(function(c){ return c==null?'':String(c); }).join('\t')); });
       });
       applyAllergenLines(lines, '파일 "'+file.name+'":');
+      var sel=$('alg-raw-sel');
+      if(sel){ var raw=(db.master.M_RAW||[]).find(function(r){return String(r.rawId)===String(sel.value);}); if(raw){ raw._pendingAllergenSource=file.name; } }
     }catch(err){
       var msg=$('alg-paste-msg'); if(msg){ msg.style.color='#c0392b'; msg.textContent='파일 해석 실패: '+err; }
     }
@@ -687,6 +699,14 @@ window.saveAllergenProfile = function(){
   });
   raw.allergenProfile = p;
   raw.allergenExtraProfile = extra;
+  raw.allergenDeclaration = {
+    supplier: ($('alg-decl-supplier')&&$('alg-decl-supplier').value.trim()) || raw.supplier || '',
+    issuedAt: ($('alg-decl-date')&&$('alg-decl-date').value) || '',
+    version: ($('alg-decl-version')&&$('alg-decl-version').value.trim()) || '',
+    sourceFile: raw._pendingAllergenSource || ((raw.allergenDeclaration||{}).sourceFile) || '',
+    verifiedAt: new Date().toISOString()
+  };
+  delete raw._pendingAllergenSource;
   var total=cnt+Object.keys(extra).length;
   raw.isAllergen = total>0 || !!raw.isAllergen;
   if(typeof logEvent==='function') logEvent('알레르겐 프로파일 저장: '+raw.name+' ('+total+'종)');
@@ -748,6 +768,7 @@ window.renderAllergen2 = function(){
   }).sort(function(a,b){ return b.pct-a.pct; });
 
   var mustLeave = rows.filter(function(r){ return r.leave; }).length;
+  var prohibited = rows.filter(function(r){ return r.pct>0 && (r.def.cas==='80-54-6' || r.def.cas==='31906-04-4'); });
 
   var html = '';
   html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">'+
@@ -758,6 +779,10 @@ window.renderAllergen2 = function(){
 
   if(noProfile.length){
     html += '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;font-size:11px;font-weight:700;color:#92400e;margin-bottom:10px">⚠ 프로파일 미입력 알레르겐 원료: '+noProfile.map(E).join(', ')+' — 🧬 버튼으로 공급사 성분표를 등록해야 판정이 완전해집니다.</div>';
+  }
+
+  if(prohibited.length){
+    html += '<div style="background:#fff1f2;border:1px solid #fda4af;border-radius:8px;padding:10px 12px;font-size:12px;font-weight:800;color:#9f1239;margin-bottom:10px">⛔ EU 금지성분 검토: '+prohibited.map(function(r){return E(r.def.en)+' ('+E(r.def.cas)+')';}).join(', ')+' — 표시문구 생성보다 처방·공급사 문서 확인이 우선입니다.</div>';
   }
 
   html += rows.length
@@ -3376,8 +3401,14 @@ function wkReconcile(p, loc, actual, price, cause, date, log, warn){
     log.push(p.name+' · '+loc+' '+F(book)+'→'+F(actual)+' ('+kind+' '+diff+(kind==='판매'&&price?' ₩'+F(diff*price):'')+')');
     if(kind==='판매' && !price) warn.push(p.name+': 판매단가 미입력 (매출 0원 기록)');
   } else {
-    db.stock.FGT_LOT.push({id:genId('FGT'),lotNo:'ADJ-'+String(date).replace(/-/g,'').slice(2),productId:p.pid,qty:-diff,remaining:-diff,unitCost:0,status:'OK',location:loc,dateIn:date,note:'주간정산 실사 증가'});
+    var adjLots=fgtStock(p.pid,loc).filter(function(x){return N(x.remaining)>0&&N(x.unitCost)>0;});
+    var adjQ=adjLots.reduce(function(s,x){return s+N(x.remaining);},0);
+    var adjV=adjLots.reduce(function(s,x){return s+N(x.remaining)*N(x.unitCost);},0);
+    var adjCost=adjQ>0?adjV/adjQ:0;
+    var adjNo='ADJ-'+String(date).replace(/-/g,'').slice(2)+'-'+String(Date.now()).slice(-4);
+    db.stock.FGT_LOT.push({id:genId('FGT'),lotNo:adjNo,productId:p.pid,qty:-diff,remaining:-diff,unitCost:Math.round(adjCost*100)/100,status:adjCost>0?'OK':'HOLD',costStatus:adjCost>0?'CONFIRMED':'UNCONFIRMED',location:loc,dateIn:date,note:'주간정산 실사 증가'+(adjCost>0?'':' · 원가 확인 필요')});
     log.push(p.name+' · '+loc+' '+F(book)+'→'+F(actual)+' (실사 증가 +'+(-diff)+')');
+    if(!adjCost) warn.push(p.name+': 조정재고 원가 미확정 — 단가 입력 전 HOLD');
   }
 }
 /* ── 실사양식 엑셀 업로드 → 표에 자동 채움 ── */
@@ -3586,7 +3617,12 @@ window.commitWeek=function(){
       lots.forEach(function(l){ if(rest<=0) return; var t=Math.min(N(l.remaining),rest); l.remaining=N(l.remaining)-t; rest-=t; });
       log.push(r.name+' 원료 조정 -'+Math.round(d*100)/100+'g');
     } else {
-      db.stock.RAW_LOT.push({id:genId('RAW'),rawId:r.rid,lotNo:'ADJ-'+String(date).replace(/-/g,'').slice(2),qty:-d,remaining:-d,unitCost:0,status:'OK',dateIn:date,note:'주간정산 실사 증가'});
+      var rLots=(db.stock.RAW_LOT||[]).filter(function(x){return String(x.rawId)===String(r.rid)&&N(x.remaining)>0&&N(x.unitCost)>0;});
+      var rQ=rLots.reduce(function(s,x){return s+N(x.remaining);},0), rV=rLots.reduce(function(s,x){return s+N(x.remaining)*N(x.unitCost);},0);
+      var rMaster=(db.master.M_RAW||[]).find(function(x){return String(x.rawId)===String(r.rid);});
+      var rCost=rQ>0?rV/rQ:(rMaster&&N(rMaster.stdCost)>0?N(rMaster.stdCost)/1000:0);
+      var rAdjNo='ADJ-'+String(date).replace(/-/g,'').slice(2)+'-'+String(Date.now()).slice(-4);
+      db.stock.RAW_LOT.push({id:genId('RAW'),rawId:r.rid,lotNo:rAdjNo,qty:-d,remaining:-d,unitCost:Math.round(rCost*1000000)/1000000,status:rCost>0?'OK':'HOLD',costStatus:rCost>0?'CONFIRMED':'UNCONFIRMED',dateIn:date,note:'주간정산 실사 증가'+(rCost>0?'':' · 원가 확인 필요')});
       log.push(r.name+' 원료 조정 +'+Math.round(-d*100)/100+'g');
     }
   });
@@ -3700,7 +3736,10 @@ window.commitQuick=function(){
         }
         if(rest>0){ shortage.push((bm.type==='PACK'?'포장재':'원료')+' 부족 '+Math.round(rest*100)/100); }
       });
-      var lotNo='LOT-'+String(date).replace(/-/g,'').slice(2)+'-'+String(Math.floor(Math.random()*90+10));
+      var lotBase='FGT-'+String(prod.sku||prod.code||prod.productId||'PRODUCT').replace(/[^A-Za-z0-9가-힣]+/g,'-').toUpperCase().slice(0,18)+'-'+String(date).replace(/-/g,'');
+      var lotSeq=1, lotNo='';
+      do { lotNo=lotBase+'-'+String(lotSeq++).padStart(3,'0'); }
+      while((db.stock.FGT_LOT||[]).some(function(x){return String(x.lotNo)===lotNo;}));
       db.stock.FGT_LOT.push({ id:genId('FGT'), lotNo:lotNo, productId:l.pid, qty:l.qty, remaining:l.qty,
         unitCost: l.qty>0 ? Math.round(matCost/l.qty) : 0, status:'OK', location:'창고', dateIn:date, note:'간편 생산기록' });
       /* 거래기록: 벌크(원료 소모) + 충진(포장재 소모·생산) */

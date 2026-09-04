@@ -74,8 +74,13 @@
     const contribution = netRevenue - fees - cogs - fulfillment - otherVariable;
     const marginRate = netRevenue > 0 ? contribution / netRevenue * 100 : 0;
     const markupRate = cogs > 0 ? (netRevenue - cogs) / cogs * 100 : 0;
+    const vatDivisor = input.vatIncluded === false ? 1 : 1 + vatRate / 100;
+    const feeRate = (platformFeeRate + paymentFeeRate) / 100;
+    const retainedRevenueRate = input.feeOnVatExcluded
+      ? (1 / vatDivisor) * (1 - feeRate)
+      : (1 / vatDivisor) - feeRate;
     const breakEvenRetail = (cogs + fulfillment + otherVariable) /
-      Math.max(0.000001, (wholesaleRate / 100) * (1 / (input.vatIncluded === false ? 1 : 1 + vatRate / 100) - (platformFeeRate + paymentFeeRate) / 100));
+      Math.max(0.000001, (wholesaleRate / 100) * retainedRevenueRate);
     return {
       discountedRetail: round(discountedRetail, 2),
       channelRevenue: round(channelRevenue, 2),

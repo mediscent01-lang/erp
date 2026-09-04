@@ -7,7 +7,7 @@
     return;
   }
 
-  const TOOL_VERSION = '4.1-beta.1';
+  const TOOL_VERSION = '4.2';
   const SESSION_ID = `S-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const SESSION_START = Date.now();
   const EVENT_KEY = 'mediscent_tool_ab_events_v1';
@@ -93,14 +93,7 @@
   }
 
   function getVariant() {
-    const forced = new URLSearchParams(location.search).get('ab');
-    if (forced === 'A' || forced === 'B') return forced;
-    let assigned = localStorage.getItem(VARIANT_KEY);
-    if (assigned !== 'A' && assigned !== 'B') {
-      assigned = Math.random() < 0.5 ? 'A' : 'B';
-      localStorage.setItem(VARIANT_KEY, assigned);
-    }
-    return assigned;
+    return 'B';
   }
 
   function getEvents() {
@@ -189,11 +182,11 @@
 
   function hubPage() {
     return `<section id="page-biz-hub" class="page-section bt-shell space-y-4">
-      <div class="bt-hub-hero"><div><h2>MEDISCENT Business Tools</h2><p>ERP에 등록된 제품·원가·처방·고객·LOT을 다시 입력하지 않고 가격 결정부터 수출 문서까지 연결합니다.</p></div><span class="bt-variant">실험안 <b id="bt-current-variant">${getVariant()}</b> · ${TOOL_VERSION}</span></div>
+      <div class="bt-hub-hero"><div><h2>MEDISCENT Business Tools</h2><p>ERP에 등록된 제품·원가·처방·고객·LOT을 다시 입력하지 않고 가격 결정부터 수출 문서까지 연결합니다.</p></div><span class="bt-variant">1인 운영 · <b id="bt-current-variant">${TOOL_VERSION}</b></span></div>
       <div id="bt-hub-layout"></div>
       <div class="bt-grid">
-        <div class="bt-card"><h3>A/B 사용성 측정</h3><div id="bt-ab-results"></div><div class="bt-actions no-print"><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.switchVariant()">A/B 화면 전환</button><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.exportAbCsv()">결과 CSV</button><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.saveAbSummary()">ERP에 요약 저장</button><button class="bt-btn bt-btn-danger" onclick="MediscentTools.resetAb()">측정 초기화</button></div></div>
-        <div class="bt-card"><h3>측정 기준</h3><div class="bt-note">A안은 기능을 한눈에 찾는 카드형, B안은 실제 업무 순서 중심 화면입니다. 도구 선택률·완료율·완료시간·오류를 기록합니다. 같은 기기에서만 원시 데이터가 보존되며, ‘ERP에 요약 저장’을 눌렀을 때 집계값만 클라우드 데이터에 포함됩니다.</div><div class="bt-alert bt-alert-amber"><b>통계 해석 주의</b><span>내부 사용자 수가 적으면 전환율 차이만으로 승자를 정하면 안 됩니다. 최소 20회 이상의 실제 업무 완료와 사용자 인터뷰를 함께 보세요.</span></div></div>
+        <div class="bt-card"><h3>사용 원칙</h3><div class="bt-note">제품·원료·거래처를 먼저 등록하면 계산기와 문서에서 같은 정보를 다시 입력하지 않아도 됩니다. 계산 결과는 저장 전 입력값을 한 번 확인하세요.</div></div>
+        <div class="bt-card"><h3>공식 문서 주의</h3><div class="bt-note">원가 계산은 공헌이익 기준이며, 알레르겐과 수출 서류는 내부 검토 초안입니다. 최종 라벨·통관 제출 전 책임자 검토가 필요합니다.</div></div>
       </div>
     </section>`;
   }
@@ -250,6 +243,8 @@
         <div class="bt-field"><label>제조원가 (원)</label><input id="bt-exp-cogs" class="bt-input" type="number" value="15000"></div>
         <div class="bt-field"><label>수출 공급률 (%)</label><input id="bt-exp-supply" class="bt-input" type="number" step="0.1" value="27"></div>
         <div class="bt-field"><label>외화 1단위당 원화</label><input id="bt-exp-rate" class="bt-input" type="number" step="0.01" value="1350"><small>견적에 적용할 고정 환율</small></div>
+        <div class="bt-field"><label>환율 기준일</label><input id="bt-exp-rate-date" class="bt-input" type="date" value="${today()}"></div>
+        <div class="bt-field"><label>환율 출처</label><input id="bt-exp-rate-source" class="bt-input" value="계약 적용환율" placeholder="예: 하나은행 매매기준율"></div>
         <div class="bt-field"><label>환율 안전버퍼 (%)</label><input id="bt-exp-buffer" class="bt-input" type="number" step="0.1" value="3"></div>
         <div class="bt-field"><label>단위당 국제물류비 (원)</label><input id="bt-exp-logistics" class="bt-input" type="number" value="2000"></div>
         <div class="bt-field"><label>관세·통관비율 (%)</label><input id="bt-exp-duty" class="bt-input" type="number" step="0.1" value="6.5"></div>
@@ -271,10 +266,17 @@
         <div class="bt-field"><label>Buyer Email</label><input id="bt-doc-buyer-email" class="bt-input" type="email"></div>
         <div class="bt-field"><label>통화</label><select id="bt-doc-currency" class="bt-select"><option>USD</option><option>EUR</option><option>JPY</option><option>GBP</option><option>TRY</option><option>THB</option><option>CNY</option></select></div>
         <div class="bt-field"><label>Incoterms</label><select id="bt-doc-incoterm" class="bt-select"><option>EXW</option><option>FCA</option><option>FOB</option><option>CIF</option><option>DAP</option><option>DDP</option></select></div>
+        <div class="bt-field"><label>Incoterms 지정 장소</label><input id="bt-doc-incoterm-place" class="bt-input" placeholder="Seoul, Republic of Korea"></div>
+        <div class="bt-field"><label>PO / 계약번호</label><input id="bt-doc-po" class="bt-input"></div>
+        <div class="bt-field"><label>Consignee</label><input id="bt-doc-consignee" class="bt-input" placeholder="Buyer와 같으면 비워두세요"></div>
         <div class="bt-field"><label>발행일</label><input id="bt-doc-date" class="bt-input" type="date" value="${today()}"></div>
         <div class="bt-field"><label>유효기간 (일)</label><input id="bt-doc-valid" class="bt-input" type="number" value="30"></div>
         <div class="bt-field"><label>결제조건</label><input id="bt-doc-payment" class="bt-input" value="50% T/T deposit, 50% before shipment"></div>
         <div class="bt-field"><label>리드타임</label><input id="bt-doc-lead" class="bt-input" value="Within 30 days after deposit"></div>
+        <div class="bt-field"><label>원산지</label><input id="bt-doc-origin" class="bt-input" value="Republic of Korea"></div>
+        <div class="bt-field"><label>포장 수량</label><input id="bt-doc-packages" class="bt-input" placeholder="예: 10 cartons"></div>
+        <div class="bt-field"><label>순중량</label><input id="bt-doc-net-weight" class="bt-input" placeholder="예: 120 kg"></div>
+        <div class="bt-field"><label>총중량</label><input id="bt-doc-gross-weight" class="bt-input" placeholder="예: 135 kg"></div>
       </div><div class="bt-field" style="margin-top:12px"><label>Buyer Address</label><textarea id="bt-doc-buyer-address" class="bt-textarea" rows="2"></textarea></div><div class="bt-divider"></div><div class="bt-title"><h3>품목</h3><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.addExportDocRow()">+ 품목</button></div><div id="bt-doc-rows"></div><div class="bt-fields"><div class="bt-field"><label>운임</label><input id="bt-doc-freight" class="bt-input" type="number" value="0"></div><div class="bt-field"><label>할인</label><input id="bt-doc-discount" class="bt-input" type="number" value="0"></div></div><div class="bt-field" style="margin-top:12px"><label>Bank Details</label><textarea id="bt-doc-bank" class="bt-textarea" rows="3" placeholder="Bank / Account No. / SWIFT"></textarea></div><div class="bt-field" style="margin-top:12px"><label>비고</label><textarea id="bt-doc-note" class="bt-textarea" rows="3">Prices do not include destination duties and taxes unless otherwise stated.</textarea></div><div class="bt-actions"><button class="bt-btn" onclick="MediscentTools.renderExportDoc()">미리보기</button><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.saveExportDoc()">ERP에 저장</button><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.printDocument()">PDF/인쇄</button></div></div>
       <div id="bt-doc-preview" class="bt-doc-stage"></div></div>`);
   }
@@ -283,7 +285,7 @@
     return pageShell('biz-roas', '인플루언서 ROAS 계산기', '조회수 중심의 허수 ROAS가 아니라 제품 원가와 사용권 비용을 포함한 이익 기준을 계산합니다.', `
       <div class="bt-grid"><div class="bt-card"><h3>캠페인 비용·성과</h3><div class="bt-fields">
         <div class="bt-field"><label>콘텐츠 지급액</label><input id="bt-roas-fee" class="bt-input" type="number" value="2800"></div>
-        <div class="bt-field"><label>통화 표시</label><input id="bt-roas-currency" class="bt-input" value="USD"></div>
+        <div class="bt-field"><label>기준 통화</label><select id="bt-roas-currency" class="bt-select"><option>USD</option><option>KRW</option><option>EUR</option><option>JPY</option><option>GBP</option><option>TRY</option><option>THB</option><option>CNY</option></select><small>아래 모든 금액을 이 통화로 환산해서 입력</small></div>
         <div class="bt-field"><label>제공 제품 원가</label><input id="bt-roas-gift" class="bt-input" type="number" value="100"></div>
         <div class="bt-field"><label>배송·통관비</label><input id="bt-roas-ship" class="bt-input" type="number" value="80"></div>
         <div class="bt-field"><label>별도 제작비</label><input id="bt-roas-production" class="bt-input" type="number" value="0"></div>
@@ -294,7 +296,7 @@
         <div class="bt-field"><label>추적 매출액</label><input id="bt-roas-revenue" class="bt-input" type="number" value="6000"></div>
         <div class="bt-field"><label>매출총이익률 (%)</label><input id="bt-roas-gm" class="bt-input" type="number" value="70"></div>
         <div class="bt-field"><label>LTV 배수</label><input id="bt-roas-ltv" class="bt-input" type="number" step="0.1" value="1"></div>
-      </div><div class="bt-actions"><button class="bt-btn" onclick="MediscentTools.calcRoas()">성과 계산</button><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.saveRoasScenario()">시나리오 저장</button></div></div>
+      </div><div class="bt-alert bt-alert-amber"><b>통화 혼합 금지</b><span>콘텐츠 비용, 제품 원가, 배송비, 사용권 비용, 추적 매출을 모두 선택한 기준 통화로 환산해 입력하세요.</span></div><div class="bt-actions"><button class="bt-btn" onclick="MediscentTools.calcRoas()">성과 계산</button><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.saveRoasScenario()">시나리오 저장</button></div></div>
       <div class="bt-card bt-sticky"><h3>캠페인 판정</h3><div id="bt-roas-result" class="bt-result"></div><div id="bt-roas-guide"></div></div></div>`);
   }
 
@@ -350,12 +352,10 @@
   function renderHub() {
     const host = document.getElementById('bt-hub-layout');
     if (!host) return;
-    const variant = getVariant();
-    document.getElementById('page-biz-hub')?.classList.toggle('bt-variant-b', variant === 'B');
-    document.getElementById('bt-current-variant').textContent = variant;
-    if (variant === 'A') {
-      host.innerHTML = `<div class="bt-tool-grid">${TOOLS.map((tool) => `<div class="bt-tool-card" onclick="goPage('${tool.id}')"><i>${tool.icon}</i><em>${e(tool.group)}</em><b>${e(tool.name)}</b><span>${e(tool.desc)}</span></div>`).join('')}</div>`;
-    } else {
+    const variant = 'B';
+    document.getElementById('page-biz-hub')?.classList.add('bt-variant-b');
+    document.getElementById('bt-current-variant').textContent = TOOL_VERSION;
+    {
       const flow = [
         ['1', '제품 설계', 'biz-dilution', '배합·SKU'],
         ['2', '가격 결정', 'biz-margin', '원가·MOQ·수출가'],
@@ -433,6 +433,22 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function exportDocPrefix(type) {
+    return type === 'COMMERCIAL INVOICE' ? 'CI' : type === 'PROFORMA INVOICE' ? 'PI' : 'QT';
+  }
+
+  function nextExportDocNo() {
+    const type = v('bt-doc-type') || 'QUOTATION';
+    const date = (v('bt-doc-date') || today()).replace(/-/g, '');
+    const prefix = `${exportDocPrefix(type)}-${date}-`;
+    const docs = window.db?.txn?.T_EXPORT_DOC || [];
+    const max = docs.reduce((highest, doc) => {
+      const match = String(doc.id || '').match(new RegExp(`^${prefix}(\\d+)$`));
+      return match ? Math.max(highest, Number(match[1])) : highest;
+    }, 0);
+    return `${prefix}${String(max + 1).padStart(3, '0')}`;
+  }
+
   function initializeRows() {
     if (!document.querySelector('#bt-composition-rows .bt-row')) {
       addCompositionRow({ name: '향료 원액', percent: 20 });
@@ -446,7 +462,15 @@
     }
     if (!document.querySelector('#bt-doc-rows .bt-row')) addExportDocRow();
     if (!document.querySelector('#bt-alg-rows .bt-row')) addAllergenRow();
-    document.getElementById('bt-doc-no').value ||= `QT-${today().replace(/-/g, '')}-001`;
+    const docNo = document.getElementById('bt-doc-no');
+    if (docNo && !docNo.value) docNo.value = nextExportDocNo();
+    ['bt-doc-type', 'bt-doc-date'].forEach((id) => {
+      const input = document.getElementById(id);
+      if (input && !input.dataset.numberListener) {
+        input.dataset.numberListener = '1';
+        input.addEventListener('change', () => { if (!docNo?.dataset.savedId) docNo.value = nextExportDocNo(); renderExportDoc(); });
+      }
+    });
   }
 
   function wrapNavigation() {
@@ -636,7 +660,11 @@
   function applySavedRate() {
     const currency = v('bt-exp-currency');
     const saved = window.db?.tools?.exchangeRates?.[currency];
-    if (saved?.rate) document.getElementById('bt-exp-rate').value = saved.rate;
+    if (saved?.rate) {
+      document.getElementById('bt-exp-rate').value = saved.rate;
+      if (document.getElementById('bt-exp-rate-date')) document.getElementById('bt-exp-rate-date').value = saved.effectiveDate || today();
+      if (document.getElementById('bt-exp-rate-source')) document.getElementById('bt-exp-rate-source').value = saved.source || '계약 적용환율';
+    }
     calcExportPrice();
   }
 
@@ -664,7 +692,10 @@
   function saveExchangeRate() {
     window.db.tools = window.db.tools || {};
     window.db.tools.exchangeRates = window.db.tools.exchangeRates || {};
-    window.db.tools.exchangeRates[v('bt-exp-currency')] = { rate: n('bt-exp-rate'), effectiveDate: today(), savedAt: new Date().toISOString() };
+    window.db.tools.exchangeRates[v('bt-exp-currency')] = {
+      rate: n('bt-exp-rate'), effectiveDate: v('bt-exp-rate-date') || today(),
+      source: v('bt-exp-rate-source') || '계약 적용환율', savedAt: new Date().toISOString()
+    };
     const product = productById(v('bt-exp-product'));
     if (product) product.exportTerms = { ...(product.exportTerms || {}), supplyRate: n('bt-exp-supply') };
     persist(`수출 환율 저장: ${v('bt-exp-currency')} ${n('bt-exp-rate')}`);
@@ -704,7 +735,7 @@
       const product = productById(row.querySelector('.bt-doc-product').value);
       const qty = M.finite(row.querySelector('.bt-doc-qty').value);
       const price = M.finite(row.querySelector('.bt-doc-price').value);
-      return product && qty > 0 ? { productId: product.productId, sku: product.code || '', name: product.name || '', spec: product.spec || '', hsCode: product.exportInfo?.hsCode || product.hsCode || '', qty, price, amount: qty * price } : null;
+      return product && qty > 0 ? { productId: product.productId, sku: product.sku || product.code || '', name: product.name || '', spec: product.spec || '', hsCode: product.exportInfo?.hsCode || product.hsCode || '', origin: product.exportInfo?.origin || v('bt-doc-origin') || 'Republic of Korea', qty, price, amount: qty * price } : null;
     }).filter(Boolean);
     const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
     const freight = n('bt-doc-freight'); const discount = n('bt-doc-discount');
@@ -712,7 +743,9 @@
       id: v('bt-doc-no'), type: v('bt-doc-type'), date: v('bt-doc-date'), validDays: n('bt-doc-valid'),
       customerId: customer?.customerId || null, customerName: v('bt-doc-buyer-name') || customer?.name || '', customerCountry: v('bt-doc-country'),
       customerEmail: v('bt-doc-buyer-email') || customer?.email || '', customerAddress: v('bt-doc-buyer-address') || customer?.addr || customer?.address || '', currency: v('bt-doc-currency'),
-      incoterm: v('bt-doc-incoterm'), payment: v('bt-doc-payment'), leadTime: v('bt-doc-lead'), bank: v('bt-doc-bank'), note: v('bt-doc-note'),
+      incoterm: v('bt-doc-incoterm'), incotermPlace: v('bt-doc-incoterm-place'), poNo: v('bt-doc-po'), consignee: v('bt-doc-consignee'),
+      origin: v('bt-doc-origin'), packages: v('bt-doc-packages'), netWeight: v('bt-doc-net-weight'), grossWeight: v('bt-doc-gross-weight'),
+      payment: v('bt-doc-payment'), leadTime: v('bt-doc-lead'), bank: v('bt-doc-bank'), note: v('bt-doc-note'),
       items, subtotal: M.round(subtotal, 2), freight, discount, total: M.round(subtotal + freight - discount, 2), updatedAt: new Date().toISOString()
     };
   }
@@ -729,16 +762,21 @@
   function renderExportDoc() {
     const host = document.getElementById('bt-doc-preview'); if (!host) return;
     const doc = exportDocData(); const company = companyData();
-    const rows = doc.items.map((item, index) => `<tr><td>${index + 1}</td><td><b>${e(item.name)}</b><br><span style="color:#64748b">${e(item.sku)}</span></td><td>${e(item.spec)}${item.hsCode ? `<br><span style="color:#64748b">HS ${e(item.hsCode)}</span>` : ''}</td><td style="text-align:right">${item.qty.toLocaleString()}</td><td style="text-align:right">${money(item.price)}</td><td style="text-align:right"><b>${money(item.amount)}</b></td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:#94a3b8">Add products to this document.</td></tr>';
-    host.innerHTML = `<div class="bt-doc-page"><div style="display:flex;justify-content:space-between;gap:24px;align-items:flex-start"><div><b style="font-size:18px;color:#0f766e">${e(company.name)}</b><div style="color:#64748b;margin-top:6px;line-height:1.55">${e(company.address)}<br>${e(company.tel)} ${company.email ? `· ${e(company.email)}` : ''}</div></div><div style="text-align:right"><b>No. ${e(doc.id || '-')}</b><br>Date ${e(doc.date)}<br>Valid ${e(doc.validDays)} days</div></div><h1>${e(doc.type)}</h1><table style="margin-bottom:14px"><tbody><tr><th style="width:16%">BILL TO</th><td style="width:34%"><b>${e(doc.customerName || 'Buyer')}</b><br>${e(doc.customerCountry)}<br>${e(doc.customerAddress)}<br>${e(doc.customerEmail)}</td><th style="width:16%">TERMS</th><td>${e(doc.incoterm)}<br>${e(doc.payment)}<br>${e(doc.leadTime)}</td></tr></tbody></table><table><thead><tr><th>No.</th><th>Product</th><th>Specification</th><th>Qty</th><th>Unit Price</th><th>Amount (${e(doc.currency)})</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="5" style="text-align:right">Subtotal</td><td style="text-align:right">${money(doc.subtotal)}</td></tr><tr><td colspan="5" style="text-align:right">Freight</td><td style="text-align:right">${money(doc.freight)}</td></tr><tr><td colspan="5" style="text-align:right">Discount</td><td style="text-align:right">-${money(doc.discount)}</td></tr><tr><td colspan="5" style="text-align:right;font-size:13px"><b>TOTAL</b></td><td style="text-align:right;font-size:13px;color:#0f766e"><b>${e(doc.currency)} ${money(doc.total)}</b></td></tr></tfoot></table>${doc.bank ? `<div style="margin-top:18px;line-height:1.65"><b>Bank Details</b><br>${e(doc.bank).replace(/\n/g, '<br>')}</div>` : ''}<div style="margin-top:18px;line-height:1.65"><b>Notes</b><br>${e(doc.note).replace(/\n/g, '<br>')}</div><div style="display:flex;justify-content:space-between;margin-top:42px;padding-top:12px;border-top:1px solid #cbd5e1"><span>Authorized by ${e(company.name)}</span><span>Signature ____________________</span></div></div>`;
+    const rows = doc.items.map((item, index) => `<tr><td>${index + 1}</td><td><b>${e(item.name)}</b><br><span style="color:#64748b">${e(item.sku)}</span></td><td>${e(item.spec)}${item.hsCode ? `<br><span style="color:#64748b">HS ${e(item.hsCode)}</span>` : ''}</td><td>${e(item.origin || doc.origin)}</td><td style="text-align:right">${item.qty.toLocaleString()}</td><td style="text-align:right">${money(item.price)}</td><td style="text-align:right"><b>${money(item.amount)}</b></td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#94a3b8">Add products to this document.</td></tr>';
+    const tradeTerm = [doc.incoterm, doc.incotermPlace, 'Incoterms® 2020'].filter(Boolean).join(' · ');
+    const shipment = [doc.packages && `Packages: ${doc.packages}`, doc.netWeight && `Net: ${doc.netWeight}`, doc.grossWeight && `Gross: ${doc.grossWeight}`].filter(Boolean).join('<br>');
+    host.innerHTML = `<div class="bt-doc-page"><div style="display:flex;justify-content:space-between;gap:24px;align-items:flex-start"><div><b style="font-size:18px;color:#0f766e">${e(company.name)}</b><div style="color:#64748b;margin-top:6px;line-height:1.55">${e(company.address)}<br>${e(company.tel)} ${company.email ? `· ${e(company.email)}` : ''}<br>${company.bizNo ? `Business No. ${e(company.bizNo)}` : ''}</div></div><div style="text-align:right"><b>No. ${e(doc.id || '-')}</b><br>Date ${e(doc.date)}<br>Valid ${e(doc.validDays)} days${doc.poNo ? `<br>PO / Ref. ${e(doc.poNo)}` : ''}</div></div><h1>${e(doc.type)}</h1><table style="margin-bottom:14px"><tbody><tr><th style="width:16%">BILL TO</th><td style="width:34%"><b>${e(doc.customerName || 'Buyer')}</b><br>${e(doc.customerCountry)}<br>${e(doc.customerAddress)}<br>${e(doc.customerEmail)}</td><th style="width:16%">TERMS</th><td>${e(tradeTerm)}<br>${e(doc.payment)}<br>${e(doc.leadTime)}</td></tr>${doc.consignee || shipment ? `<tr><th>CONSIGNEE</th><td>${e(doc.consignee || doc.customerName || '-')}</td><th>SHIPMENT</th><td>${shipment || '-'}</td></tr>` : ''}</tbody></table><table><thead><tr><th>No.</th><th>Product</th><th>Specification</th><th>Origin</th><th>Qty</th><th>Unit Price</th><th>Amount (${e(doc.currency)})</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="6" style="text-align:right">Subtotal</td><td style="text-align:right">${money(doc.subtotal)}</td></tr><tr><td colspan="6" style="text-align:right">Freight</td><td style="text-align:right">${money(doc.freight)}</td></tr><tr><td colspan="6" style="text-align:right">Discount</td><td style="text-align:right">-${money(doc.discount)}</td></tr><tr><td colspan="6" style="text-align:right;font-size:13px"><b>TOTAL</b></td><td style="text-align:right;font-size:13px;color:#0f766e"><b>${e(doc.currency)} ${money(doc.total)}</b></td></tr></tfoot></table>${doc.bank ? `<div style="margin-top:18px;line-height:1.65"><b>Bank Details</b><br>${e(doc.bank).replace(/\n/g, '<br>')}</div>` : ''}<div style="margin-top:18px;line-height:1.65"><b>Notes</b><br>${e(doc.note).replace(/\n/g, '<br>')}</div><div style="display:flex;justify-content:space-between;margin-top:42px;padding-top:12px;border-top:1px solid #cbd5e1"><span>Authorized by ${e(company.name)}</span><span>Signature ____________________</span></div></div>`;
   }
 
   function saveExportDoc() {
     const doc = exportDocData();
-    if (!doc.id || !doc.items.length) { notify('문서번호와 품목을 확인하세요.', 'error'); return; }
+    if (!doc.id || !doc.items.length || !doc.customerName || !doc.currency || !doc.incotermPlace) { notify('문서번호·Buyer·Incoterms 장소·품목을 확인하세요.', 'error'); return; }
     window.db.txn = window.db.txn || {}; window.db.txn.T_EXPORT_DOC = window.db.txn.T_EXPORT_DOC || [];
     const index = window.db.txn.T_EXPORT_DOC.findIndex((item) => item.id === doc.id);
+    const noInput = document.getElementById('bt-doc-no');
+    if (index >= 0 && noInput?.dataset.savedId !== doc.id) { notify('이미 존재하는 문서번호입니다. 새 번호를 사용하세요.', 'error'); return; }
     if (index >= 0) window.db.txn.T_EXPORT_DOC[index] = doc; else window.db.txn.T_EXPORT_DOC.push(doc);
+    if (noInput) noInput.dataset.savedId = doc.id;
     persist(`수출문서 저장: ${doc.type} ${doc.id}`); markComplete('biz-export-doc', { type: doc.type, items: doc.items.length });
     notify('수출 문서를 ERP에 저장했습니다.');
   }
@@ -1013,7 +1051,7 @@
     renderExportDoc();
     renderEnglishProduct();
     const version = document.querySelector('#brand-logo + div span');
-    if (version) version.textContent = 'v4.1 BETA';
+    if (version) version.textContent = 'v4.2 · 1인 운영';
   }
 
   if (document.readyState === 'loading') window.addEventListener('load', () => setTimeout(boot, 500));
