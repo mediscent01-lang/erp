@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var VERSION = '4.2';
+  var VERSION = '4.3';
   var SNAPSHOT_KEY = 'mediscent_last_valid_db_v42';
   var LOT_KEYS = { RAW: 'RAW_LOT', PACK: 'PACK_LOT', BULK: 'BULK_LOT', FGT: 'FGT_LOT' };
 
@@ -31,6 +31,7 @@
     var errors = [], seen = {};
     allLots().forEach(function (row) {
       var lot = row.lot;
+      if(!Number.isFinite(Number(lot.remaining)))errors.push('유효하지 않은 재고: '+(lot.lotNo||'-'));
       if (n(lot.remaining) < 0) errors.push('음수 재고: ' + (lot.lotNo || '-') + ' (' + lot.remaining + ')');
       if (String(lot.status || '').toUpperCase() === 'VOID') return;
       if (n(lot.remaining) > 0 && n(lot.unitCost) <= 0 && /실사 조정|실사 증가/.test(String(lot.note || ''))) {
@@ -116,10 +117,14 @@
   }
   function installVoidInsteadOfDelete() {
     window.deleteLot = function (type, idOrLotNo) {
-      var key = LOT_KEYS[String(type || '').toUpperCase()];
+      if(!ERPRuntime.requireReady())return false;
+      var name=String(type||'').toUpperCase();
+      var key=LOT_KEYS[name]||(Object.values(LOT_KEYS).includes(name)?name:null);
       var rows = key && window.db && window.db.stock && window.db.stock[key];
       if (!rows) return;
-      var lot = rows.find(function (x) { return String(x.id) === String(idOrLotNo) || String(x.lotNo) === String(idOrLotNo); });
+      var matches=rows.filter(function(x){return String(x.id)===String(idOrLotNo)||String(x.lotNo)===String(idOrLotNo);});
+      if(matches.length>1){toast('중복 ID 또는 여러 위치의 LOT입니다. 위치·ID를 확인하세요.','error');return false;}
+      var lot=matches[0];
       if (!lot) { toast('LOT를 찾을 수 없습니다.', 'error'); return; }
       if (String(lot.status || '').toUpperCase() === 'VOID') { toast('이미 취소 처리된 LOT입니다.', 'info'); return; }
       modalReason('LOT를 삭제하지 않고 취소합니다', (lot.lotNo || '-') + ' · 잔량 ' + n(lot.remaining).toLocaleString('ko-KR'), function (reason) {
@@ -169,7 +174,7 @@
       });
     });
     var version = document.querySelector('#brand-logo + div span');
-    if (version) version.textContent = 'v4.2 · 1인 운영';
+    if (version) version.textContent = 'v4.3 · 운영 안정화';
   }
   function disableUnconfiguredOcr() {
     var ocrTab = document.getElementById('su-tab-image');
@@ -192,6 +197,9 @@
     });
   }
   function boot() {
+    if(!window.ERPRuntime.state.ready)return;
+    var issues=ERPCore.validate(window.db).filter(x=>x.kind==='DUPLICATE_ID');
+    if(issues.length&&!document.getElementById('v43-id-warning')){var banner=document.createElement('div');banner.id='v43-id-warning';banner.className='card p-4';banner.setAttribute('role','alert');banner.textContent='중복 LOT ID '+issues.length+'행 감지 · 해당 LOT는 데이터 점검 후 처리하세요. 자동 재번호는 하지 않습니다.';document.getElementById('page-dashboard').prepend(banner);}
     flagDataIssues();
     protectSave();
     installVoidInsteadOfDelete();
@@ -200,6 +208,7 @@
     disableUnconfiguredOcr();
     window.MEDISCENT_ERP_VERSION = VERSION;
   }
+  window.ERPRuntime.loaded.then(function(){setTimeout(boot,100);});
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(boot, 900); });
   else setTimeout(boot, 900);
   window.addEventListener('load', function () { setTimeout(boot, 1800); });

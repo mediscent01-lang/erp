@@ -41,6 +41,9 @@
     const loss = finite(lossPercent);
     if (amount <= 0) throw new Error('최종 제조량은 0보다 커야 합니다.');
     if (loss < 0 || loss >= 100) throw new Error('손실률은 0% 이상 100% 미만이어야 합니다.');
+    if (!components.length || components.some(item => !Number.isFinite(Number(item.percent)) || Number(item.percent) < 0 || Number(item.percent) > 100)) {
+      throw new Error('각 성분의 배합비는 0~100%의 유효한 숫자여야 합니다.');
+    }
     const totalPercent = components.reduce((sum, item) => sum + finite(item.percent), 0);
     if (Math.abs(totalPercent - 100) > 0.001) throw new Error(`배합비 합계가 ${round(totalPercent, 3)}%입니다. 100%로 맞춰주세요.`);
     const grossAmount = amount / (1 - loss / 100);
@@ -59,7 +62,7 @@
   function costMargin(input) {
     const retailVatIncluded = Math.max(0, finite(input.retailPrice));
     const discountRate = clamp(input.discountRate, 0, 100);
-    const wholesaleRate = clamp(input.wholesaleRate || 100, 0, 1000);
+    const wholesaleRate = clamp(input.wholesaleRate == null ? 100 : input.wholesaleRate, 0, 1000);
     const platformFeeRate = clamp(input.platformFeeRate, 0, 100);
     const paymentFeeRate = clamp(input.paymentFeeRate, 0, 100);
     const vatRate = clamp(input.vatRate == null ? 10 : input.vatRate, 0, 100);
@@ -79,8 +82,8 @@
     const retainedRevenueRate = input.feeOnVatExcluded
       ? (1 / vatDivisor) * (1 - feeRate)
       : (1 / vatDivisor) - feeRate;
-    const breakEvenRetail = (cogs + fulfillment + otherVariable) /
-      Math.max(0.000001, (wholesaleRate / 100) * retainedRevenueRate);
+    const denominator = (wholesaleRate / 100) * retainedRevenueRate;
+    const breakEvenRetail = denominator > 0 ? (cogs + fulfillment + otherVariable) / denominator : Infinity;
     return {
       discountedRetail: round(discountedRetail, 2),
       channelRevenue: round(channelRevenue, 2),
@@ -90,7 +93,7 @@
       contribution: round(contribution, 2),
       marginRate: round(marginRate, 2),
       markupRate: round(markupRate, 2),
-      breakEvenRetail: round(breakEvenRetail, 2)
+      breakEvenRetail: Number.isFinite(breakEvenRetail) ? round(breakEvenRetail, 2) : Infinity
     };
   }
 
@@ -197,6 +200,26 @@
     return round(ingredient * allergen / 100, 8);
   }
 
+  function perfumeBatch(input) {
+    const unit = input.unit || 'g';
+    const basis = input.basis || 'ww';
+    if (!['g','kg','ml'].includes(unit) || !['ww','vv'].includes(basis)) throw new Error('계산 단위와 농도 기준을 확인하세요.');
+    const density = Number(input.finishedDensity);
+    const requireDensity = value => {
+      const d = Number(value);
+      if (!Number.isFinite(d) || d <= 0) throw new Error('해당 원료 또는 완성 벌크의 실측 밀도(g/mL)를 입력하세요.');
+      return d;
+    };
+    if (basis === 'vv') {
+      if (unit !== 'ml') throw new Error('부피 기준(v/v)은 mL로 입력하세요.');
+      const result = dilution(input);
+      return {...result, unit:'ml', basis, stockWeight:round(result.stockAmount * requireDensity(input.stockDensity)), diluentWeight:round(result.diluentAmount * requireDensity(input.diluentDensity))};
+    }
+    const finalWeight = Number(input.finalAmount) * (unit === 'kg' ? 1000 : unit === 'ml' ? requireDensity(density) : 1);
+    const result = dilution({...input, finalAmount:finalWeight});
+    return {...result, unit:'g', basis, stockWeight:result.stockAmount, diluentWeight:result.diluentAmount};
+  }
+
   function allergenStatus({ concentration, productType = 'leave-on' }) {
     const threshold = productType === 'rinse-off' ? 0.01 : 0.001;
     return { threshold, mustLabel: finite(concentration) > threshold };
@@ -237,6 +260,7 @@
     round,
     clamp,
     dilution,
+    perfumeBatch,
     batchComposition,
     costMargin,
     moqScenario,

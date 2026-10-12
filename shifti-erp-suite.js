@@ -132,19 +132,9 @@
     };
   })();
 
-  function kstToday() {
-    var d = new Date(Date.now() + (new Date().getTimezoneOffset() * 60000) + 9 * 3600000);
-    return d.toISOString().slice(0, 10);
-  }
-  function kstNow() {
-    var d = new Date(Date.now() + (new Date().getTimezoneOffset() * 60000) + 9 * 3600000);
-    return d.toISOString().slice(0, 19).replace('T', ' ');
-  }
-  function addDays(iso, days) {
-    var d = new Date(String(iso || kstToday()) + 'T00:00:00');
-    d.setDate(d.getDate() + n(days));
-    return d.toISOString().slice(0, 10);
-  }
+  function kstToday() { return ERPCore.kstDate(); }
+  function kstNow() { return new Date(Date.now()+9*3600000).toISOString().slice(0,19).replace('T',' '); }
+  function addDays(iso, days) { return ERPCore.addDays(iso || kstToday(), Number(days)); }
   function daysBetween(a, b) {
     return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
   }
@@ -207,7 +197,7 @@
   function stampLast(arr) {
     if (!Array.isArray(arr) || !arr.length) return;
     var x = arr[arr.length - 1];
-    if (x && typeof x === 'object' && !x.by) { x.by = operator() || '미지정'; x.byAt = new Date().toISOString(); }
+    if (x && typeof x === 'object' && !x.by) { x.by = operator() || '미지정'; x.userId=window.ERPRuntime.state.user.id; x.byAt = new Date().toISOString(); }
   }
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -218,17 +208,15 @@
    *  만료 LOT 이 가장 오래된 LOT 이므로 선입선출에서 1순위로 들어갑니다.
    *  (출고 4606줄에는 status 검사가 있는데 투입 단계에만 빠져 있었습니다)
    * ═══════════════════════════════════════════════════════════════════ */
-  var HARD = ['FAIL', 'EXPIRED', 'REJECT', 'NG', '부적합', '폐기', '반품'];
+  var HARD = ['VOID', 'FAIL', 'EXPIRED', 'REJECT', 'NG', '부적합', '폐기', '반품'];
   var SOFT = ['HOLD', 'QC', '보류', '검사중'];
   var STRICT_KEY = 'shifti_strict_lot';
-  function strict() { return localStorage.getItem(STRICT_KEY) !== 'off'; }
+  function strict() { return true; }
   window.shiftiToggleStrict = function () {
-    localStorage.setItem(STRICT_KEY, strict() ? 'off' : 'on');
-    paintStrict();
-    toast(strict() ? 'GMP 엄격모드 — 미판정(HOLD) LOT 투입을 차단합니다'
-      : 'GMP 완화모드 — 미판정 LOT 도 투입됩니다', strict() ? 'success' : 'error');
-    safe(function () { window.renderAll(); });
+    localStorage.removeItem(STRICT_KEY);
+    paintStrict();toast('운영환경에서는 미승인 LOT 사용을 허용하지 않습니다. QC에서 판정하세요.','info');
   };
+
   function paintStrict() {
     var b = el('sf-strict'); if (!b) return;
     b.textContent = strict() ? '🔒 GMP' : '🔓 완화';
@@ -236,15 +224,8 @@
     b.style.color = strict() ? '#0f766e' : '#92400e';
   }
 
-  function blockReason(lot) {
-    if (!lot) return '없음';
-    var s = String(lot.status || 'OK').toUpperCase();
-    if (HARD.indexOf(s) >= 0) return s === 'EXPIRED' ? '유통기한 만료' : '검사 부적합(' + s + ')';
-    if (lot.expDate && lot.expDate < kstToday()) return '유통기한 경과 ' + lot.expDate;
-    if (lot.matureUntil && lot.matureUntil > kstToday()) return '숙성 미완료 ~' + lot.matureUntil;
-    if (strict() && SOFT.indexOf(s) >= 0) return '검사 미판정(' + s + ')';
-    return null;
-  }
+  function blockReason(lot) { return ERPCore.blockReason(lot,kstToday()); }
+
   function usable(lot) { return !blockReason(lot); }
   function matchLot(l, type, itemId) {
     return type === 'RAW' ? String(l.rawId) === String(itemId)
@@ -362,13 +343,15 @@
   function guard(fnName, txnPath, label, hide) {
     wrap(fnName, function (orig) {
       return function () {
+        if (!window.ERPRuntime.requireReady()) return;
         if (!operator()) { askOperator(); if (!operator()) { toast('작업자 이름을 먼저 입력해 주세요', 'error'); return; } }
-        var snap = snapStock(), before = pathArr(txnPath).length;
+        var full = JSON.stringify(db()), before = pathArr(txnPath).length;
         var hidden = hide ? hideBlocked() : [];
         var out;
         try { out = orig.apply(this, arguments); }
+        catch(e){ window.db=JSON.parse(full);PENDING_SAVE=false;toast(label+' 중단: '+e.message,'error');return false; }
         finally { if (hide) unhide(hidden); }
-        if (pathArr(txnPath).length <= before) { restoreStock(snap); LOG(label + ' 중단 → 재고 원복'); }
+        if (pathArr(txnPath).length <= before) { window.db=JSON.parse(full);PENDING_SAVE=false;LOG(label + ' 중단 → 전체 원복'); }
         else stampLast(pathArr(txnPath));
         if (PENDING_SAVE) { PENDING_SAVE = false; window.saveDB(); }   // 감춘 값이 저장되지 않도록 이후 재저장
         return out;
@@ -385,24 +368,12 @@
   guard('saveProdPlan', 'txn.T_PROD_PLAN', '생산계획', false);
   guard('saveSO', 'txn.T_SO', '수주', false);
 
-  /* 숙성 미완료 · 부적합 벌크 충진 방어 */
-  wrap('createBatch2', function (orig) {
-    return function () {
-      var id = String((el('batch-bulk-lot2') || {}).value || '');
-      var b = lots('BULK').find(function (l) { return String(l.id) === id; });
-      if (b) {
-        var s = String(b.status || 'OK').toUpperCase();
-        if (HARD.indexOf(s) >= 0) { toast('충진 불가 — ' + b.lotNo + ' : 검사 부적합', 'error'); return; }
-        if (b.matureUntil && b.matureUntil > kstToday()) {
-          var left = daysBetween(kstToday(), b.matureUntil);
-          if (!confirm('숙성이 끝나지 않은 벌크입니다.\n\nLOT ' + b.lotNo + '\n숙성 완료 ' + b.matureUntil + ' (' + left + '일 남음)\n\n그래도 충진하시겠습니까?\n강행 사실이 이력에 기록됩니다.')) return;
-          HIDE_EXEMPT[String(b.id)] = 1;      // 승인했으므로 이 LOT 만 감추지 않는다
-          safe(function () { window.logEvent('⚠ 숙성 미완료 충진 강행: ' + b.lotNo + ' (완료예정 ' + b.matureUntil + ')'); });
-        }
-      }
-      return orig.apply(this, arguments);
-    };
-  });
+  wrap('createBatch2', function(orig){return function(){
+    const id=String((el('batch-bulk-lot2')||{}).value||'');
+    let lot;try{lot=ERPCore.uniqueLot(db(),'BULK_LOT',id);}catch(e){toast(e.message,'error');return false;}
+    const reason=blockReason(lot);if(reason){toast('충진 불가: '+reason,'error');return false;}
+    return orig.apply(this,arguments);
+  };});
 
   /* 만료 LOT 합격 처리 방어 */
   wrap('saveQc2', function (orig) {
@@ -428,7 +399,7 @@
    *  개선: 로컬 즉시 → 0.9초 모아 직렬 전송 → 충돌 감지 → 지수 백오프 재시도
    * ═══════════════════════════════════════════════════════════════════ */
   var SK = window.STORAGE_KEY || 'shifti_erp_v2';
-  var S = { dirty: false, sending: false, fails: 0, timer: null, base: null, lastPush: null };
+  var S = { dirty: false, sending: false, fails: 0, timer: null, base: null, lastPush: null, waiters: [] };
 
   function setStatus(kind) {
     var e = el('cloud-status'); if (!e) return;
@@ -452,7 +423,7 @@
       return false;
     }
   }
-  function H() { return { 'Content-Type': 'application/json', apikey: window.SB_KEY, Authorization: 'Bearer ' + window.SB_KEY }; }
+  function H() { return { 'Content-Type': 'application/json', apikey: window.SB_KEY }; }
 
   async function remoteStamp() {
     try {
@@ -476,60 +447,68 @@
       '<div style="display:flex;flex-direction:column;gap:8px">' +
       '<button id="sf-cb" class="btn btn-secondary">1. 내 작업을 백업파일로 내려받기</button>' +
       '<button id="sf-cr" class="btn btn-primary">2. 클라우드 최신본 불러오기 (내 변경 취소)</button>' +
-      '<button id="sf-cf" class="btn btn-danger">3. 내 내용으로 덮어쓰기</button></div></div>';
+      '<button id="sf-cf" class="btn btn-secondary" disabled>전체 덮어쓰기는 금지됩니다</button></div></div>';
     document.body.appendChild(d);
     el('sf-cb').onclick = function () { safe(function () { window.exportJSON(); }); };
     el('sf-cr').onclick = function () { S.dirty = false; d.remove(); location.reload(); };
-    el('sf-cf').onclick = function () { d.remove(); S.base = remote; S.dirty = true; schedule(60); toast('덮어쓰기로 진행합니다', 'info'); };
+    // 조건부 저장 충돌은 백업 후 최신본을 불러와 재입력합니다.
     setStatus('conflict');
   }
 
   function schedule(ms) { clearTimeout(S.timer); S.timer = setTimeout(flush, ms == null ? 900 : ms); }
 
   async function flush() {
-    if (S.sending || !S.dirty || !window.SB_URL || !window.SB_KEY) return;
-    if (navigator.onLine === false) { setStatus('offline'); return; }
-    S.sending = true; setStatus('sending');
-    var stamp = db().meta && db().meta.updatedAt;
-    var body = JSON.stringify({ id: window.SB_ROW || 'shifti_erp_main', data: db(), updated_at: stamp });
-    S.dirty = false;
+    if(S.sending||!S.dirty||!window.ERPRuntime.state.ready)return;
+    if(navigator.onLine===false){setStatus('offline');return;}
+    S.sending=true;setStatus('sending');
+    const cohort=S.waiters.splice(0);
+    const stamp=new Date(Math.max(Date.now(),new Date(S.base||0).getTime()+1)).toISOString();
+    const payload=JSON.parse(JSON.stringify(db()));
+    payload.meta.updatedAt=stamp;
+    S.dirty=false;
+    let conflict=false;
     try {
-      var rs = await remoteStamp();
-      if (rs && S.base && rs > S.base && rs !== S.lastPush) { S.dirty = true; S.sending = false; conflictModal(rs); return; }
-      var r = await fetch(window.SB_URL + '/rest/v1/erp_data', {
-        method: 'POST',
-        headers: Object.assign(H(), { Prefer: 'resolution=merge-duplicates,return=minimal' }),
-        body: body
+      const session=await window.ERPRuntime.session();
+      if(!session)throw new Error('로그인 세션이 만료되었습니다.');
+      if(!S.base)throw new Error('서버 기준 버전이 없습니다. 새로고침하세요.');
+      const r=await fetch(window.SB_URL+'/rest/v1/erp_data?id=eq.'+encodeURIComponent(window.SB_ROW||'shifti_erp_main')+'&updated_at=eq.'+encodeURIComponent(S.base),{
+        method:'PATCH',headers:Object.assign(H(),{Authorization:'Bearer '+session.access_token,Prefer:'return=representation'}),
+        body:JSON.stringify({data:payload,updated_at:stamp})
       });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      S.base = stamp; S.lastPush = stamp; S.fails = 0;
-      setStatus('saved'); rollingBackup();
-    } catch (e) {
-      S.dirty = true; S.fails++; setStatus('retry');
-      setTimeout(flush, Math.min(30000, 1500 * S.fails));
-    } finally {
-      S.sending = false;
-      if (S.dirty && S.fails === 0) schedule();
+      if(!r.ok)throw new Error('서버 저장 실패 HTTP '+r.status);
+      const rows=await r.json();
+      if(rows.length!==1){conflict=true;S.dirty=true;conflictModal('서버 버전 변경 또는 접근권한 변경');cohort.forEach(w=>w({ok:false,conflict:true}));return;}
+      S.base=rows[0].updated_at;S.lastPush=S.base;S.fails=0;
+      window.ERPRuntime.state.base=S.base;
+      if(!S.dirty){db().meta.updatedAt=S.base;persistLocal();}
+      setStatus(S.dirty?'pending':'saved');rollingBackup();cohort.forEach(w=>w({ok:true,updatedAt:S.base}));
+    }catch(e){
+      S.dirty=true;S.fails++;setStatus('retry');cohort.forEach(w=>w({ok:false,error:e.message}));
+      S.timer=setTimeout(flush,Math.min(30000,1500*S.fails));
+    }finally{
+      S.sending=false;
+      if(S.dirty&&S.fails===0&&!conflict)schedule();
     }
   }
 
   var rendering = false;
   window.saveDB = function () {
-    var d = db(); if (!d) return Promise.resolve();
+    var d = db(); if (!d || !window.ERPRuntime.requireReady()) return Promise.resolve({ok:false,error:'NOT_READY'});
     if (HIDING) { PENDING_SAVE = true; return Promise.resolve(); }   // 임시로 감춘 잔량이 저장되지 않도록 보류
     d.meta = d.meta || {};
     d.meta.updatedAt = new Date().toISOString();
-    d.meta.updatedBy = operator() || '미지정';
+    d.meta.updatedBy = window.ERPRuntime.state.user.id;
+    d.meta.operatorName = operator() || '미지정';
     d.meta.suite = VERSION;
     normalize(d);
     clampNegative();
-    persistLocal();
+    if(!persistLocal())return Promise.resolve({ok:false,error:'LOCAL_QUOTA'});
     if (!rendering) { rendering = true; safe(function () { window.renderAll(); }, 'renderAll'); rendering = false; }
     S.dirty = true; setStatus('pending'); schedule();
     safe(paintAlerts);
-    return Promise.resolve();
+    return new Promise(resolve=>S.waiters.push(resolve));
   };
-  window.shiftiFlushNow = function () { S.dirty = true; schedule(0); toast('클라우드로 즉시 저장합니다', 'info'); };
+  window.shiftiFlushNow = function () { if(!window.ERPRuntime.requireReady())return; S.dirty = true; schedule(0); toast('클라우드로 즉시 저장합니다', 'info'); };
 
   window.addEventListener('beforeunload', function (ev) {
     if (S.dirty || S.sending) { ev.preventDefault(); ev.returnValue = ''; return ''; }
@@ -548,19 +527,16 @@
    *  [수정] importJSON 이 검증 없이 db=i 로 통째 교체합니다.
    * ═══════════════════════════════════════════════════════════════════ */
   function lifecycle() {
-    var d = db(); if (!d || !d.stock) return 0;
+    var d = db(); if (!window.ERPRuntime.state.ready || !d || !d.stock) return 0;
     var t = kstToday(), changed = 0;
     ['RAW', 'PACK', 'BULK', 'FGT'].forEach(function (k) {
       lots(k).forEach(function (l) {
         var s = String(l.status || 'OK').toUpperCase();
-        if (l.expDate && l.expDate < t && s !== 'FAIL' && s !== 'EXPIRED') {
+        if (l.expDate && l.expDate < t && s !== 'FAIL' && s !== 'EXPIRED' && s !== 'VOID') {
           l.status = 'EXPIRED'; changed++;
           safe(function () { window.logEvent('자동 만료 처리: ' + l.lotNo + ' (' + l.expDate + ')'); });
         }
-        if (k === 'BULK' && l.matureUntil && l.matureUntil <= t && s === 'HOLD') {
-          l.status = 'OK'; changed++;
-          safe(function () { window.logEvent('숙성 완료: ' + l.lotNo); });
-        }
+        // 기간 경과는 숙성완료일로 계산하고 QC HOLD 판정은 유지합니다.
       });
     });
     changed += clampNegative();
@@ -588,28 +564,15 @@
   wrap('loadDB', function (orig) {
     return async function () {
       var r = await orig.apply(this, arguments);
-      S.base = (db() && db().meta && db().meta.updatedAt) || null;
+      S.base = window.ERPRuntime.state.base;
       safe(lifecycle, 'lifecycle');
       return r;
     };
   });
 
   window.resetDB = function () {
-    var w1 = prompt('⚠ 전사 데이터를 클라우드까지 모두 삭제합니다.\n복구할 수 없습니다.\n\n계속하려면 아래에 정확히 입력하세요:  삭제합니다');
-    if (w1 !== '삭제합니다') { toast('취소했습니다', 'info'); return; }
-    if (!confirm('마지막 확인입니다.\n\n삭제 전에 백업을 받으시겠습니까?\n[확인] 백업 후 삭제  ·  [취소] 중단')) { toast('취소했습니다', 'info'); return; }
-    safe(function () { window.exportJSON(); });
-    setTimeout(async function () {
-      localStorage.removeItem(SK);
-      try {
-        await fetch(window.SB_URL + '/rest/v1/erp_data', {
-          method: 'POST', headers: Object.assign(H(), { Prefer: 'resolution=merge-duplicates,return=minimal' }),
-          body: JSON.stringify({ id: window.SB_ROW || 'shifti_erp_main', data: { meta: { version: VERSION } }, updated_at: new Date().toISOString() })
-        });
-      } catch (e) {}
-      S.dirty = false;
-      location.reload();
-    }, 900);
+    toast('운영 데이터 전체 삭제는 관리자 검토와 서버 백업 후 별도로 진행하세요.', 'error');
+    return false;
   };
 
   window.importJSON = function (ev) {
@@ -633,12 +596,15 @@
         '\n\n현재 데이터는 자동 백업 후 교체됩니다. 진행할까요?')) return;
 
       safe(function () { window.exportJSON(); });          // 교체 전 현재본 자동 백업
-      setTimeout(function () {
+      if (!window.ERPRuntime.requireReady()) return;
+      var issues = window.ERPCore.validate(inc);
+      if (issues.length) { alert('복원 데이터 오류: ' + issues.join(' / ')); return; }
+      setTimeout(async function () {
         window.db = inc;
         safe(lifecycle);
-        window.saveDB();
-        toast('복원 완료 — ' + lotCnt + '개 LOT', 'success');
-        setTimeout(function () { location.reload(); }, 700);
+        var result = await window.saveDB();
+        if (result.ok) toast('서버 복원 완료 — ' + lotCnt + '개 LOT', 'success');
+        else toast('서버 복원 미완료: 화면을 유지하고 저장 상태를 확인하세요.', 'error');
       }, 800);
     };
     rd.readAsText(f);
@@ -658,7 +624,8 @@
       localStorage.setItem('shifti_bk_last', t);
     } catch (e) { /* 용량 초과 시 건너뜀 */ }
   }
-  window.shiftiRestoreLocal = function () {
+  window.shiftiRestoreLocal = async function () {
+    if (!window.ERPRuntime.requireReady()) return;
     var keys = [];
     try { keys = JSON.parse(localStorage.getItem('shifti_bk_keys') || '[]'); } catch (e) {}
     if (!keys.length) { alert('로컬 자동 백업이 없습니다.'); return; }
@@ -667,7 +634,7 @@
     var raw = localStorage.getItem('shifti_bk_' + pick.trim());
     if (!raw) { alert('해당 날짜 백업이 없습니다.'); return; }
     if (!confirm(pick + ' 시점으로 되돌립니다. 현재 데이터는 사라집니다.\n계속할까요?')) return;
-    try { window.db = JSON.parse(raw); window.saveDB(); setTimeout(function () { location.reload(); }, 600); }
+    try { var restored = JSON.parse(raw); var issues = window.ERPCore.validate(restored); if (issues.length) throw new Error(issues.join(' / ')); window.db = restored; var result = await window.saveDB(); toast(result.ok ? '서버 복원 완료' : '서버 복원 미완료: 저장 상태를 확인하세요.', result.ok ? 'success' : 'error'); }
     catch (e) { alert('백업 파일이 손상되었습니다.'); }
   };
 
@@ -1518,8 +1485,9 @@
 
   var tries = 0;
   function boot() {
+    if(!window.ERPRuntime.state.ready)return;
     buildBar(); collectPages(); fixNav();
-    S.base = (db() && db().meta && db().meta.updatedAt) || null;
+    S.base = window.ERPRuntime.state.base;
     safe(lifecycle); safe(paintAlerts);
     var ok = installCommander(); fixQuick();
     if (!ok && ++tries < 40) { setTimeout(boot, 400); return; }
@@ -1527,8 +1495,7 @@
     setTimeout(function () { askOperator(false); }, 1400);
     LOG('SHIFTI ERP Suite v' + VERSION + ' · KST ' + kstToday() + ' · 작업자 ' + (operator() || '미지정') + ' · GMP ' + (strict() ? '엄격' : '완화'));
   }
-  if (document.readyState === 'complete') setTimeout(boot, 300);
-  else window.addEventListener('load', function () { setTimeout(boot, 300); });
+  window.ERPRuntime.loaded.then(function(){setTimeout(boot,300);});
 
   window.SHIFTI_SUITE = {
     version: VERSION,

@@ -24,100 +24,42 @@
    *   · window.db 가 null/undefined 일 때 방어
    * ───────────────────────────────────────────── */
   window.loadDB = async function () {
-    /* 헬퍼 — 원본 함수 없어도 안전하게 동작 */
-    const _show = function (m) {
-      try { (window._showLoader || function(){})(m); } catch(e) {}
-    };
-    const _hide = function () {
-      try {
-        /* 원본 _hideLoader 우선, 없으면 직접 DOM 제거 */
-        if (typeof window._hideLoader === 'function') {
-          window._hideLoader();
-        } else {
-          const el = document.getElementById('_sbL');
-          if (el) el.remove();
-        }
-      } catch(e) {
-        try { const el = document.getElementById('_sbL'); if(el) el.remove(); } catch(_) {}
-      }
-    };
-    const _cs = function (icon, txt) {
-      try { (window._setCS || function(){})(icon, txt); } catch(e) {}
-    };
-
-    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
-    const SB_URL = window.SB_URL;
-    const SB_KEY = window.SB_KEY;
-    const SB_ROW = window.SB_ROW || 'shifti_erp_main';
-
-    _show('☁️ 클라우드에서 불러오는 중…');
-
-    /* ── Step 1: 로컬 데이터 먼저 적용 (즉시) ── */
-    const local = localStorage.getItem(STORAGE_KEY);
-    if (local) {
-      try { window.db = JSON.parse(local); } catch(e) { window.db = null; }
-    }
-    /* db 가 null/undefined 이면 빈 구조로 초기화 */
-    if (!window.db || typeof window.db !== 'object') {
-      window.db = { meta: { version: '3.2-fixed' } };
-    }
-
-    /* ── Step 2: Supabase 조회 (8초 타임아웃) ── */
+    const rt=window.ERPRuntime;
+    const session=await rt.session();
+    if(!session){rt.complete(null,'로그인 필요');if(window._hideLoader)window._hideLoader();return false;}
+    const key=window.STORAGE_KEY||'shifti_erp_v2';
+    let timer;
     try {
-      if (!SB_URL || !SB_KEY) throw new Error('Supabase 설정 없음');
-
-      /* AbortController 로 타임아웃 구현 */
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-
-      const r = await fetch(
-        SB_URL + '/rest/v1/erp_data?id=eq.' + SB_ROW + '&select=data',
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SB_KEY,
-            'Authorization': 'Bearer ' + SB_KEY
-          },
-          signal: controller.signal
-        }
-      );
-      clearTimeout(timer);
-
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
-      const rem = d && d.length ? d[0].data : null;
-
-      /* ★ 핵심: 실제 마스터 데이터가 있을 때만 덮어씀 */
-      const remHasData = rem && rem.master && (
-        (rem.master.M_RAW      || []).length > 0 ||
-        (rem.master.M_PACK     || []).length > 0 ||
-        (rem.master.M_PRODUCT  || []).length > 0 ||
-        (rem.master.M_CUSTOMER || []).length > 0
-      );
-
-      if (remHasData) {
-        const rAt = new Date(rem.meta?.updatedAt || 0);
-        const lAt = window.db?.meta?.updatedAt
-          ? new Date(window.db.meta.updatedAt) : new Date(0);
-        if (rAt >= lAt) {
-          window.db = rem;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
-        }
-      }
-      _cs('☁️', '연결됨');
-
-    } catch (e) {
-      const msg = e.name === 'AbortError' ? '응답 시간 초과 (로컬 데이터 사용)' : e.message;
-      console.warn('[SB] load:', msg);
-      _cs('⚠️', '오프라인 (로컬 데이터)');
-      /* 로컬도 없으면 여기서 빈 구조 재보장 */
-      if (!window.db || typeof window.db !== 'object') {
-        window.db = { meta: { version: '3.2-fixed' } };
-      }
-    } finally {
-      /* ★ 어떤 경우에도 반드시 로더 숨김 */
-      _hide();
-    }
+      const controller=new AbortController();
+      timer=setTimeout(()=>controller.abort(),8000);
+      const r=await fetch(window.SB_URL+'/rest/v1/erp_data?id=eq.'+encodeURIComponent(window.SB_ROW||'shifti_erp_main')+'&select=data,updated_at',{
+        headers:{apikey:window.SB_KEY,Authorization:'Bearer '+session.access_token},signal:controller.signal
+      });
+      if(!r.ok)throw new Error('클라우드 조회 실패 HTTP '+r.status);
+      const rows=await r.json();
+      if(rows.length!==1||!rows[0].data)throw new Error('운영 데이터 행이 없습니다. 자동 생성하지 않습니다.');
+      const incoming=rows[0].data;
+      const issues=ERPCore.validate(incoming);
+      if(issues.some(x=>x.kind==='INVALID_REMAINING'||x.kind==='MISSING_ID'))throw new Error('운영 재고 데이터 오류: 관리자 점검이 필요합니다.');
+      const previous=localStorage.getItem(key);
+      if(previous&&previous!==JSON.stringify(incoming))localStorage.setItem(key+'_recovery',previous);
+      window.db=incoming;
+      localStorage.setItem(key,JSON.stringify(incoming));
+      const cfg=await fetch(window.SB_URL+'/rest/v1/erp_config?id=eq.doc_config&select=data,updated_at',{
+        headers:{apikey:window.SB_KEY,Authorization:'Bearer '+session.access_token},signal:controller.signal
+      });
+      if(!cfg.ok)throw new Error('회사정보 조회 실패 HTTP '+cfg.status);
+      const configs=await cfg.json();
+      if(configs[0]?.data){localStorage.setItem('shifti_doc_cfg',JSON.stringify(configs[0].data));localStorage.setItem('shifti_doc_cfg_at',configs[0].updated_at||'');}
+      else {localStorage.removeItem('shifti_doc_cfg');localStorage.removeItem('shifti_doc_cfg_at');}
+      rt.complete(rows[0].updated_at);
+      if(window._setCS)window._setCS('☁️','불러오기 완료');
+    } catch(e) {
+      rt.complete(null,e.message);
+      console.warn('[SB] load:',e.message);
+      if(window._setCS)window._setCS('⚠️','불러오기 실패 · 기록 차단');
+      return false;
+    } finally {clearTimeout(timer);if(window._hideLoader)window._hideLoader();}
 
     /* ── Step 3: DB 구조 보정 ── */
     const db = window.db;
@@ -156,69 +98,13 @@
    * PATCH 2: saveDB - Supabase sync 복원
    *          (2번째 IIFE의 덮어쓰기 문제 수정)
    * ───────────────────────────────────────────── */
-  window.saveDB = async function () {
-    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
-    const SB_URL = window.SB_URL;
-    const SB_KEY = window.SB_KEY;
-    const SB_ROW = window.SB_ROW || 'shifti_erp_main';
-    const db = window.db;
-
-    /* meta 갱신 */
-    if (!db.meta) db.meta = { version: '3.2-fixed' };
-    db.meta.updatedAt = new Date().toISOString();
-
-    /* 로컬 저장 */
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-
-    /* UI 갱신 */
-    try { if (typeof window.renderAll === 'function') window.renderAll(); } catch (e) {}
-
-    /* Supabase 저장 */
-    try {
-      const r = await fetch(SB_URL + '/rest/v1/erp_data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SB_KEY,
-          'Authorization': 'Bearer ' + SB_KEY,
-          'Prefer': 'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify({ id: SB_ROW, data: db, updated_at: db.meta.updatedAt })
-      });
-      if (!r.ok) throw new Error('SET ' + r.status);
-      const t = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      if (typeof window._setCS === 'function') window._setCS('☁️', '저장됨 ' + t);
-    } catch (e) {
-      console.warn('[SB] save fail:', e.message);
-      if (typeof window._setCS === 'function') window._setCS('⚠️', '저장 실패 (로컬만)');
-    }
-  };
+  // The suite owns the only cloud save engine. Fail closed if it does not load.
+  window.saveDB = function () { return Promise.resolve({ok:false,error:'SAVE_ENGINE_NOT_READY'}); };
 
   /* ─────────────────────────────────────────────
    * PATCH 3: resetDB - 안전 초기화
    * ───────────────────────────────────────────── */
-  window.resetDB = async function () {
-    if (!confirm('⚠️ 클라우드 포함 모든 데이터를 삭제합니다. 계속하시겠습니까?')) return;
-    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
-    localStorage.removeItem(STORAGE_KEY);
-    try {
-      const SB_URL = window.SB_URL, SB_KEY = window.SB_KEY, SB_ROW = window.SB_ROW || 'shifti_erp_main';
-      await fetch(SB_URL + '/rest/v1/erp_data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SB_KEY,
-          'Authorization': 'Bearer ' + SB_KEY,
-          'Prefer': 'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify({ id: SB_ROW, data: { meta: { version: '3.2-fixed' } }, updated_at: new Date().toISOString() })
-      });
-      if (typeof window.toast === 'function') window.toast('초기화 완료', 'success');
-    } catch (e) {
-      if (typeof window.toast === 'function') window.toast('클라우드 초기화 실패 (로컬만)', 'error');
-    }
-    location.reload();
-  };
+  window.resetDB = function () { if(window.toast)window.toast('운영 전체 삭제는 관리자 백업·검토가 필요합니다.','error'); return false; };
 
   /* ─────────────────────────────────────────────
    * PATCH 4: channel-sales 섹션 → 매출 업로드 모듈
@@ -1242,27 +1128,7 @@
    * PATCH 7: 다른 탭 실시간 동기화 안전 처리
    *          (storage 이벤트에서 빈 데이터 덮어쓰기 방지)
    * ───────────────────────────────────────────── */
-  window.addEventListener('storage', function (ev) {
-    const STORAGE_KEY = window.STORAGE_KEY || 'shifti_erp_v2';
-    if (ev.key === STORAGE_KEY && ev.newValue) {
-      try {
-        const incoming = JSON.parse(ev.newValue);
-        /* 빈 데이터면 무시 */
-        const hasData = incoming?.master && (
-          (incoming.master.M_RAW     || []).length > 0 ||
-          (incoming.master.M_PRODUCT || []).length > 0
-        );
-        if (!hasData) return;
-        const inAt = new Date(incoming?.meta?.updatedAt || 0);
-        const curAt = new Date(window.db?.meta?.updatedAt || 0);
-        if (inAt > curAt) {
-          window.db = incoming;
-          try { if (typeof window.renderAll === 'function') window.renderAll(); } catch (e) {}
-          if (typeof window._setCS === 'function') window._setCS('🔄', '다른 기기에서 동기화됨');
-        }
-      } catch (e) {}
-    }
-  });
+  // 다른 탭의 브라우저 캐시로 현재 작업을 덮어쓰지 않습니다.
 
   /* ─────────────────────────────────────────────
    * 초기화: 페이지 로드 후 적용

@@ -200,15 +200,16 @@
       <div class="bt-grid"><div class="bt-card"><h3>제조 조건</h3><div class="bt-fields">
         <div class="bt-field"><label>ERP 제품 불러오기</label>${productSelect('bt-dil-product', 'MediscentTools.loadDilutionProduct()')}</div>
         <div class="bt-field"><label>계산 단위</label><select id="bt-dil-unit" class="bt-select"><option value="g">g</option><option value="ml">ml</option><option value="kg">kg</option></select></div>
-        <div class="bt-field"><label>최종 필요량</label><input id="bt-dil-final" class="bt-input" type="number" step="0.01" value="1000"></div>
+        <div class="bt-field"><label>농도 기준</label><select id="bt-dil-basis" class="bt-select"><option value="ww">중량 기준 w/w</option><option value="vv">부피 기준 v/v (mL 전용)</option></select></div><div class="bt-field"><label>최종 필요량</label><input id="bt-dil-final" class="bt-input" type="number" step="0.01" value="1000"></div>
         <div class="bt-field"><label>목표 향료 농도 (%)</label><input id="bt-dil-target" class="bt-input" type="number" step="0.01" value="20"></div>
         <div class="bt-field"><label>보유 원액 농도 (%)</label><input id="bt-dil-stock" class="bt-input" type="number" step="0.01" value="100"><small>희석 향료를 쓰는 경우 실제 농도 입력</small></div>
         <div class="bt-field"><label>제조 손실·여유율 (%)</label><input id="bt-dil-loss" class="bt-input" type="number" step="0.01" value="2"></div>
         <div class="bt-field"><label>1개 충진량</label><input id="bt-dil-fill" class="bt-input" type="number" step="0.01" value="50"></div>
-        <div class="bt-field"><label>비중 (ml→g 환산)</label><input id="bt-dil-density" class="bt-input" type="number" step="0.001" value="0.87"></div>
+        <div class="bt-field"><label>완성 벌크 밀도 (g/mL)</label><input id="bt-dil-density" class="bt-input" type="number" step="0.001" placeholder="w/w·mL 입력 시 필수"></div>
+        <div class="bt-field"><label>향료 원액 밀도 (g/mL)</label><input id="bt-dil-stock-density" class="bt-input" type="number" step="0.001" placeholder="v/v 계량 환산 시 필수"></div><div class="bt-field"><label>희석제 밀도 (g/mL)</label><input id="bt-dil-diluent-density" class="bt-input" type="number" step="0.001" placeholder="v/v 계량 환산 시 필수"></div>
       </div><div class="bt-actions"><button class="bt-btn" onclick="MediscentTools.calcDilution()">계산하기</button><button class="bt-btn bt-btn-secondary" onclick="MediscentTools.addCompositionRow()">세부 배합 추가</button></div>
       <div class="bt-divider"></div><h3>세부 배합비 <span class="bt-note">합계 100%</span></h3><div id="bt-composition-rows"></div></div>
-      <div class="bt-card bt-sticky"><h3>계산 결과</h3><div id="bt-dil-result" class="bt-result"></div><div id="bt-composition-result" style="margin-top:12px"></div><div class="bt-alert bt-alert-blue"><b>계산 기준</b><span>최종 필요량은 손실 후 확보하려는 순량입니다. 실제 제조 전 비중·온도·원료 COA와 작업표준서를 확인하세요.</span></div></div></div>`);
+      <div class="bt-card bt-sticky"><h3>계산 결과</h3><div id="bt-dil-result" class="bt-result"></div><div id="bt-composition-result" style="margin-top:12px"></div><div class="bt-alert bt-alert-blue"><b>계산 기준</b><span>농도 기준과 계량 단위를 구분하세요. v/v는 혼합 전 이론 부피이며 혼합 수축으로 완성 부피가 달라질 수 있습니다. 밀도는 해당 원료·온도의 실측값을 입력하세요.</span></div></div></div>`);
   }
 
   function marginPage() {
@@ -548,27 +549,31 @@
 
   function calcDilution() {
     try {
-      const result = M.dilution({ finalAmount: n('bt-dil-final'), targetPercent: n('bt-dil-target'), stockPercent: n('bt-dil-stock', 100), lossPercent: n('bt-dil-loss') });
-      const unit = v('bt-dil-unit') || 'g';
-      const fill = n('bt-dil-fill');
-      const density = n('bt-dil-density', 1);
-      const finalInUnit = n('bt-dil-final');
-      const finalWeight = unit === 'ml' ? finalInUnit * density : unit === 'kg' ? finalInUnit * 1000 : finalInUnit;
-      const fillWeight = unit === 'ml' ? fill * density : unit === 'kg' ? fill * 1000 : fill;
-      const units = fillWeight > 0 ? Math.floor(finalWeight / fillWeight) : 0;
-      document.getElementById('bt-dil-result').innerHTML = [
-        metric('손실 포함 총 제조량', money(result.grossAmount, unit), 'bt-accent'),
-        metric('향료 원액 투입량', money(result.stockAmount, unit)),
-        metric('희석제 투입량', money(result.diluentAmount, unit)),
-        metric('예상 제조 손실', money(result.expectedLoss, unit)),
-        metric('순수 향 성분량', money(result.pureAromaticAmount, unit)),
-        metric('예상 충진 가능 수량', `${units.toLocaleString()}개`)
+      const unit=v('bt-dil-unit')||'g',basis=v('bt-dil-basis')||'ww';
+      const result=M.perfumeBatch({finalAmount:n('bt-dil-final'),targetPercent:n('bt-dil-target'),stockPercent:n('bt-dil-stock',100),lossPercent:n('bt-dil-loss'),unit,basis,
+        finishedDensity:n('bt-dil-density'),stockDensity:n('bt-dil-stock-density'),diluentDensity:n('bt-dil-diluent-density')});
+      const fill=n('bt-dil-fill');
+      if(fill<=0)throw new Error('1개 충진량은 0보다 커야 합니다.');
+      const units=Math.floor(n('bt-dil-final')/fill);
+      const resultUnit=result.unit;
+      document.getElementById('bt-dil-result').innerHTML=[
+        metric('농도 기준',basis==='ww'?'중량 w/w':'부피 v/v'),
+        metric('손실 포함 총 제조량',money(result.grossAmount,resultUnit),'bt-accent'),
+        metric('향료 원액 이론 투입량',money(result.stockAmount,resultUnit)),
+        metric('희석제 이론 투입량',money(result.diluentAmount,resultUnit)),
+        metric('향료 원액 계량',money(result.stockWeight,'g')),
+        metric('희석제 계량',money(result.diluentWeight,'g')),
+        metric('예상 제조 손실',money(result.expectedLoss,resultUnit)),
+        metric('예상 충진 수량',units.toLocaleString()+'개')
       ].join('');
+      // 다성분 v/v의 중량 환산에는 각 성분 밀도가 필요하므로 별도 계량표는 w/w만 지원합니다.
+      if(basis==='vv')document.getElementById('bt-composition-result').innerHTML='<div class="bt-note">다성분 계량표는 중량 기준 w/w에서 작성하세요.</div>';
       const rows = Array.from(document.querySelectorAll('.bt-composition-row')).map((row) => ({ name: row.querySelector('.bt-comp-name').value || '성분', percent: M.finite(row.querySelector('.bt-comp-pct').value), element: row }));
-      if (rows.length) {
-        const batch = M.batchComposition({ finalAmount: n('bt-dil-final'), lossPercent: n('bt-dil-loss'), components: rows });
-        batch.components.forEach((item, index) => { rows[index].element.querySelector('.bt-comp-amount').textContent = `${item.amount.toLocaleString()} ${unit}`; });
-        document.getElementById('bt-composition-result').innerHTML = `<div class="bt-table-wrap"><table class="bt-table"><thead><tr><th>성분</th><th class="text-right">배합비</th><th class="text-right">실제 투입량</th></tr></thead><tbody>${batch.components.map((item) => `<tr><td><b>${e(item.name)}</b></td><td class="text-right">${item.percent.toFixed(3)}%</td><td class="text-right">${item.amount.toLocaleString()} ${e(unit)}</td></tr>`).join('')}</tbody></table></div>`;
+      if (rows.length && basis==='ww') {
+        const finalMass=unit==='kg'?n('bt-dil-final')*1000:unit==='ml'?n('bt-dil-final')*n('bt-dil-density'):n('bt-dil-final');
+        const batch = M.batchComposition({ finalAmount: finalMass, lossPercent: n('bt-dil-loss'), components: rows });
+        batch.components.forEach((item, index) => { rows[index].element.querySelector('.bt-comp-amount').textContent = `${item.amount.toLocaleString()} g`; });
+        document.getElementById('bt-composition-result').innerHTML = `<div class="bt-table-wrap"><table class="bt-table"><thead><tr><th>성분</th><th class="text-right">배합비</th><th class="text-right">실제 투입량</th></tr></thead><tbody>${batch.components.map((item) => `<tr><td><b>${e(item.name)}</b></td><td class="text-right">${item.percent.toFixed(3)}%</td><td class="text-right">${item.amount.toLocaleString()} g</td></tr>`).join('')}</tbody></table></div>`;
       }
       markComplete('biz-dilution', { finalAmount: n('bt-dil-final') });
     } catch (error) { showError('bt-dil-result', error); }
