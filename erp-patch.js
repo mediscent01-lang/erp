@@ -633,31 +633,22 @@
       const base64data  = window.__suImgBase64.split(',')[1];
       const mediaType   = window.__suImgFile?.type || 'image/jpeg';
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      // 2026-10-20: 브라우저에서 Anthropic을 직접 부르지 않고 Supabase 함수(shifti-ai?action=ocr)를 거친다. AI 키는 서버에만 있다.
+      const res = await fetch(window.SB_URL + '/functions/v1/shifti-ai?action=ocr', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 800,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64data } },
-              { type: 'text', text: '이 이미지는 판매 영수증 또는 주문 내역입니다. JSON만 출력하세요 (설명 없이):\n{"date":"YYYY-MM-DD","channel":"채널명","product":"제품명","qty":수량숫자,"price":단가숫자,"total":총액숫자}\n숫자는 쉼표 없이. 없는 항목은 null.' }
-            ]
-          }]
-        })
+        headers: { 'Content-Type': 'application/json', apikey: window.SB_KEY, Authorization: 'Bearer ' + window.SB_KEY },
+        body: JSON.stringify({ image: base64data, mediaType })
       });
 
-      const data = await res.json();
-      const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-      let parsed = {};
-      try { parsed = JSON.parse(text.replace(/```json|```/g, '').trim()); } catch (e) {}
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.message || ('서버 응답 ' + res.status));
+      const parsed = data.result || {};
+      const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
       document.getElementById('su-ocr-result').innerHTML =
         '<div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">' +
         Object.entries(parsed).filter(([,v]) => v !== null).map(([k,v]) =>
-          `<div class="text-slate-400">${k}</div><div class="font-bold">${v}</div>`
+          `<div class="text-slate-400">${esc(k)}</div><div class="font-bold">${esc(v)}</div>`
         ).join('') + '</div>';
 
       const today = window.todayISO?.() || new Date().toISOString().split('T')[0];
