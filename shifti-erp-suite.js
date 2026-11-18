@@ -403,25 +403,38 @@
 
   function setStatus(kind) {
     var e = el('cloud-status'); if (!e) return;
+    var keep = S.quota ? ' · 창을 닫지 마세요' : ' · 로컬 보관';
     var m = {
-      saved: ['☁️ 저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), '#ccfbf1', '#0f766e'],
+      saved: ['☁️ 저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) + (S.quota ? ' · 기기사본 꺼짐' : ''), S.quota ? '#fef3c7' : '#ccfbf1', S.quota ? '#92400e' : '#0f766e'],
       pending: ['✎ 저장 대기', '#fef3c7', '#92400e'],
       sending: ['⟳ 저장 중…', '#dbeafe', '#1e40af'],
-      retry: ['⚠ 재시도 ' + S.fails + '회 · 로컬 보관', '#fee2e2', '#991b1b'],
+      retry: ['⚠ 재시도 ' + S.fails + '회' + keep, '#fee2e2', '#991b1b'],
       conflict: ['⚑ 충돌 감지', '#fee2e2', '#991b1b'],
       quota: ['⚠ 저장공간 부족', '#fee2e2', '#991b1b'],
-      offline: ['⛌ 오프라인 · 로컬 보관', '#f1f5f9', '#475569']
+      offline: ['⛌ 오프라인' + keep, S.quota ? '#fee2e2' : '#f1f5f9', S.quota ? '#991b1b' : '#475569']
     }[kind] || ['', '#f1f5f9', '#475569'];
     e.textContent = m[0]; e.style.background = m[1]; e.style.color = m[2]; e.style.borderColor = m[2] + '33';
   }
 
+  /* 기기 사본(localStorage)은 보조 캐시입니다. 공간이 가득 차면
+   * ① 복구용 사본 → ② 오래된 자동백업 순으로 비우고 다시 쓰고,
+   * 그래도 안 되면 낡은 사본을 지우고 클라우드 저장만 계속합니다. (2026-11-18)
+   * 예전에는 여기서 false 를 돌려 클라우드 저장까지 멈췄습니다. */
+  function tryWrite(s) { try { localStorage.setItem(SK, s); return true; } catch (e) { return false; } }
   function persistLocal() {
-    try { localStorage.setItem(SK, JSON.stringify(db())); return true; }
-    catch (e) {
-      setStatus('quota');
-      toast('브라우저 저장공간이 가득 찼습니다. [💾 백업] 후 🩺 진단에서 정리해 주세요.', 'error');
-      return false;
+    var s; try { s = JSON.stringify(db()); } catch (e) { return false; }
+    if (tryWrite(s)) { S.quota = false; return true; }
+    try { localStorage.removeItem(SK + '_recovery'); } catch (e) {}
+    if (tryWrite(s)) { S.quota = false; return true; }
+    var keys = []; try { keys = JSON.parse(localStorage.getItem('shifti_bk_keys') || '[]'); } catch (e) {}
+    while (keys.length) {
+      try { localStorage.removeItem(keys.shift()); localStorage.setItem('shifti_bk_keys', JSON.stringify(keys)); } catch (e) {}
+      if (tryWrite(s)) { S.quota = false; toast('저장공간이 부족해 오래된 자동백업을 정리했습니다.', 'info'); return true; }
     }
+    try { localStorage.removeItem(SK); } catch (e) {}
+    if (!S.quota) toast('브라우저 저장공간이 가득 차 이 기기 사본을 끕니다. 클라우드 저장은 계속됩니다. 첨부파일을 줄이거나 [💾 백업]을 받아 두세요.', 'error');
+    S.quota = true;
+    return false;
   }
   function H() { return { 'Content-Type': 'application/json', apikey: window.SB_KEY }; }
 
@@ -481,7 +494,7 @@
       S.base=rows[0].updated_at;S.lastPush=S.base;S.fails=0;
       window.ERPRuntime.state.base=S.base;
       if(!S.dirty){db().meta.updatedAt=S.base;persistLocal();}
-      setStatus(S.dirty?'pending':'saved');rollingBackup();cohort.forEach(w=>w({ok:true,updatedAt:S.base}));
+      setStatus(S.dirty?'pending':'saved');if(!S.quota)rollingBackup();cohort.forEach(w=>w({ok:true,updatedAt:S.base}));
     }catch(e){
       S.dirty=true;S.fails++;setStatus('retry');cohort.forEach(w=>w({ok:false,error:e.message}));
       S.timer=setTimeout(flush,Math.min(30000,1500*S.fails));
@@ -502,12 +515,36 @@
     d.meta.suite = VERSION;
     normalize(d);
     clampNegative();
-    if(!persistLocal())return Promise.resolve({ok:false,error:'LOCAL_QUOTA'});
+    persistLocal();   // 실패해도 클라우드 저장은 계속 (기기 사본만 꺼짐)
     if (!rendering) { rendering = true; safe(function () { window.renderAll(); }, 'renderAll'); rendering = false; }
     S.dirty = true; setStatus('pending'); schedule();
     safe(paintAlerts);
     return new Promise(resolve=>S.waiters.push(resolve));
   };
+  /* 로그아웃 (2026-11-18): 예전 버튼은 글자만 '로컬 모드'로 바꾸고 세션·사본을 그대로 남겼습니다.
+   * 저장 대기 중이면 막고, Supabase 세션을 끊고, 이 기기의 ERP 사본을 지운 뒤 로그인 화면으로 돌아갑니다. */
+  window.cloudLogout = async function () {
+    if (S.dirty || S.sending) { alert('아직 클라우드에 저장되지 않은 변경이 있습니다.\n상단 상태가 "☁️ 저장됨"으로 바뀐 뒤 다시 눌러 주세요.'); schedule(0); return; }
+    var wipe = confirm('로그아웃합니다.\n\n이 기기에 남은 ERP 사본(자동백업 포함)도 지울까요?\n· 확인: 사본까지 삭제 (매장·공용 PC 권장)\n· 취소: 사본은 두고 로그아웃만');
+    try { await window.sbAuth.auth.signOut(); }
+    catch (e) { try { await window.sbAuth.auth.signOut({ scope: 'local' }); } catch (_) {} }
+    try {
+      var ref = String(window.SB_URL || '').split('//')[1].split('.')[0];
+      localStorage.removeItem('sb-' + ref + '-auth-token');
+    } catch (e) {}
+    if (wipe) {
+      try {
+        var bk = JSON.parse(localStorage.getItem('shifti_bk_keys') || '[]');
+        bk.forEach(function (k) { localStorage.removeItem(k); });
+      } catch (e) {}
+      [SK, SK + '_recovery', 'shifti_bk_keys', 'shifti_bk_last', 'shifti_doc_cfg', 'shifti_doc_cfg_at'].forEach(function (k) {
+        try { localStorage.removeItem(k); } catch (e) {}
+      });
+    }
+    window.ERPRuntime.state.ready = false; window.ERPRuntime.state.user = null;
+    location.reload();
+  };
+
   window.shiftiFlushNow = function () { if(!window.ERPRuntime.requireReady())return; S.dirty = true; schedule(0); toast('클라우드로 즉시 저장합니다', 'info'); };
 
   window.addEventListener('beforeunload', function (ev) {

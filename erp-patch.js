@@ -41,17 +41,23 @@
       const incoming=rows[0].data;
       const issues=ERPCore.validate(incoming);
       if(issues.some(x=>x.kind==='INVALID_REMAINING'||x.kind==='MISSING_ID'))throw new Error('운영 재고 데이터 오류: 관리자 점검이 필요합니다.');
-      const previous=localStorage.getItem(key);
-      if(previous&&previous!==JSON.stringify(incoming))localStorage.setItem(key+'_recovery',previous);
+      /* 기기 사본은 보조 캐시다. 저장공간이 가득 차도 클라우드 불러오기는 막지 않는다 (2026-11-18) */
+      try{
+        const previous=localStorage.getItem(key);
+        if(previous&&previous!==JSON.stringify(incoming))localStorage.setItem(key+'_recovery',previous);
+      }catch(e){try{localStorage.removeItem(key+'_recovery');}catch(_){}}
       window.db=incoming;
-      localStorage.setItem(key,JSON.stringify(incoming));
+      try{localStorage.setItem(key,JSON.stringify(incoming));}
+      catch(e){console.warn('[SB] 기기 사본 저장 생략:',e.message);try{localStorage.removeItem(key);}catch(_){}}
       const cfg=await fetch(window.SB_URL+'/rest/v1/erp_config?id=eq.doc_config&select=data,updated_at',{
         headers:{apikey:window.SB_KEY,Authorization:'Bearer '+session.access_token},signal:controller.signal
       });
       if(!cfg.ok)throw new Error('회사정보 조회 실패 HTTP '+cfg.status);
       const configs=await cfg.json();
-      if(configs[0]?.data){localStorage.setItem('shifti_doc_cfg',JSON.stringify(configs[0].data));localStorage.setItem('shifti_doc_cfg_at',configs[0].updated_at||'');}
-      else {localStorage.removeItem('shifti_doc_cfg');localStorage.removeItem('shifti_doc_cfg_at');}
+      try{
+        if(configs[0]?.data){localStorage.setItem('shifti_doc_cfg',JSON.stringify(configs[0].data));localStorage.setItem('shifti_doc_cfg_at',configs[0].updated_at||'');}
+        else {localStorage.removeItem('shifti_doc_cfg');localStorage.removeItem('shifti_doc_cfg_at');}
+      }catch(e){console.warn('[SB] 회사정보 기기 사본 저장 생략:',e.message);}
       rt.complete(rows[0].updated_at);
       if(window._setCS)window._setCS('☁️','불러오기 완료');
     } catch(e) {
@@ -1033,6 +1039,26 @@
     if (q && p) document.getElementById('su-edit-amount').value = q * p;
   };
 
+  /* ── 매출 ↔ 재고 연동 (2026-11-18) ──
+   *  LOT 번호가 있는 매출은 저장할 때 FGT_LOT 잔량을 깎았다.
+   *  삭제·수정할 때는 같은 행에 수량을 되돌린다.
+   *  LOT 번호가 없는 매출(엑셀 업로드·OCR·직접입력)은 재고를 깎지 않았으므로 되돌리지 않는다. */
+  function suSaleLoc(r) {
+    const m = String(r && r.note || '').match(/\((매장|물류센터|택배|공장)[^)]*\)/);
+    if (!m) return null;
+    return m[1] === '택배' ? '물류센터' : m[1];
+  }
+  function suSaleSource(lotNo, productId, preferLoc) {
+    if (!lotNo) return null;
+    const rows = (window.db?.stock?.FGT_LOT || []).filter(l =>
+      String(l.lotNo) === String(lotNo) && String(l.productId) === String(productId) &&
+      String(l.status || '').toUpperCase() !== 'VOID');
+    if (!rows.length) return null;
+    const loc = l => l.location || '공장';
+    return (preferLoc && rows.find(l => loc(l) === preferLoc)) || rows.find(l => loc(l) === '공장') || rows[0];
+  }
+  function suNum(v) { const x = Number(v); return Number.isFinite(x) ? x : 0; }
+
   window.suSaveEdit = function () {
     const saleId = document.getElementById('su-edit-id')?.value;
     const idx = (window.db?.txn?.T_SALE || []).findIndex(x => String(x.id) === String(saleId));
@@ -1044,22 +1070,45 @@
     const qty     = parseFloat(document.getElementById('su-edit-qty')?.value)    || r.qty;
     const price   = parseFloat(document.getElementById('su-edit-price')?.value)  || r.unitPrice;
     const amount  = parseFloat(document.getElementById('su-edit-amount')?.value) || (qty * price);
+    const newPid  = prodId ? Number(prodId) : r.productId;
+    const newLot  = String(document.getElementById('su-edit-lot')?.value || '').trim() || r.lotNo;
+    if (!(qty > 0)) { window.toast?.('수량은 0보다 커야 합니다', 'error'); return; }
 
     /* note에서 채널 부분 업데이트 */
     let note = document.getElementById('su-edit-note')?.value || r.note || '';
     note = note.replace(/채널:\s*[^\s/,]+/, '채널: ' + ch);
     if (!note.includes('채널:')) note = '[수정] 채널: ' + ch + (note ? ' / ' + note : '');
 
+    /* 재고 반영: 원래 LOT에서 깎인 매출만 대상. 수량·LOT·제품이 바뀌면 원래 행에 되돌리고 새 행에서 다시 깎는다 */
+    let stockMsg = '';
+    const stockChanged = r.lotNo && (String(newLot) !== String(r.lotNo) || String(newPid) !== String(r.productId) || suNum(qty) !== suNum(r.qty));
+    if (stockChanged) {
+      const oldSrc = suSaleSource(r.lotNo, r.productId, suSaleLoc(r));
+      if (!oldSrc) { window.toast?.('원래 LOT(' + r.lotNo + ')를 재고에서 찾을 수 없어 수량·LOT·제품은 바꿀 수 없습니다. 날짜·단가·메모만 수정하세요.', 'error'); return; }
+      const sameRow = String(newLot) === String(r.lotNo) && String(newPid) === String(r.productId);
+      let newSrc = oldSrc;
+      if (!sameRow) {
+        const cands = (window.db.stock.FGT_LOT || []).filter(l => String(l.lotNo) === String(newLot) && String(l.productId) === String(newPid) && !window.ERPCore?.blockReason(l));
+        newSrc = cands.find(l => (l.location || '공장') === (oldSrc.location || '공장')) || cands.find(l => suNum(l.remaining) >= qty) || cands[0];
+        if (!newSrc) { window.toast?.('새 LOT(' + newLot + ')에 출고 가능한(검사 합격·기한 내) 재고가 없습니다.', 'error'); return; }
+      }
+      const avail = suNum(newSrc.remaining) + (newSrc === oldSrc ? suNum(r.qty) : 0);
+      if (avail < qty) { window.toast?.('재고 부족: ' + newLot + ' 출고 가능 ' + avail + 'ea', 'error'); return; }
+      oldSrc.remaining = suNum(oldSrc.remaining) + suNum(r.qty);
+      newSrc.remaining = suNum(newSrc.remaining) - qty;
+      stockMsg = ' / 재고 ' + r.lotNo + ' +' + r.qty + ', ' + newLot + ' -' + qty;
+    }
+
     window.db.txn.T_SALE[idx] = {
       ...r,
       date:       document.getElementById('su-edit-date')?.value || r.date,
-      productId:  prodId ? Number(prodId) : r.productId,
+      productId:  newPid,
       qty, unitPrice: price, amount,
-      lotNo:      document.getElementById('su-edit-lot')?.value  || r.lotNo,
+      lotNo:      newLot,
       note
     };
 
-    if (typeof window.logEvent === 'function') window.logEvent('매출 수정: ' + saleId);
+    if (typeof window.logEvent === 'function') window.logEvent('매출 수정: ' + saleId + stockMsg);
     if (typeof window.saveDB   === 'function') window.saveDB();
     if (typeof window.toast    === 'function') window.toast('✓ 수정 완료', 'success');
     window.suCloseEditModal();
@@ -1073,11 +1122,19 @@
     if (!r) return;
     const prd  = (window.db?.master?.M_PRODUCT || []).find(p => String(p.productId) === String(r.productId));
     const label = (prd?.name || '') + ' ' + (r.qty || '') + 'ea ' + (r.date || '');
-    if (!confirm(`매출 [${label.trim()}] 을 삭제하시겠습니까?`)) return;
+    /* LOT에서 깎인 매출이면 같은 LOT 행으로 수량을 되돌린다 */
+    const src = r.lotNo ? suSaleSource(r.lotNo, r.productId, suSaleLoc(r)) : null;
+    const guide = !r.lotNo ? '\n\n(LOT 없는 매출이라 재고는 변하지 않습니다)'
+      : src ? '\n\n재고 복원: ' + r.lotNo + (src.location ? ' [' + src.location + ']' : '') + ' +' + r.qty + 'ea'
+      : '\n\n⚠ 원래 LOT(' + r.lotNo + ')가 재고에 없어 수량을 되돌리지 못합니다.';
+    if (!confirm(`매출 [${label.trim()}] 을 삭제하시겠습니까?` + guide)) return;
+    if (src) src.remaining = suNum(src.remaining) + suNum(r.qty);
     window.db.txn.T_SALE = window.db.txn.T_SALE.filter(x => String(x.id) !== String(saleId));
-    if (typeof window.logEvent === 'function') window.logEvent('매출 삭제: ' + saleId);
+    window.db.txn.T_SALE_DELETED = window.db.txn.T_SALE_DELETED || [];
+    window.db.txn.T_SALE_DELETED.push({ ...r, deletedAt: new Date().toISOString(), stockRestored: !!src });
+    if (typeof window.logEvent === 'function') window.logEvent('매출 삭제: ' + saleId + (src ? ' / 재고 복원 ' + r.lotNo + ' +' + r.qty : ''));
     if (typeof window.saveDB   === 'function') window.saveDB();
-    if (typeof window.toast    === 'function') window.toast('삭제 완료', 'success');
+    if (typeof window.toast    === 'function') window.toast(src ? '삭제 완료 · 재고 ' + r.qty + 'ea 복원' : '삭제 완료', 'success');
     suRenderChannelAnalysis();
     suRenderAllSales();
   };
