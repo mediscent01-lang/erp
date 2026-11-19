@@ -403,7 +403,7 @@
 </div>`;
 
     /* 날짜 기본값 */
-    const today = (typeof window.todayISO === 'function') ? window.todayISO() : new Date().toISOString().split('T')[0];
+    const today = (typeof window.todayISO === 'function') ? window.todayISO() : new Date(Date.now()+324e5).toISOString().split('T')[0];
     ['su-ocr-date', 'su-m-date'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = today;
@@ -564,7 +564,7 @@
     /* T_SALE에 삽입 */
     let added = 0;
     data.forEach(row => {
-      const date    = row[colMap['날짜']]  || window.todayISO?.() || new Date().toISOString().split('T')[0];
+      const date    = row[colMap['날짜']]  || window.todayISO?.() || new Date(Date.now()+324e5).toISOString().split('T')[0];
       const channel = row[colMap['채널']]  || '기타';
       const product = row[colMap['제품명']] || '';
       const qty     = parseFloat(row[colMap['수량']] ) || 0;
@@ -657,7 +657,7 @@
           `<div class="text-slate-400">${esc(k)}</div><div class="font-bold">${esc(v)}</div>`
         ).join('') + '</div>';
 
-      const today = window.todayISO?.() || new Date().toISOString().split('T')[0];
+      const today = window.todayISO?.() || new Date(Date.now()+324e5).toISOString().split('T')[0];
       if (parsed.date)    document.getElementById('su-ocr-date').value    = parsed.date;
       else                document.getElementById('su-ocr-date').value    = today;
       if (parsed.channel) document.getElementById('su-ocr-ch').value      = parsed.channel;
@@ -683,7 +683,7 @@
     const prod    = document.getElementById('su-ocr-product')?.value;
     const qty     = parseFloat(document.getElementById('su-ocr-qty')?.value) || 0;
     const price   = parseFloat(document.getElementById('su-ocr-price')?.value) || 0;
-    const date    = document.getElementById('su-ocr-date')?.value || window.todayISO?.() || new Date().toISOString().split('T')[0];
+    const date    = document.getElementById('su-ocr-date')?.value || window.todayISO?.() || new Date(Date.now()+324e5).toISOString().split('T')[0];
     const channel = document.getElementById('su-ocr-ch')?.value || '기타';
     if (!qty) { if (typeof window.toast === 'function') window.toast('수량을 확인해주세요', 'error'); return; }
     const prd = (window.db.master.M_PRODUCT || []).find(p =>
@@ -724,7 +724,7 @@
     const qty     = parseFloat(document.getElementById('su-m-qty')?.value) || 0;
     const price   = parseFloat(document.getElementById('su-m-price')?.value) || 0;
     const disc    = parseFloat(document.getElementById('su-m-disc')?.value) || 0;
-    const date    = document.getElementById('su-m-date')?.value || window.todayISO?.() || new Date().toISOString().split('T')[0];
+    const date    = document.getElementById('su-m-date')?.value || window.todayISO?.() || new Date(Date.now()+324e5).toISOString().split('T')[0];
     const channel = document.getElementById('su-m-ch')?.value || '기타';
     const prodId  = document.getElementById('su-m-product')?.value;
     const note    = document.getElementById('su-m-note')?.value?.trim() || '';
@@ -755,7 +755,7 @@
 
   /* 기간 단축 버튼 */
   window.suSetPeriod = function (days) {
-    const today = (typeof window.todayISO === 'function') ? window.todayISO() : new Date().toISOString().split('T')[0];
+    const today = (typeof window.todayISO === 'function') ? window.todayISO() : new Date(Date.now()+324e5).toISOString().split('T')[0];
     const toEl   = document.getElementById('su-filter-to');
     const fromEl = document.getElementById('su-filter-from');
     if (toEl)   toEl.value = today;

@@ -176,7 +176,7 @@
 </head>
 <body class="flex h-screen overflow-hidden">
 <aside class="w-60 bg-slate-900 flex flex-col shrink-0 overflow-y-auto">
-  <div class="h-14 flex items-center px-4 border-b border-slate-800 shrink-0"><div><img id="brand-logo" alt="MEDISCENT" style="height:22px;width:auto;display:block;filter:brightness(1.25)"><div class="text-[9px] uppercase text-slate-400 font-bold tracking-widest mt-1.5">Factory ERP <span class="text-teal-400 border border-teal-700 px-1 py-0.5 rounded ml-1">v3.6</span></div></div></div>
+  <div class="h-14 flex items-center px-4 border-b border-slate-800 shrink-0"><div id="brand-home" role="button" tabindex="0" title="홈(대시보드)으로" aria-label="홈(대시보드)으로 이동" style="cursor:pointer" onclick="goPage('dashboard');if(window.innerWidth<768&&window.closeSidebar)closeSidebar();" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}"><img id="brand-logo" alt="MEDISCENT" style="height:22px;width:auto;display:block;filter:brightness(1.25)"><div class="text-[9px] uppercase text-slate-400 font-bold tracking-widest mt-1.5">Factory ERP <span class="text-teal-400 border border-teal-700 px-1 py-0.5 rounded ml-1">v3.6</span></div></div></div>
   <nav class="flex-1 py-2 overflow-y-auto">
     <div onclick="goPage('dashboard')" id="nav-dashboard" class="nav-item active">
       <i data-lucide="layout-dashboard" class="w-4 h-4 shrink-0"></i> 대시보드
@@ -1489,7 +1489,7 @@
 <script>
 const STORAGE_KEY = 'shifti_erp_v2';
 var db = { meta:{version:'3.0'}, master:{M_RAW:[],M_PACK:[],M_PRODUCT:[],M_CUSTOMER:[]}, stock:{RAW_LOT:[],PACK_LOT:[],BULK_LOT:[],FGT_LOT:[]}, txn:{T_GOODS_IN:[],T_BULK:[],T_BATCH:[],T_FILL:[],T_SALE:[],T_QC:[],T_ADJ:[]}, logs:[], costHistory:[] }; window.db = db;
-function todayISO(){return new Date().toISOString().split('T')[0]}
+function todayISO(){return new Date(Date.now()+324e5).toISOString().split('T')[0]}
 function generateId(p){return p+'-'+(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2))}
 function logEvent(m){db.logs.unshift('['+new Date().toLocaleString('ko-KR',{hour12:false})+'] '+m);if(db.logs.length>300)db.logs.pop()}
 function toast(m,t){const b=document.getElementById('toast-container');const e=document.createElement('div');e.className='px-4 py-2.5 rounded-lg shadow-lg text-xs font-bold text-white max-w-xs '+(t==='error'?'bg-red-500':t==='success'?'bg-slate-800':'bg-slate-600');e.innerText=m;b.appendChild(e);setTimeout(()=>e.remove(),3500)}
@@ -2130,7 +2130,7 @@ function completeWO(woId) {
 
 // === 생산실적 ===
 function renderProdResult() {
-  const ym = new Date().toISOString().slice(0,7);
+  const ym = new Date(Date.now()+324e5).toISOString().slice(0,7);
   const monthBatches = db.txn.T_BATCH.filter(t => t.date?.startsWith(ym));
   const totalQty = monthBatches.reduce((s,t) => s+(t.qty||0), 0);
   const totalCost = monthBatches.reduce((s,t) => s+(t.cost?.totalCostBatch||0), 0);
@@ -3243,7 +3243,7 @@ function renderStockLedger() {
 function renderDeadStock() {
   const days = Number(document.getElementById('dead-days')?.value)||90;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().split('T')[0];
+  const cutoffStr = new Date(cutoff.getTime()-cutoff.getTimezoneOffset()*6e4).toISOString().split('T')[0];
   const tbody = document.getElementById('tbl-deadstock');
   if (!tbody) return;
   let rows = '';
@@ -3366,7 +3366,7 @@ function initNewPage(pageId) {
       renderRecordsAdmin();
       break;
     case 'stock-ledger':
-      document.getElementById('sl-from').value = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+      document.getElementById('sl-from').value = todayISO().slice(0,8)+'01';
       document.getElementById('sl-to').value = todayISO();
       renderStockLedger();
       break;
@@ -4120,7 +4120,7 @@ function initNewPage(pageId) {
 (function(){
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const n = (v,d=0) => { const x = Number(v); return Number.isFinite(x) ? x : d; };
-  const today = () => (typeof todayISO === 'function' ? todayISO() : new Date().toISOString().split('T')[0]);
+  const today = () => (typeof todayISO === 'function' ? todayISO() : new Date(Date.now()+324e5).toISOString().split('T')[0]);
   const byDate = (a,b) => String(a||'').localeCompare(String(b||''));
   const activePageId = () => document.querySelector('.page-section.active')?.id?.replace('page-','') || '';
   const allLots = () => [
@@ -6430,7 +6430,7 @@ function initNewPage(pageId) {
   const _n = (v,d=0) => (typeof n === 'function' ? n(v,d) : (isNaN(Number(v)) ? d : Number(v)));
   const _esc = (v) => (typeof esc === 'function' ? esc(v) : String(v ?? '').replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])));
   const _fmt = (v) => (typeof fmt === 'function' ? fmt(v) : (_n(v).toLocaleString() + '원'));
-  const _today = () => (typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0,10));
+  const _today = () => (typeof todayISO === 'function' ? todayISO() : new Date(Date.now()+324e5).toISOString().slice(0,10));
   const _docCfg = () => (typeof docCfg === 'function' ? docCfg() : {company:'SHIFTI',bizNo:'-',addr:'-',reg:'-',ceo:'-',manager:'-',tel:'-',email:'-'});
   const _docPageWrap = (inner, compact=false) => (typeof docPageWrap === 'function' ? docPageWrap(inner, compact) : inner);
   const _docApprovalTable = () => (typeof docApprovalTable === 'function' ? docApprovalTable() : '');
@@ -6707,7 +6707,7 @@ function initNewPage(pageId) {
     const productId = plan?.productId || null;
     const wo = {
       id: (typeof generateId === 'function' ? generateId('WO') : ('WO-'+Date.now())),
-      no: 'WO-' + new Date().toISOString().slice(2,10).replaceAll('-','') + '-' + String((db.txn.T_WORK_ORDER||[]).length + 1).padStart(3,'0'),
+      no: 'WO-' + new Date(Date.now()+324e5).toISOString().slice(2,10).replaceAll('-','') + '-' + String((db.txn.T_WORK_ORDER||[]).length + 1).padStart(3,'0'),
       planId,
       planNo: plan?.no || '',
       productId,
@@ -7111,8 +7111,8 @@ function initNewPage(pageId) {
   });
 })();
 </script>
-<script src="responsive-erp.js"></script>
-  <script src="erp-patch.js?v=20261118"></script>
+<script src="responsive-erp.js?v=20261119"></script>
+  <script src="erp-patch.js?v=20261119"></script>
 <!-- 기존 백그라운드 동기화 제거: loadDB 및 Suite 단일 저장 경로 사용 -->
 <script>
 /* ── 신규 모듈 리스트 자동 갱신 보완 (저장 후 즉시 표시) — 노즈 추가 ── */
@@ -7568,7 +7568,7 @@ function initNewPage(pageId) {
 })();
 </script>
 
-<script src="nose-modules.js?v=5.8"></script>
+<script src="nose-modules.js?v=20261119"></script>
   <script src="SHIFTI_AI.js"></script>
   <script src="oem-quote.js?v=1.0"></script><!-- 2026-11-17 OEM 원가 견적 (문서/보고 메뉴) -->
   <script>
@@ -7641,7 +7641,7 @@ window.addEventListener('load', function () {
 
       db.txn.T_PROD_PLAN.push({
         id: 'PP-' + Date.now(),
-        no: 'PP-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + (db.txn.T_PROD_PLAN.length + 1),
+        no: 'PP-' + new Date(Date.now()+324e5).toISOString().slice(0,10).replace(/-/g,'') + '-' + (db.txn.T_PROD_PLAN.length + 1),
         productId: a.productId,
         qty: Number(a.qty || 0),
         date: a.date,
@@ -7661,7 +7661,7 @@ window.addEventListener('load', function () {
 
       db.txn.T_SO.push({
         id: 'SO-' + Date.now(),
-        no: 'SO-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + (db.txn.T_SO.length + 1),
+        no: 'SO-' + new Date(Date.now()+324e5).toISOString().slice(0,10).replace(/-/g,'') + '-' + (db.txn.T_SO.length + 1),
         customerId: a.customerId || '',
         date: a.date,
         dueDate: a.date,

@@ -47,10 +47,48 @@
       .doc-title{font-size:18px!important}
       .label-sheet{width:88%!important}
       .card-header{flex-wrap:wrap;gap:6px}
-      #toast-container{bottom:68px!important;right:12px!important;max-width:calc(100vw - 24px)}
-      h2.text-lg{font-size:14px!important}
-      .page-section h2{font-size:14px!important}
+      /* 알림은 하단 메뉴에 가리지 않게 화면 위쪽 (2026-11-19) */
+      #toast-container{top:60px!important;bottom:auto!important;left:12px!important;right:12px!important;max-width:none}
+      #toast-container > *{font-size:15px!important}
+      h2.text-lg{font-size:18px!important}
+      .page-section h2{font-size:18px!important}
+
+      /* ── 1단계 (2026-11-19): 휴대폰 글씨 최소 13~14px, 버튼 44px ──
+         인쇄용 문서 미리보기(doc-page·라벨)는 A4 배치가 깨지므로 제외 */
+      body{font-size:15px}
+      :is(.text-\\[9px\\],.text-\\[10px\\],.text-\\[11px\\]):not(.doc-page *):not(.bt-doc-page *):not(.label-sheet *){font-size:13px!important;line-height:1.45!important}
+      .text-xs:not(.doc-page *):not(.bt-doc-page *):not(.label-sheet *){font-size:14px!important;line-height:1.5!important}
+      .text-sm:not(.doc-page *):not(.bt-doc-page *):not(.label-sheet *){font-size:15px!important}
+      :is([style*="font-size:9px"],[style*="font-size:9.5px"],[style*="font-size:10px"],[style*="font-size:10.5px"],[style*="font-size:11px"],[style*="font-size:11.5px"],[style*="font-size: 10px"],[style*="font-size: 11px"]):not(.doc-page *):not(.bt-doc-page *):not(.label-sheet *){font-size:13px!important}
+      :is([style*="font-size:12px"],[style*="font-size:12.5px"],[style*="font-size: 12px"]):not(.doc-page *):not(.bt-doc-page *):not(.label-sheet *){font-size:14px!important}
+      #main-content table:not(.doc-page *) :is(td,th){font-size:14px!important}
+      .btn{min-height:44px!important;font-size:15px!important}
+      .btn-sm{min-height:40px!important;font-size:14px!important;padding-left:12px!important;padding-right:12px!important}
+      .nav-item{font-size:15px!important}
+      #main-content{padding-bottom:88px!important}
+      #mob-bottom-nav{height:64px}
+      .mbn-btn{font-size:12px;letter-spacing:0;text-transform:none;min-width:58px}
+      .mbn-icon{font-size:22px}
+
+      /* 휴대폰 머리글: 로고(누르면 홈) + 연결 상태만 한 줄로 (2026-11-19) */
+      header > div.text-sm{display:none!important}
+      #hdr-today{display:none!important}
+      #cloud-status{white-space:nowrap!important;font-size:12px!important;max-width:46vw;overflow:hidden;text-overflow:ellipsis}
+      #mob-brand{display:inline-flex!important}
+
+      /* ── 2단계: 모바일 홈 「오늘 할 일」 (대시보드에서만) ── */
+      body.on-dashboard #mob-home{display:block}
     }
+    #mob-brand{display:none;align-items:center;gap:6px;border:none;background:transparent;padding:4px 6px;margin-right:auto;cursor:pointer;font-size:16px;font-weight:900;color:#0f172a;-webkit-tap-highlight-color:transparent}
+    #mob-brand img{height:20px;width:auto;display:block}
+    #mob-home{display:none;margin:0 0 16px}
+    #mob-home .mh-title{font-size:18px;font-weight:900;color:#0f172a;margin:2px 2px 10px}
+    #mob-home .mh-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    #mob-home button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:104px;padding:14px;border-radius:14px;border:1.5px solid #cbe3dc;background:#f0fdf9;text-align:left;-webkit-tap-highlight-color:transparent}
+    #mob-home button:active{transform:scale(.97);background:#ccfbf1}
+    #mob-home .mh-ico{font-size:28px;line-height:1}
+    #mob-home b{font-size:17px;color:#0f172a}
+    #mob-home small{font-size:13px;color:#475569;line-height:1.35}
 
     @media(min-width:768px) and (max-width:1023px){
       aside{width:52px!important;overflow:hidden;transition:width .22s ease}
@@ -76,8 +114,8 @@
       .input-field{min-height:40px;font-size:16px!important}
       select.input-field{font-size:16px!important}
       textarea.input-field{font-size:16px!important}
-      .btn{min-height:38px}
-      .btn-sm{min-height:34px}
+      .btn{min-height:44px}
+      .btn-sm{min-height:40px}
     }
   `;
 
@@ -120,6 +158,13 @@
       hamburger.addEventListener('click', toggleSidebar);
       header.insertBefore(hamburger, header.firstChild);
 
+      // 휴대폰 머리글 로고: 누르면 홈(대시보드)
+      const brand = document.createElement('button');
+      brand.id = 'mob-brand'; brand.type = 'button'; brand.title = '홈(대시보드)으로'; brand.setAttribute('aria-label', '홈(대시보드)으로 이동');
+      brand.innerHTML = window.MDS_LOGO ? '<img alt="MEDISCENT" src="' + window.MDS_LOGO + '" style="filter:invert(1) brightness(.2)">' : 'SHIFTI ERP';
+      brand.addEventListener('click', () => window.mobGo('home'));
+      hamburger.insertAdjacentElement('afterend', brand);
+
       // Wrap desktop buttons
       const desktopBtns = Array.from(header.querySelectorAll('button[onclick*="cloudLogin"], button[onclick*="cloudLogout"], button[onclick*="exportJSON"], button[onclick*="import-file"]'));
       if (desktopBtns.length && !header.querySelector('.hdr-desktop')) {
@@ -152,15 +197,71 @@
       nav.id = 'mob-bottom-nav';
       nav.innerHTML = `
         <div class="mbn-inner">
-          <button class="mbn-btn mbn-active" id="mbn-dashboard" onclick="goPage('dashboard')"><span class="mbn-icon">📊</span>대시보드</button>
-          <button class="mbn-btn" id="mbn-stock" onclick="goPage('stock')"><span class="mbn-icon">📦</span>재고</button>
-          <button class="mbn-btn" id="mbn-goodsin" onclick="goPage('t-goods-in')"><span class="mbn-icon">📥</span>입고</button>
-          <button class="mbn-btn" id="mbn-sale" onclick="goPage('t-sale')"><span class="mbn-icon">🚚</span>출고</button>
-          <button class="mbn-btn" id="mbn-menu" onclick="toggleSidebar()"><span class="mbn-icon">☰</span>메뉴</button>
+          <button class="mbn-btn mbn-active" id="mbn-dashboard" onclick="mobGo('home')"><span class="mbn-icon">🏠</span>홈</button>
+          <button class="mbn-btn" id="mbn-sale" onclick="mobGo('sale')"><span class="mbn-icon">💰</span>판매</button>
+          <button class="mbn-btn" id="mbn-stock" onclick="mobGo('stock')"><span class="mbn-icon">📦</span>재고</button>
+          <button class="mbn-btn" id="mbn-qc" onclick="mobGo('qc')"><span class="mbn-icon">✅</span>검사</button>
+          <button class="mbn-btn" id="mbn-menu" onclick="toggleSidebar()"><span class="mbn-icon">☰</span>더보기</button>
         </div>`;
       document.body.appendChild(nav);
     }
+
+    // 모바일 홈 「오늘 할 일」: 매장에서 휴대폰으로 하는 일 4가지 (2026-11-19)
+    const main = document.getElementById('main-content');
+    if (main && !document.getElementById('mob-home')) {
+      const home = document.createElement('div');
+      home.id = 'mob-home';
+      home.innerHTML = `
+        <div class="mh-title">오늘 할 일</div>
+        <div class="mh-grid">
+          <button onclick="mobGo('sale')"><span class="mh-ico">💰</span><b>판매 기록</b><small>매장·택배 판매 수량 입력</small></button>
+          <button onclick="mobGo('stock')"><span class="mh-ico">📦</span><b>재고 보기</b><small>공장·물류·매장 재고</small></button>
+          <button onclick="mobGo('week')"><span class="mh-ico">📅</span><b>주간정산</b><small>한 주 생산·이관·판매 한번에</small></button>
+          <button onclick="mobGo('qc')"><span class="mh-ico">✅</span><b>검사(QC)</b><small>완제품 합격·불합격 판정</small></button>
+        </div>`;
+      main.insertBefore(home, main.firstChild);
+    }
+    document.body.classList.toggle('on-dashboard', !!document.querySelector('#page-dashboard.active'));
   }
+
+  /* 휴대폰 글씨 하한선 (2026-11-19): 모듈마다 10~12px 클래스가 따로 있어 CSS로 다 잡을 수 없다.
+     지금 보이는 화면에서 13px 미만 글자만 13px로 올리고, 화면 폭이 넓어지면 원래대로 돌린다.
+     인쇄 문서 미리보기(doc-page·라벨)와 하단 메뉴는 제외 */
+  const FLOOR = 13, SKIP = '.doc-page, .bt-doc-page, .label-sheet, #mob-bottom-nav, svg, canvas';
+  let floorTimer = null;
+  function applyFontFloor() {
+    const mobile = window.innerWidth < 768;
+    document.querySelectorAll('[data-ff]').forEach(e => { if (!mobile) { e.style.removeProperty('font-size'); e.removeAttribute('data-ff'); } });
+    if (!mobile) return;
+    const scope = document.querySelector('.page-section.active') || document.getElementById('main-content');
+    if (!scope) return;
+    [scope, document.getElementById('mob-home')].filter(Boolean).forEach(root => root.querySelectorAll('*').forEach(e => {
+      if (e.hasAttribute('data-ff') || e.closest(SKIP) || !e.offsetParent) return;
+      if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) return;
+      if (parseFloat(getComputedStyle(e).fontSize) < FLOOR) { e.style.setProperty('font-size', FLOOR + 'px', 'important'); e.setAttribute('data-ff', '1'); }
+    }));
+  }
+  function scheduleFloor() { clearTimeout(floorTimer); floorTimer = setTimeout(applyFontFloor, 120); }
+  window.addEventListener('resize', scheduleFloor);
+  document.addEventListener('DOMContentLoaded', () => {
+    const mc = document.getElementById('main-content');
+    if (mc && 'MutationObserver' in window) new MutationObserver(scheduleFloor).observe(mc, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    scheduleFloor();
+  });
+
+  /* 모바일 바로가기: 화면이 아직 없으면 가까운 기존 화면으로 */
+  window.mobGo = function(key) {
+    const has = id => !!document.getElementById('page-' + id);
+    const go = id => { if (typeof window.goPage === 'function') window.goPage(id); };
+    const tab = t => setTimeout(() => { if (typeof window.qlTab === 'function') window.qlTab(t); }, 60);
+    if (key === 'home') go('dashboard');
+    else if (key === 'sale') { if (has('quick-log')) { go('quick-log'); tab('sale'); } else go('t-sale'); }
+    else if (key === 'week') { if (has('quick-log')) { go('quick-log'); tab('week'); } else go('dashboard'); }
+    else if (key === 'stock') go(has('loc-stock') ? 'loc-stock' : 'stock');
+    else if (key === 'qc') go('qc-prod');
+    window.scrollTo(0, 0);
+    const mc = document.getElementById('main-content'); if (mc) mc.scrollTop = 0;
+  };
 
   /* ── 3. Sidebar toggle functions ── */
   window.toggleSidebar = function() {
@@ -180,7 +281,7 @@
   };
 
   /* ── 4. Patch goPage ── */
-  const MBN_MAP = { dashboard:'mbn-dashboard', stock:'mbn-stock', 't-goods-in':'mbn-goodsin', 't-sale':'mbn-sale' };
+  const MBN_MAP = { dashboard:'mbn-dashboard', stock:'mbn-stock', 'loc-stock':'mbn-stock', 'quick-log':'mbn-sale', 't-sale':'mbn-sale', 'qc-prod':'mbn-qc', 't-qc':'mbn-qc' };
 
   function patchGoPage() {
     const orig = window.goPage;
@@ -191,7 +292,10 @@
       document.querySelectorAll('.mbn-btn').forEach(b => b.classList.remove('mbn-active'));
       const btnId = MBN_MAP[pageId];
       if (btnId) { const b = document.getElementById(btnId); if (b) b.classList.add('mbn-active'); }
-      return orig.apply(this, arguments);
+      document.body.classList.toggle('on-dashboard', pageId === 'dashboard');
+      const r = orig.apply(this, arguments);
+      scheduleFloor();
+      return r;
     };
     window.goPage._mobilePatchApplied = true;
   }
@@ -222,6 +326,7 @@
     injectDOM();
     patchGoPage();
     fixTableOverflow();
+    scheduleFloor();
   }
 
   if (document.readyState === 'loading') {

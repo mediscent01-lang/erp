@@ -62,7 +62,7 @@ function ensureWO(){
 function woPlan(wo){ return (db.txn.T_PROD_PLAN||[]).find(function(p){ return p.id===wo.planId; }); }
 function woProduct(wo){ var p = woPlan(wo); return p && (typeof findProduct==='function') ? findProduct(p.productId) : null; }
 function fmtPct(v){ return (v==null||!isFinite(v)) ? '-' : (Math.round(v*10)/10)+'%'; }
-function ymd(d){ return d.toISOString().split('T')[0]; }
+function ymd(d){ return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().split('T')[0]; }
 
 /* 수율 계산: 생산수율 = 양품/(양품+불량), 자재수율 = 산출/실투입, 달성률 = 양품/계획 */
 function calcYields(wo){
@@ -908,7 +908,7 @@ window.mfdsPrint = function(title, bodyHtml){
 function header(title, docNo){
   return '<div class="co">'+CO.name+'</div><h1>'+title+'</h1>'+
     '<div class="sub">'+CO.reg+' · '+CO.addr+' · TEL '+CO.tel+'</div>'+
-    '<table><tr><th style="width:18%">문서번호</th><td style="width:32%">'+E(docNo)+'</td><th style="width:18%">출력일</th><td>'+new Date().toISOString().split('T')[0]+' (ERP 자동생성)</td></tr></table>';
+    '<table><tr><th style="width:18%">문서번호</th><td style="width:32%">'+E(docNo)+'</td><th style="width:18%">출력일</th><td>'+new Date(Date.now()+324e5).toISOString().split('T')[0]+' (ERP 자동생성)</td></tr></table>';
 }
 function signBlock(rows){
   return '<h3>확인 및 서명</h3><table class="sign">'+rows.map(function(r){
@@ -1101,7 +1101,7 @@ function fillTd(){
   if(cs) cs.innerHTML = '<option value="">고객 선택</option>' + (db.master.M_CUSTOMER||[]).map(function(c){
     return '<option value="'+E(c.customerId)+'">'+E(c.name)+' ('+E(c.channel||'-')+')</option>';
   }).join('');
-  var t = (typeof todayISO==='function') ? todayISO() : new Date().toISOString().split('T')[0];
+  var t = (typeof todayISO==='function') ? todayISO() : new Date(Date.now()+324e5).toISOString().split('T')[0];
   if($('td-from') && !$('td-from').value) $('td-from').value = t;
   if($('td-to') && !$('td-to').value) $('td-to').value = t;
   if($('td-month') && !$('td-month').value) $('td-month').value = t.slice(0,7);
@@ -1129,7 +1129,7 @@ window.printTradeDoc = function(){
   var sup=0, vat=0, tot=0;
   var body =
     '<h1>거 래 명 세 서</h1>'+
-    '<div class="small" style="text-align:right">거래기간: '+E(from)+' ~ '+E(to)+' · 발행일: '+new Date().toISOString().split('T')[0]+'</div>'+
+    '<div class="small" style="text-align:right">거래기간: '+E(from)+' ~ '+E(to)+' · 발행일: '+new Date(Date.now()+324e5).toISOString().split('T')[0]+'</div>'+
     '<div class="half"><table>'+
       '<tr><th colspan="2" style="background:#e8f3f0">공 급 자</th></tr>'+
       '<tr><th style="width:32%">상호</th><td>'+E(c.company||'주식회사 메디센츠')+'</td></tr>'+
@@ -1188,7 +1188,7 @@ window.printVatSummary = function(){
   });
   var body =
     '<h1 style="letter-spacing:4px">부가세 신고 기초자료 ('+E(ym)+')</h1>'+
-    '<div class="small" style="text-align:right">'+E(c.company||'주식회사 메디센츠')+' · 사업자번호 '+E(c.bizNo||'')+' · 출력 '+new Date().toISOString().split('T')[0]+'</div>'+
+    '<div class="small" style="text-align:right">'+E(c.company||'주식회사 메디센츠')+' · 사업자번호 '+E(c.bizNo||'')+' · 출력 '+new Date(Date.now()+324e5).toISOString().split('T')[0]+'</div>'+
     '<h3 style="font-size:12.5px;margin:10px 0 4px;border-bottom:2px solid #444">1. 매출 (출고) — 거래처별</h3>'+
     '<table><tr><th>거래처</th><th style="width:10%">건수</th><th style="width:18%">공급가액</th><th style="width:15%">세액</th><th style="width:18%">합계</th></tr>'+
     Object.keys(byCust).map(function(k){
@@ -1343,7 +1343,7 @@ var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
 var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
 var F = function(v){ return Math.round(N(v)).toLocaleString(); };
 var F2 = function(v){ return (Math.round(N(v)*100)/100).toLocaleString(); };
-var TODAY = function(){ return new Date().toISOString().split('T')[0]; };
+var TODAY = function(){ return new Date(Date.now()+324e5).toISOString().split('T')[0]; };
 
 /* ════════ ④ 승인 스탬프 ════════ */
 var CUR_USER = '';
@@ -1758,8 +1758,8 @@ var $ = function(id){ return document.getElementById(id); };
 var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
 var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
 var F = function(v){ return Math.round(N(v)).toLocaleString(); };
-var todayStr = function(){ return new Date().toISOString().split('T')[0]; };
-function plusDays(d){ var t=new Date(); t.setDate(t.getDate()+d); return t.toISOString().split('T')[0]; }
+var todayStr = function(){ return new Date(Date.now()+324e5).toISOString().split('T')[0]; };
+function plusDays(d){ var t=new Date(Date.now()+324e5); t.setUTCDate(t.getUTCDate()+d); return t.toISOString().split('T')[0]; }
 
 /* 안전재고용 현재고 합산 (FAIL 제외) */
 function stockOf(type, itemId){
@@ -1983,7 +1983,7 @@ window.migrateLoc=function(){
   ((db.txn||{}).T_STOCK_MOVE||[]).forEach(function(m){ if(map[m.from]) m.from=map[m.from]; if(map[m.to]) m.to=map[m.to]; });
 };
 var locOf = function(l){ return l.location || '공장'; };
-var TODAY = function(){ return new Date().toISOString().split('T')[0]; };
+var TODAY = function(){ return new Date(Date.now()+324e5).toISOString().split('T')[0]; };
 function ensure(){ if(window.db){ db.txn = db.txn||{}; db.txn.T_STOCK_MOVE = db.txn.T_STOCK_MOVE||[]; } }
 function genId(p){ return (typeof generateId==='function') ? generateId(p) : p+'-'+Date.now()+Math.floor(Math.random()*999); }
 
@@ -2924,7 +2924,7 @@ window.printNoseGuide = function(){
     '.gd-sec{margin:12px 0;page-break-inside:avoid}.gd-sec>b{display:block;font-size:12.5px;color:#0f766e;border-bottom:2px solid #0f766e;padding-bottom:2px;margin-bottom:5px}'+
     '.gd-step{display:flex;gap:8px;padding:3px 0;border-bottom:1px dotted #ddd}'+
     '.gd-num{min-width:44px;font-weight:800;color:#0f766e;font-size:10px}button{display:none}';
-  var body = '<h1>SHIFTI ERP 운영가이드</h1><div class="sub">주식회사 메디센츠 · 확장 모듈 v2.2 · 출력 '+new Date().toISOString().split('T')[0]+'</div>' + el.innerHTML;
+  var body = '<h1>SHIFTI ERP 운영가이드</h1><div class="sub">주식회사 메디센츠 · 확장 모듈 v2.2 · 출력 '+new Date(Date.now()+324e5).toISOString().split('T')[0]+'</div>' + el.innerHTML;
   var w2 = window.open('', '_blank');
   if(!w2){ if(typeof toast==='function') toast('팝업이 차단되었습니다','error'); return; }
   w2.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>SHIFTI ERP 운영가이드</title><style>'+css+'</style></head><body>'+body+
@@ -2951,7 +2951,7 @@ var $ = function(id){ return document.getElementById(id); };
 var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
 var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
 var F = function(v){ return Math.round(N(v)).toLocaleString(); };
-var TODAY = function(){ return new Date().toISOString().split('T')[0]; };
+var TODAY = function(){ return new Date(Date.now()+324e5).toISOString().split('T')[0]; };
 var TH_LEAVE = 0.001;
 var A26MAP = {'127-51-5':'알파-이소메틸이오논','122-40-7':'아밀신남알','101-85-9':'아밀신나밀알코올','105-13-5':'아니스알코올','100-51-6':'벤질알코올','120-51-4':'벤질벤조에이트','103-41-3':'벤질신나메이트','118-58-1':'벤질살리실레이트','80-54-6':'부틸페닐메틸프로피오날','104-55-2':'신남알','104-54-1':'신나밀알코올','5392-40-5':'시트랄','106-22-9':'시트로넬올','91-64-5':'쿠마린','97-53-0':'유제놀','90028-67-4':'트리모스추출물','90028-68-5':'오크모스추출물','4602-84-0':'파네솔','106-24-1':'제라니올','101-86-0':'헥실신남알','107-75-5':'하이드록시시트로넬알','31906-04-4':'하이드록시이소헥실','97-54-1':'이소유제놀','5989-27-5':'리모넨','78-70-6':'리날룰','111-12-6':'메틸헵틴카보네이트'};
 
@@ -3192,7 +3192,7 @@ var $ = function(id){ return document.getElementById(id); };
 var N = function(v){ var x=Number(v); return isFinite(x)?x:0; };
 var E = function(v){ return (typeof escH==='function') ? escH(v) : String(v==null?'':v); };
 var F = function(v){ return Math.round(N(v)).toLocaleString(); };
-var TODAY = function(){ return new Date().toISOString().split('T')[0]; };
+var TODAY = function(){ return new Date(Date.now()+324e5).toISOString().split('T')[0]; };
 function genId(p){ return (typeof generateId==='function') ? generateId(p) : p+'-'+Date.now()+Math.floor(Math.random()*999); }
 function ensure(){ if(window.db){ db.txn=db.txn||{}; db.txn.T_STOCK_MOVE=db.txn.T_STOCK_MOVE||[]; db.txn.T_QUICK=db.txn.T_QUICK||[]; } }
 
@@ -4079,7 +4079,7 @@ var $=function(id){return document.getElementById(id);};
 var N=function(v){var x=Number(v);return isFinite(x)?x:0;};
 var E=function(v){return (typeof escH==='function')?escH(v):String(v==null?'':v);};
 var F=function(v){return Math.round(N(v)).toLocaleString();};
-var TODAY=function(){return new Date().toISOString().split('T')[0];};
+var TODAY=function(){return new Date(Date.now()+324e5).toISOString().split('T')[0];};
 function genId(p){return (typeof generateId==='function')?generateId(p):p+'-'+Date.now()+Math.floor(Math.random()*999);}
 
 var CFG={
@@ -4747,8 +4747,8 @@ var QA=[
 ];
 function metricsSafe(){
   try{
-    var t=new Date().toISOString().split('T')[0];
-    var soon=new Date(); soon.setDate(soon.getDate()+30); soon=soon.toISOString().split('T')[0];
+    var t=new Date(Date.now()+324e5).toISOString().split('T')[0];
+    var soon=new Date(Date.now()+324e5); soon.setUTCDate(soon.getUTCDate()+30); soon=soon.toISOString().split('T')[0];
     var S=db.stock||{}, T=db.txn||{}, M=db.master||{};
     var qc=(S.FGT_LOT||[]).filter(function(l){return String(l.status||'').toUpperCase()==='HOLD';}).length;
     var mat=(S.BULK_LOT||[]).filter(function(l){return String(l.status||'').toUpperCase()==='HOLD'&&l.matureUntil&&l.matureUntil<=t&&N(l.remaining)>0;}).length;
@@ -5024,7 +5024,7 @@ function css(){
 /* ── 데이터 집계 ── */
 function items(){
   var out=[], t=new Date(), soon=new Date(); soon.setDate(soon.getDate()+30);
-  var soonS=soon.toISOString().split('T')[0], today=t.toISOString().split('T')[0];
+  var soonS=new Date(soon.getTime()-soon.getTimezoneOffset()*6e4).toISOString().split('T')[0], today=new Date(t.getTime()-t.getTimezoneOffset()*6e4).toISOString().split('T')[0];
   function push(kind, key, idk, master, unit){
     var agg={};
     (db.stock[key]||[]).forEach(function(l){
