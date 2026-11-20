@@ -1,0 +1,464 @@
+/* ─────────────────────────────────────────────────────────────
+ * MEDISCENT ERP — Astryx Design System skin (Matcha theme)
+ * 2026-11-19 · 화면 스킨만 교체. HTML 구조·ID·업무 로직은 그대로.
+ * 색·간격·반경·그림자·서체는 모두 astryx-tokens.css 토큰을 참조한다.
+ * 적용: <html data-erp-skin="core">, 이 파일을 마지막 스타일로 로드.
+ * 되돌리기: index.html에서 두 <link>와 data-astryx-theme 속성 제거.
+ * ───────────────────────────────────────────────────────────── */
+
+:root[data-erp-skin="core"] {
+  /* ERP 밀도용 보조 토큰 (Astryx 스케일에서 파생) */
+  --erp-font: 13.5px;
+  --erp-font-sm: 12px;
+  --erp-font-xs: 11px;
+  --erp-surface-sunken: color-mix(in srgb, var(--color-background-body) 55%, var(--color-background-surface));
+  --erp-sidebar: var(--color-background-inverted);
+  --erp-sidebar-hover: color-mix(in srgb, var(--color-on-dark) 9%, transparent);
+  --erp-sidebar-active: color-mix(in srgb, var(--color-on-dark) 15%, transparent);
+  --erp-sidebar-text: color-mix(in srgb, var(--color-on-dark) 72%, transparent);
+  --erp-sidebar-muted: color-mix(in srgb, var(--color-on-dark) 45%, transparent);
+  --erp-sidebar-line: color-mix(in srgb, var(--color-on-dark) 12%, transparent);
+  --erp-accent-strong: color-mix(in srgb, var(--color-accent) 85%, black);
+  --erp-ring: 0 0 0 3px var(--color-accent-muted), 0 0 0 1px var(--color-accent);
+  --erp-transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), box-shadow var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);
+
+  /* 기존 모듈이 쓰는 변수도 토큰으로 연결 */
+  --bg: var(--color-background-body);
+  --sidebar: var(--erp-sidebar);
+  --accent: var(--color-accent);
+  --accent-light: var(--color-border-emphasized);
+  --v42-ink: var(--color-text-primary);
+  --v42-muted: var(--color-text-secondary);
+  --v42-line: var(--color-border);
+  --v42-soft: var(--color-background-body);
+  --v42-brand: var(--color-accent);
+  --v42-danger: var(--color-text-error);
+  --celadon: var(--color-accent);
+  --celadon-soft: var(--color-accent-muted);
+  --ink: var(--color-text-primary);
+  --muted: var(--color-text-secondary);
+  --line: var(--color-border);
+}
+
+/* ── 기본 ─────────────────────────────────────────── */
+html[data-erp-skin="core"] body {
+  font-family: var(--font-family-body);
+  font-size: var(--erp-font);
+  background: var(--color-background-body);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.005em;
+}
+html[data-erp-skin="core"] ::selection { background: var(--color-accent-muted); }
+html[data-erp-skin="core"] ::-webkit-scrollbar-track { background: transparent; }
+html[data-erp-skin="core"] ::-webkit-scrollbar-thumb { background: var(--color-border-emphasized); border-radius: var(--radius-full, 999px); }
+html[data-erp-skin="core"] :focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: 2px;
+}
+html[data-erp-skin="core"] .mono,
+html[data-erp-skin="core"] code { font-family: var(--font-family-code); }
+
+/* Tailwind 회색 계열을 토큰 색으로 통일 */
+html[data-erp-skin="core"] main .text-slate-900,
+html[data-erp-skin="core"] main .text-slate-800 { color: var(--color-text-primary); }
+html[data-erp-skin="core"] main .text-slate-700,
+html[data-erp-skin="core"] main .text-slate-600 { color: color-mix(in srgb, var(--color-text-primary) 80%, var(--color-text-secondary)); }
+html[data-erp-skin="core"] main .text-slate-500 { color: var(--color-text-secondary); }
+html[data-erp-skin="core"] main .text-slate-400 { color: var(--color-icon-secondary); }
+html[data-erp-skin="core"] main .text-teal-600,
+html[data-erp-skin="core"] main .text-teal-700 { color: var(--color-text-accent); }
+html[data-erp-skin="core"] main .bg-slate-50 { background-color: var(--erp-surface-sunken); }
+html[data-erp-skin="core"] main .bg-slate-900,
+html[data-erp-skin="core"] main .bg-slate-800 { background-color: color-mix(in srgb, var(--color-background-inverted) 70%, black); border-radius: var(--radius-element); }
+html[data-erp-skin="core"] main .bg-teal-50 { background-color: var(--color-accent-muted); }
+html[data-erp-skin="core"] main .border-slate-100,
+html[data-erp-skin="core"] main .border-slate-200 { border-color: var(--color-border); }
+html[data-erp-skin="core"] main .border-teal-200 { border-color: var(--color-border-emphasized); }
+
+/* ── 사이드바 ─────────────────────────────────────── */
+html[data-erp-skin="core"] aside {
+  background: var(--erp-sidebar) !important;
+  color: var(--color-on-dark);
+}
+html[data-erp-skin="core"] aside .border-slate-800,
+html[data-erp-skin="core"] aside .border-slate-700 { border-color: var(--erp-sidebar-line) !important; }
+html[data-erp-skin="core"] aside .text-slate-400,
+html[data-erp-skin="core"] aside .text-slate-500 { color: var(--erp-sidebar-muted) !important; }
+html[data-erp-skin="core"] aside nav { padding: var(--spacing-1) var(--spacing-1-5) !important; }
+html[data-erp-skin="core"] .nav-label {
+  color: var(--erp-sidebar-muted) !important;
+  font-size: var(--erp-font-xs) !important;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em !important;
+  padding: var(--spacing-3) var(--spacing-1-5) var(--spacing-1) !important;
+}
+html[data-erp-skin="core"] .nav-item {
+  color: var(--erp-sidebar-text);
+  border-left: 0;
+  border-radius: var(--radius-inner);
+  padding: var(--spacing-1) var(--spacing-1-5);
+  margin: 1px 0;
+  min-height: var(--size-element-sm);
+  font-size: var(--erp-font) !important;
+  font-weight: var(--font-weight-medium);
+  transition: var(--erp-transition);
+}
+html[data-erp-skin="core"] .nav-item:hover {
+  background: var(--erp-sidebar-hover);
+  color: var(--color-on-dark);
+}
+html[data-erp-skin="core"] .nav-item.active {
+  background: var(--erp-sidebar-active);
+  color: var(--color-on-dark);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+html[data-erp-skin="core"] .nav-item svg,
+html[data-erp-skin="core"] .nav-item .lucide { opacity: .85; }
+html[data-erp-skin="core"] .sidebar-close-btn:hover { background: var(--erp-sidebar-hover); color: var(--color-on-dark); }
+
+/* ── 상단 헤더 ───────────────────────────────────── */
+html[data-erp-skin="core"] header {
+  background: color-mix(in srgb, var(--color-background-surface) 88%, transparent) !important;
+  border-bottom: var(--border-width) solid var(--color-border) !important;
+  backdrop-filter: saturate(1.4) blur(8px);
+  height: 56px;
+}
+html[data-erp-skin="core"] .hbg-btn { color: var(--color-icon-primary); border-radius: var(--radius-inner); }
+html[data-erp-skin="core"] .hbg-btn:hover { background: var(--color-overlay-hover); }
+html[data-erp-skin="core"] #main-content { padding: var(--spacing-4) !important; }
+
+/* ── 카드 ─────────────────────────────────────────── */
+html[data-erp-skin="core"] .card,
+html[data-erp-skin="core"] .bt-card,
+html[data-erp-skin="core"] .nose-kpi,
+html[data-erp-skin="core"] .nose-qa-item {
+  background: var(--color-background-card);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-container);
+  box-shadow: 0 1px 2px var(--color-shadow);
+}
+html[data-erp-skin="core"] .card-header {
+  padding: var(--spacing-2) var(--spacing-3);
+  border-bottom: var(--border-width) solid var(--color-border);
+  min-height: 48px;
+}
+html[data-erp-skin="core"] .card-header h2,
+html[data-erp-skin="core"] .card-header h3,
+html[data-erp-skin="core"] .card-header .font-bold { font-weight: var(--font-weight-semibold); color: var(--color-text-primary); }
+html[data-erp-skin="core"] .nose-qa-item:hover,
+html[data-erp-skin="core"] .nose-kpi:hover {
+  border-color: var(--color-border-emphasized);
+  box-shadow: var(--shadow-med);
+  transform: translateY(-1px);
+}
+html[data-erp-skin="core"] .nose-qa-item,
+html[data-erp-skin="core"] .nose-kpi { transition: var(--erp-transition); }
+html[data-erp-skin="core"] .nose-qa-icon { background: var(--color-accent-muted); color: var(--color-icon-accent); border-radius: var(--radius-element); }
+html[data-erp-skin="core"] .nose-kpi-value { color: var(--color-text-primary); font-weight: var(--font-weight-bold); letter-spacing: -0.02em; }
+html[data-erp-skin="core"] .nose-kpi-top,
+html[data-erp-skin="core"] .nose-kpi-foot,
+html[data-erp-skin="core"] .nose-qa-item span { color: var(--color-text-secondary); }
+
+/* ── 버튼 ─────────────────────────────────────────── */
+html[data-erp-skin="core"] .btn,
+html[data-erp-skin="core"] .bt-btn {
+  min-height: var(--size-element-sm);
+  padding: 0 var(--spacing-2);
+  border-radius: var(--radius-element);
+  font-size: var(--erp-font);
+  font-weight: var(--font-weight-semibold);
+  transition: var(--erp-transition);
+}
+html[data-erp-skin="core"] .btn-sm {
+  min-height: 30px !important;
+  padding: 0 var(--spacing-1-5);
+  border-radius: var(--radius-inner);
+  font-size: var(--erp-font-sm);
+}
+html[data-erp-skin="core"] .btn-primary,
+html[data-erp-skin="core"] button.btn-primary,
+html[data-erp-skin="core"] .bt-btn:not(.bt-btn-secondary):not(.bt-btn-danger),
+html[data-erp-skin="core"] .v42-primary {
+  background: var(--color-accent) !important;
+  border: var(--border-width) solid var(--color-accent) !important;
+  color: var(--color-on-accent) !important;
+  box-shadow: 0 1px 2px var(--color-shadow);
+}
+html[data-erp-skin="core"] .btn-primary:hover,
+html[data-erp-skin="core"] .bt-btn:not(.bt-btn-secondary):not(.bt-btn-danger):hover,
+html[data-erp-skin="core"] .v42-primary:hover {
+  background: var(--erp-accent-strong) !important;
+  transform: none;
+  box-shadow: var(--shadow-low);
+}
+html[data-erp-skin="core"] .btn-secondary,
+html[data-erp-skin="core"] .bt-btn-secondary,
+html[data-erp-skin="core"] .v42-secondary {
+  background: var(--color-background-surface) !important;
+  color: var(--color-text-primary) !important;
+  border: var(--border-width) solid var(--color-border-emphasized) !important;
+}
+html[data-erp-skin="core"] .btn-secondary:hover,
+html[data-erp-skin="core"] .bt-btn-secondary:hover {
+  background: var(--erp-surface-sunken) !important;
+  border-color: var(--color-accent) !important;
+}
+html[data-erp-skin="core"] .btn-danger,
+html[data-erp-skin="core"] .bt-btn-danger {
+  background: var(--color-background-surface) !important;
+  color: var(--color-text-error) !important;
+  border: var(--border-width) solid color-mix(in srgb, var(--color-text-error) 35%, transparent) !important;
+}
+html[data-erp-skin="core"] .btn-danger:hover,
+html[data-erp-skin="core"] .bt-btn-danger:hover { background: var(--color-error-muted) !important; }
+html[data-erp-skin="core"] .v42-danger { background: var(--color-text-error) !important; color: var(--color-on-dark) !important; }
+html[data-erp-skin="core"] .btn-warning {
+  background: var(--color-warning-muted);
+  color: var(--color-on-warning-muted);
+  border: var(--border-width) solid color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+html[data-erp-skin="core"] .btn:disabled,
+html[data-erp-skin="core"] .bt-btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+
+/* ── 입력 ─────────────────────────────────────────── */
+html[data-erp-skin="core"] .input-field,
+html[data-erp-skin="core"] .bt-input,
+html[data-erp-skin="core"] .bt-select,
+html[data-erp-skin="core"] .bt-textarea,
+html[data-erp-skin="core"] .v42-dialog textarea,
+html[data-erp-skin="core"] #sb-login input {
+  background: var(--color-background-surface);
+  border: var(--border-width) solid var(--color-border-emphasized);
+  border-radius: var(--radius-inner);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
+  padding: 0 var(--spacing-1-5);
+  min-height: var(--size-element-sm) !important;
+  transition: var(--erp-transition);
+}
+html[data-erp-skin="core"] textarea.input-field,
+html[data-erp-skin="core"] .bt-textarea,
+html[data-erp-skin="core"] .v42-dialog textarea { padding: var(--spacing-1) var(--spacing-1-5); }
+html[data-erp-skin="core"] .input-field:hover,
+html[data-erp-skin="core"] .bt-input:hover,
+html[data-erp-skin="core"] .bt-select:hover { border-color: var(--color-icon-secondary); }
+html[data-erp-skin="core"] .input-field:focus,
+html[data-erp-skin="core"] .bt-input:focus,
+html[data-erp-skin="core"] .bt-select:focus,
+html[data-erp-skin="core"] .bt-textarea:focus,
+html[data-erp-skin="core"] .v42-dialog textarea:focus,
+html[data-erp-skin="core"] #sb-login input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--erp-ring);
+}
+html[data-erp-skin="core"] .input-field::placeholder,
+html[data-erp-skin="core"] .bt-input::placeholder { color: var(--color-text-disabled); }
+html[data-erp-skin="core"] .bt-field label,
+html[data-erp-skin="core"] label.block {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ── 표 ───────────────────────────────────────────── */
+html[data-erp-skin="core"] table { font-size: var(--erp-font-sm); }
+html[data-erp-skin="core"] thead th {
+  background: var(--erp-surface-sunken);
+  color: var(--color-text-secondary);
+  font-size: var(--erp-font-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  padding: var(--spacing-1) var(--spacing-1-5);
+  border-bottom: var(--border-width) solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+html[data-erp-skin="core"] tbody td {
+  color: var(--color-text-primary);
+  padding: var(--spacing-1) var(--spacing-1-5);
+  border-bottom: var(--border-width) solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+html[data-erp-skin="core"] tbody tr:hover td { background: var(--color-overlay-hover); }
+
+/* ── 배지·상태 ───────────────────────────────────── */
+html[data-erp-skin="core"] .status-badge,
+html[data-erp-skin="core"] .badge-soft,
+html[data-erp-skin="core"] .badge-teal {
+  border-radius: var(--radius-full, 999px);
+  font-size: var(--erp-font-xs);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px var(--spacing-1);
+  line-height: 1.5;
+}
+html[data-erp-skin="core"] .badge-soft { background: var(--color-neutral) !important; color: var(--color-text-secondary) !important; }
+html[data-erp-skin="core"] .badge-teal { background: var(--color-accent-muted); color: var(--color-text-accent); }
+html[data-erp-skin="core"] .status-ok { background: var(--color-success-muted); color: var(--color-on-success-muted); }
+html[data-erp-skin="core"] .status-hold { background: var(--color-warning-muted); color: var(--color-on-warning-muted); }
+html[data-erp-skin="core"] .status-qc { background: var(--color-background-blue); color: var(--color-text-blue); }
+html[data-erp-skin="core"] .status-fail { background: var(--color-error-muted); color: var(--color-on-error-muted); }
+html[data-erp-skin="core"] .status-expired { background: var(--color-background-orange); color: var(--color-text-orange); }
+html[data-erp-skin="core"] .lot-badge {
+  font-family: var(--font-family-code);
+  background: var(--color-background-blue);
+  color: var(--color-text-blue);
+  border-color: transparent;
+  border-radius: var(--radius-inner);
+}
+html[data-erp-skin="core"] .lot-badge.bulk { background: var(--color-warning-muted); color: var(--color-on-warning-muted); }
+html[data-erp-skin="core"] .lot-badge.fgt { background: var(--color-success-muted); color: var(--color-on-success-muted); }
+html[data-erp-skin="core"] .exp-warn { color: var(--color-text-error); }
+html[data-erp-skin="core"] .exp-caution { color: var(--color-text-warning); }
+
+/* ── 탭 ───────────────────────────────────────────── */
+html[data-erp-skin="core"] .tab-btn,
+html[data-erp-skin="core"] .mes-tab {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  border-bottom-width: 2px;
+  transition: var(--erp-transition);
+}
+html[data-erp-skin="core"] .tab-btn:hover { color: var(--color-text-primary); }
+html[data-erp-skin="core"] .tab-btn.active { color: var(--color-text-accent); border-bottom-color: var(--color-accent); font-weight: var(--font-weight-semibold); }
+
+/* ── 대시보드 ─────────────────────────────────────── */
+html[data-erp-skin="core"] .dash-hero {
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--color-success) 38%, transparent) 0%, transparent 55%),
+    var(--color-background-inverted);
+  border-radius: var(--radius-container);
+  box-shadow: var(--shadow-high);
+}
+html[data-erp-skin="core"] .dash-hero-label,
+html[data-erp-skin="core"] .dash-stat svg { color: var(--color-warning); }
+html[data-erp-skin="core"] .dash-stat { border-radius: var(--radius-element); }
+html[data-erp-skin="core"] .dash-alert { border-radius: var(--radius-container); }
+html[data-erp-skin="core"] .dash-alert-red,
+html[data-erp-skin="core"] .nose-alert.red { background: color-mix(in srgb, var(--color-error-muted) 40%, var(--color-background-surface)); border-color: color-mix(in srgb, var(--color-text-error) 22%, transparent); }
+html[data-erp-skin="core"] .dash-alert-amber,
+html[data-erp-skin="core"] .nose-alert.amber { background: color-mix(in srgb, var(--color-warning-muted) 60%, var(--color-background-surface)); border-color: color-mix(in srgb, var(--color-warning) 40%, transparent); }
+html[data-erp-skin="core"] .nose-alert.blue { background: color-mix(in srgb, var(--color-background-blue) 35%, var(--color-background-surface)); border-color: color-mix(in srgb, var(--color-border-blue) 25%, transparent); }
+html[data-erp-skin="core"] .nose-alert.green { background: color-mix(in srgb, var(--color-success-muted) 45%, var(--color-background-surface)); border-color: color-mix(in srgb, var(--color-success) 25%, transparent); }
+html[data-erp-skin="core"] .nose-alert { border-radius: var(--radius-container); transition: var(--erp-transition); }
+html[data-erp-skin="core"] .nose-alert:hover { box-shadow: var(--shadow-med); transform: translateY(-1px); }
+html[data-erp-skin="core"] .nose-alert-icon { border-radius: var(--radius-element); background: var(--color-background-surface); }
+html[data-erp-skin="core"] .red .nose-alert-num,
+html[data-erp-skin="core"] .dash-alert-red .dash-alert-num { color: var(--color-text-error); }
+html[data-erp-skin="core"] .amber .nose-alert-num,
+html[data-erp-skin="core"] .dash-alert-amber .dash-alert-num { color: var(--color-text-warning); }
+html[data-erp-skin="core"] .blue .nose-alert-num { color: var(--color-text-blue); }
+html[data-erp-skin="core"] .green .nose-alert-num { color: var(--color-text-success); }
+html[data-erp-skin="core"] .nose-alert h3,
+html[data-erp-skin="core"] .dash-alert-title { color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+html[data-erp-skin="core"] .nose-alert p,
+html[data-erp-skin="core"] .dash-alert-sub { color: var(--color-text-secondary); }
+
+/* ── 운영 가이드·업무도구 ───────────────────────── */
+html[data-erp-skin="core"] .gd-strip { background: var(--erp-surface-sunken); border-color: var(--color-border); border-radius: var(--radius-container); }
+html[data-erp-skin="core"] .gd-chip { background: var(--color-background-surface); border-color: var(--color-border); color: var(--color-text-primary); }
+html[data-erp-skin="core"] .gd-chip-hot { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+html[data-erp-skin="core"] .gd-step { border-color: var(--color-border); border-radius: var(--radius-element); color: var(--color-text-primary); }
+html[data-erp-skin="core"] .gd-step:hover { background: var(--color-overlay-hover); }
+html[data-erp-skin="core"] .gd-num { background: var(--color-accent-muted); color: var(--color-text-accent); }
+html[data-erp-skin="core"] .gd-acc { border-color: var(--color-border); border-radius: var(--radius-element); }
+html[data-erp-skin="core"] .gd-acc summary { background: var(--erp-surface-sunken); color: var(--color-text-primary); font-weight: var(--font-weight-semibold); }
+html[data-erp-skin="core"] .gd-acc summary::before { color: var(--color-icon-accent); }
+html[data-erp-skin="core"] .gd-menu-name { color: var(--color-text-primary); }
+html[data-erp-skin="core"] .bt-metric,
+html[data-erp-skin="core"] .bt-tool-card {
+  border-radius: var(--radius-element);
+  border-color: var(--color-border);
+  background: var(--color-background-surface);
+}
+html[data-erp-skin="core"] .bt-tool-card:hover { border-color: var(--color-border-emphasized); box-shadow: var(--shadow-low); }
+html[data-erp-skin="core"] .bt-note { color: var(--color-text-secondary); }
+html[data-erp-skin="core"] .bt-alert { border-radius: var(--radius-element); }
+html[data-erp-skin="core"] .v42-quick-actions {
+  background: var(--color-background-card);
+  border-color: var(--color-border);
+  border-radius: var(--radius-container);
+  box-shadow: 0 1px 2px var(--color-shadow);
+}
+html[data-erp-skin="core"] .v42-quick-actions button {
+  background: var(--erp-surface-sunken);
+  border-color: transparent;
+  color: var(--color-text-primary);
+  border-radius: var(--radius-element);
+  font-weight: var(--font-weight-semibold);
+  transition: var(--erp-transition);
+}
+html[data-erp-skin="core"] .v42-quick-actions button:hover { background: var(--color-accent-muted); border-color: var(--color-border-emphasized); outline: none; }
+html[data-erp-skin="core"] .v42-quick-actions button b { background: var(--color-accent); color: var(--color-on-accent); }
+
+/* ── 대화상자·로그인 ───────────────────────────────── */
+html[data-erp-skin="core"] .v42-dialog-backdrop,
+html[data-erp-skin="core"] #mob-overlay { background: var(--color-overlay); }
+html[data-erp-skin="core"] .v42-dialog,
+html[data-erp-skin="core"] #sb-login > div {
+  background: var(--color-background-popover);
+  border-radius: var(--radius-container);
+  box-shadow: var(--shadow-high);
+}
+html[data-erp-skin="core"] .v42-dialog-icon { background: var(--color-accent-muted); color: var(--color-icon-accent); }
+html[data-erp-skin="core"] .v42-dialog-icon.danger { background: var(--color-error-muted); color: var(--color-text-error); }
+html[data-erp-skin="core"] .v42-dialog p { color: var(--color-text-secondary); }
+/* 로그인 화면은 인라인 스타일로 그려지므로 !important로 덮는다 */
+html[data-erp-skin="core"] #sb-login {
+  background:
+    radial-gradient(80% 90% at 85% 10%, color-mix(in srgb, var(--color-success) 14%, transparent) 0%, transparent 60%),
+    color-mix(in srgb, var(--color-background-inverted) 96%, black) !important;
+}
+html[data-erp-skin="core"] #sb-login > div {
+  background: var(--color-background-popover) !important;
+  border-radius: var(--radius-container) !important;
+  box-shadow: var(--shadow-high) !important;
+  padding: var(--spacing-5) !important;
+  width: min(360px, calc(100vw - 32px)) !important;
+  font-family: var(--font-family-body) !important;
+}
+html[data-erp-skin="core"] #sb-login button {
+  background: var(--color-accent) !important;
+  color: var(--color-on-accent) !important;
+  border-radius: var(--radius-element) !important;
+  min-height: var(--size-element-md) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  text-decoration: none !important;
+}
+html[data-erp-skin="core"] #sb-login button:hover { background: var(--erp-accent-strong) !important; }
+html[data-erp-skin="core"] #sb-login input { border-radius: var(--radius-element) !important; border-color: var(--color-border-emphasized) !important; min-height: var(--size-element-md) !important; }
+
+/* ── 모바일 하단 내비 ─────────────────────────────── */
+html[data-erp-skin="core"] #mob-bottom-nav {
+  background: color-mix(in srgb, var(--color-background-surface) 92%, transparent);
+  border-top-color: var(--color-border);
+  backdrop-filter: blur(10px);
+}
+html[data-erp-skin="core"] .mbn-btn { color: var(--color-icon-secondary); text-transform: none; letter-spacing: 0; font-size: var(--erp-font-xs); }
+html[data-erp-skin="core"] .mbn-btn.mbn-active { color: var(--color-text-accent); }
+
+/* 모바일 홈 바로가기 타일 */
+html[data-erp-skin="core"] .mh-grid > button {
+  background: var(--color-background-card) !important;
+  border: var(--border-width) solid var(--color-border) !important;
+  border-radius: var(--radius-container) !important;
+  box-shadow: 0 1px 2px var(--color-shadow);
+  color: var(--color-text-primary);
+}
+html[data-erp-skin="core"] .mh-grid > button:active { background: var(--color-accent-muted) !important; }
+
+/* 그리드 칸이 입력창 기본 폭 때문에 화면 밖으로 밀리지 않게 */
+html[data-erp-skin="core"] main .grid > * { min-width: 0; }
+
+@media (max-width: 767px) {
+  html[data-erp-skin="core"] header { height: 52px !important; }
+  html[data-erp-skin="core"] #main-content { padding: var(--spacing-2) var(--spacing-2) 76px !important; }
+}
+
+/* 인쇄물(문서·라벨)은 흑백 원본 양식을 그대로 유지 */
+@media print {
+  html[data-erp-skin="core"] body { background: #fff !important; }
+}
